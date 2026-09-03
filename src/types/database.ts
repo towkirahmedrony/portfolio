@@ -18,12 +18,18 @@ export type ProfileRow = {
 };
 
 export type ProfileUpdate = {
-  full_name: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  phone: string | null;
-  company_name: string | null;
-  job_title: string | null;
+  full_name?: string;
+  display_name?: string | null;
+  avatar_url?: string | null;
+  phone?: string | null;
+  company_name?: string | null;
+  job_title?: string | null;
+  role?: ProfileRole;
+  status?: ProfileStatus;
+  email_verified?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  last_seen_at?: string | null;
 };
 
 export type ReferralCodeRow = {
