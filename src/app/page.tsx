@@ -43,7 +43,7 @@ export default function HomePage() {
             className="animate-fade-up mt-8 flex flex-col gap-3 sm:flex-row"
             style={{ animationDelay: "140ms" }}
           >
-            <ButtonLink href="/contact" size="lg">
+            <ButtonLink href="/start-project" size="lg">
               Start a Project
             </ButtonLink>
             <ButtonLink href="/projects" variant="secondary" size="lg">

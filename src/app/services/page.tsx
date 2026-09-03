@@ -38,7 +38,7 @@ export default function ServicesPage() {
                   {service.description}
                 </p>
                 <div className="mt-6">
-                  <ButtonLink href="/contact">Start this project</ButtonLink>
+                  <ButtonLink href="/start-project">Start this project</ButtonLink>
                 </div>
               </div>
               <div className="grid gap-6">

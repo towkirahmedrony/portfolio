@@ -49,7 +49,7 @@ export function Navbar() {
 
         <div className="hidden items-center gap-3 md:flex">
           <ThemeToggle />
-          <ButtonLink href="/contact" size="md">
+          <ButtonLink href="/start-project" size="md">
             Start a Project
           </ButtonLink>
         </div>
@@ -99,7 +99,7 @@ export function Navbar() {
                 {item.label}
               </Link>
             ))}
-            <ButtonLink href="/contact" onClick={() => setOpen(false)}>
+            <ButtonLink href="/start-project" onClick={() => setOpen(false)}>
               Start a Project
             </ButtonLink>
           </nav>

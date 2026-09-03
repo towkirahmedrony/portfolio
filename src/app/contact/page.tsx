@@ -20,7 +20,7 @@ export default function ContactPage() {
     <>
       <PageHero
         eyebrow="Contact"
-        title="Start a project"
+        title="Get in touch"
         description="Share a short note about what you need. Email and WhatsApp are the fastest ways to reach me — I typically reply within one to two business days."
       />
 
@@ -94,17 +94,11 @@ export default function ContactPage() {
             about the site. That is enough to start.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <ButtonLink href={`mailto:${site.email}`} size="lg">
-              Email me
+            <ButtonLink href="/start-project" size="lg">
+              Start a Project
             </ButtonLink>
-            <ButtonLink
-              href={whatsappHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              variant="secondary"
-              size="lg"
-            >
-              Message on WhatsApp
+            <ButtonLink href={`mailto:${site.email}`} variant="secondary" size="lg">
+              Email me
             </ButtonLink>
           </div>
         </div>

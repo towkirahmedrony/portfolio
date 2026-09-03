@@ -1,7 +1,9 @@
 import { cn } from "@/lib/utils";
 import type { ComponentProps } from "react";
 
-export function Card({ className, ...props }: ComponentProps<"article">) {
+type CardProps = ComponentProps<"article">;
+
+export function Card({ className, ...props }: CardProps) {
   return (
     <article
       className={cn(

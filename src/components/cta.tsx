@@ -21,7 +21,7 @@ export function CallToAction({
           {description}
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <ButtonLink href="/contact" size="lg">
+          <ButtonLink href="/start-project" size="lg">
             Start a Project
           </ButtonLink>
           <ButtonLink href="/projects" variant="secondary" size="lg">
