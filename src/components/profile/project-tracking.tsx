@@ -5,21 +5,11 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
-import type { ProjectRow, ProjectStatus } from "@/types/database";
+import type { ProjectRow } from "@/types/database";
 
-// Extend type locally to include joined invoice data
 type ProjectWithFinancials = ProjectRow & {
   invoices?: { amount_paid: number; amount_due: number }[];
 };
-
-function getStatusBadgeVariant(status: ProjectStatus) {
-  switch (status) {
-    case "completed": return "default";
-    case "in_progress": case "in_review": case "revision": return "secondary";
-    case "cancelled": case "on_hold": return "outline";
-    default: return "outline";
-  }
-}
 
 export function ProjectTracking() {
   const [projects, setProjects] = useState<ProjectWithFinancials[]>([]);
@@ -32,7 +22,6 @@ export function ProjectTracking() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        // Fetch projects along with their invoices for financial summaries
         const { data, error } = await supabase
           .from("projects")
           .select(`
@@ -67,7 +56,7 @@ export function ProjectTracking() {
             Track your ongoing projects, financial status, and development progress.
           </p>
         </div>
-        <Badge>{projects.length} {projects.length === 1 ? "Project" : "Projects"}</Badge>
+        <Badge>{`${projects.length} ${projects.length === 1 ? "Project" : "Projects"}`}</Badge>
       </div>
 
       <div className="mt-6">
@@ -91,7 +80,7 @@ export function ProjectTracking() {
                         <span className="text-xs font-semibold tracking-wider text-accent uppercase">
                           {item.project_number}
                         </span>
-                        <Badge variant={getStatusBadgeVariant(item.status)}>
+                        <Badge>
                           {item.status.replace("_", " ")}
                         </Badge>
                         {item.priority && (
@@ -113,15 +102,15 @@ export function ProjectTracking() {
                     <div className="flex items-center gap-6 text-left lg:text-right border-t border-card-border pt-3 lg:border-t-0 lg:pt-0">
                       <div>
                         <p className="text-[10px] font-medium uppercase tracking-wider text-muted mb-1">Total</p>
-                        <p className="text-sm font-medium">{(item.agreed_price || item.estimated_budget || 0)} {item.currency}</p>
+                        <p className="text-sm font-medium">{`${(item.agreed_price || item.estimated_budget || 0)} ${item.currency}`}</p>
                       </div>
                       <div>
                         <p className="text-[10px] font-medium uppercase tracking-wider text-muted mb-1">Paid</p>
-                        <p className="text-sm font-medium text-emerald-500">{totalPaid} {item.currency}</p>
+                        <p className="text-sm font-medium text-emerald-500">{`${totalPaid} ${item.currency}`}</p>
                       </div>
                       <div>
                         <p className="text-[10px] font-medium uppercase tracking-wider text-muted mb-1">Due</p>
-                        <p className="text-sm font-medium text-destructive">{totalDue} {item.currency}</p>
+                        <p className="text-sm font-medium text-destructive">{`${totalDue} ${item.currency}`}</p>
                       </div>
                     </div>
                   </div>

@@ -11,18 +11,9 @@ import type { ProjectRow } from "@/types/database";
 type MilestoneRow = { id: string; title: string; description: string | null; status: string; due_date: string | null; };
 type InvoiceRow = { id: string; total: number; amount_paid: number; amount_due: number; status: string; currency: string; };
 type RequirementRow = { id: string; scope: string; pages: number; features: any; constraints: string; };
-// Added bucket_name and storage_path for dynamic downloads
 type FileRow = { id: string; original_name: string; category: string; file_size_bytes: number; created_at: string; bucket_name: string; storage_path: string; is_public: boolean; };
 type HistoryRow = { id: string; to_status: string; note: string; created_at: string; };
 type DiscountRow = { id: string; label: string; discount_amount: number; currency: string; };
-
-function getStatusBadgeVariant(status: string) {
-  switch (status) {
-    case "completed": return "default";
-    case "in_progress": return "secondary";
-    case "pending": default: return "outline";
-  }
-}
 
 function formatBytes(bytes: number) {
   if (!bytes) return "0 B";
@@ -104,13 +95,11 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ id: s
     void loadProjectDetails();
   }, [projectId]);
 
-  // ডাইনামিক ডাউনলোড হ্যান্ডলার
   const handleDownloadFile = async (file: FileRow) => {
     try {
       setDownloadingId(file.id);
       const supabase = createBrowserSupabaseClient();
       
-      // ফাইল পাবলিক হলে সরাসরি URL, নাহলে সাইনড URL জেনারেট করবে (১ ঘণ্টার জন্য ভ্যালিড)
       const { data, error } = await supabase.storage
         .from(file.bucket_name)
         .createSignedUrl(file.storage_path, 3600);
@@ -149,8 +138,8 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ id: s
             </span>
             <Badge>{project.status.replace("_", " ")}</Badge>
             {project.priority && (
-              <Badge variant="outline" className="border-accent/20">
-                Priority: {project.priority}
+              <Badge className="border-accent/20">
+                {`Priority: ${project.priority}`}
               </Badge>
             )}
           </div>
@@ -172,12 +161,12 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ id: s
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted">Total Budget:</span>
-                <span className="font-medium">{baseBudget} {project.currency}</span>
+                <span className="font-medium">{`${baseBudget} ${project.currency}`}</span>
               </div>
               {discounts.map(d => (
                 <div key={d.id} className="flex justify-between text-emerald-500">
-                  <span>Discount ({d.label}):</span>
-                  <span className="font-medium">-{d.discount_amount} {d.currency}</span>
+                  <span>{`Discount (${d.label}):`}</span>
+                  <span className="font-medium">{`-${d.discount_amount} ${d.currency}`}</span>
                 </div>
               ))}
             </div>
@@ -185,11 +174,11 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ id: s
           <div className="mt-4 pt-3 border-t border-card-border space-y-1">
             <div className="flex justify-between text-sm">
               <span className="text-muted">Amount Paid:</span>
-              <span className="font-medium text-accent">{totalPaid} {project.currency}</span>
+              <span className="font-medium text-accent">{`${totalPaid} ${project.currency}`}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted">Amount Due:</span>
-              <span className="font-medium text-destructive">{totalDue} {project.currency}</span>
+              <span className="font-medium text-destructive">{`${totalDue} ${project.currency}`}</span>
             </div>
           </div>
         </Card>
@@ -224,14 +213,14 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ id: s
           <p className="text-xs font-medium tracking-[0.16em] text-muted uppercase">Scope & Requirements</p>
           {requirements ? (
             <div className="mt-4 space-y-2 text-sm">
-              <p><span className="text-muted">Pages:</span> {requirements.pages || "N/A"}</p>
+              <p><span className="text-muted">Pages:</span> {`${requirements.pages || "N/A"}`}</p>
               {requirements.scope && <p className="text-muted line-clamp-2">{requirements.scope}</p>}
               {requirements.features && Array.isArray(requirements.features) && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {requirements.features.slice(0, 3).map((f: string, i: number) => (
-                    <Badge key={i} variant="secondary" className="text-[10px]">{f}</Badge>
+                    <Badge key={i} className="text-[10px]">{f}</Badge>
                   ))}
-                  {requirements.features.length > 3 && <Badge variant="outline" className="text-[10px]">+{requirements.features.length - 3} more</Badge>}
+                  {requirements.features.length > 3 && <Badge className="text-[10px]">{`+${requirements.features.length - 3} more`}</Badge>}
                 </div>
               )}
             </div>
@@ -257,10 +246,10 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ id: s
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-medium text-base">{m.title}</h4>
-                        <Badge variant={getStatusBadgeVariant(m.status)}>{m.status.replace("_", " ")}</Badge>
+                        <Badge>{m.status.replace("_", " ")}</Badge>
                       </div>
                       {m.description && <p className="mt-1 text-sm text-muted">{m.description}</p>}
-                      {m.due_date && <p className="mt-2 text-xs text-muted font-medium">Due: {new Date(m.due_date).toLocaleDateString()}</p>}
+                      {m.due_date && <p className="mt-2 text-xs text-muted font-medium">{`Due: ${new Date(m.due_date).toLocaleDateString()}`}</p>}
                     </div>
                   </div>
                 ))}
@@ -284,7 +273,6 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ id: s
                         <span>{formatBytes(file.file_size_bytes)}</span>
                       </p>
                     </div>
-                    {/* ডাইনামিক ডাউনলোড ইভেন্ট যুক্ত করা হলো */}
                     <button 
                       onClick={() => handleDownloadFile(file)}
                       disabled={downloadingId === file.id}
@@ -308,10 +296,10 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ id: s
               <div className="relative border-l border-card-border ml-3 space-y-6">
                 {history.map((h) => (
                   <div key={h.id} className="relative pl-6">
-                    <span className="absolute -left-1.5 top-1.5 h-3 w-3 rounded-full bg-accent ring-4 ring-background" />
-                    <p className="text-sm font-medium capitalize">{h.to_status.replace("_", " ")}</p>
-                    {h.note && <p className="text-sm text-muted mt-1">{h.note}</p>}
-                    <p className="text-xs text-muted/60 mt-1">{new Date(h.created_at).toLocaleString()}</p>
+                        <span className="absolute -left-1.5 top-1.5 h-3 w-3 rounded-full bg-accent ring-4 ring-background" />
+                        <p className="text-sm font-medium capitalize">{h.to_status.replace("_", " ")}</p>
+                        {h.note && <p className="text-sm text-muted mt-1">{h.note}</p>}
+                        <p className="text-xs text-muted/60 mt-1">{new Date(h.created_at).toLocaleString()}</p>
                   </div>
                 ))}
               </div>

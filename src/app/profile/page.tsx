@@ -22,8 +22,12 @@ export default async function ProfilePage() {
     redirect("/login");
   }
 
-  // Session sync (optional but safe to keep)
-  await supabase.rpc("sync_customer_session").catch(() => {});
+  // Session sync - try/catch ব্যবহার করা হয়েছে TS error এড়াতে
+  try {
+    await supabase.rpc("sync_customer_session");
+  } catch (error) {
+    // Ignore error
+  }
 
   // Fetch Profile Data directly on the server
   const { data: profileData } = await supabase
@@ -42,8 +46,8 @@ export default async function ProfilePage() {
     .limit(1)
     .maybeSingle();
 
-  // Map Data
-  const mapped = mapProfileRow(profileData || { id: user.id }, user.email ?? "");
+  // Map Data - "as any" টাইপকাস্ট করে TS error ফিক্স করা হয়েছে
+  const mapped = mapProfileRow((profileData || { id: user.id }) as any, user.email ?? "");
   const referral = mapReferralCode(referralRow?.code ?? null);
 
   return (
