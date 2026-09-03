@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
+import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Button } from "@/components/ui/button";
 import { Field, TextInput } from "@/components/ui/form-field";
 import { getSafeNextPath, isValidEmail } from "@/lib/auth";
@@ -201,6 +202,8 @@ function SignupFormFields() {
       <Button type="submit" className="mt-8 w-full" disabled={submitting}>
         {submitting ? "Creating account…" : "Sign up"}
       </Button>
+
+      <OAuthButtons nextPath={destination} disabled={submitting} />
 
       <p className="mt-6 text-center text-sm text-muted">
         Already have an account?{" "}

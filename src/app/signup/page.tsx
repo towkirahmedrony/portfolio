@@ -17,7 +17,7 @@ export default function SignupPage() {
       <PageHero
         eyebrow="Account"
         title="Create an account"
-        description="Sign up with your name and email to start using your customer profile."
+        description="Sign up with email, Google, or GitHub to start using your customer profile."
       />
       <section className="py-12 sm:py-16">
         <div className="mx-auto w-full max-w-md px-5 sm:px-8">

@@ -17,7 +17,7 @@ export default function LoginPage() {
       <PageHero
         eyebrow="Account"
         title="Log in"
-        description="Sign in with your email to access your customer profile."
+        description="Sign in with email, Google, or GitHub to access your customer profile."
       />
       <section className="py-12 sm:py-16">
         <div className="mx-auto w-full max-w-md px-5 sm:px-8">

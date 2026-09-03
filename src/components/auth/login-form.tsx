@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
+import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Button } from "@/components/ui/button";
 import { Field, TextInput } from "@/components/ui/form-field";
 import { getSafeNextPath, isValidEmail } from "@/lib/auth";
@@ -20,7 +21,11 @@ function LoginFormFields() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<LoginErrors>({});
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(
+    searchParams.get("error") === "oauth"
+      ? "Could not complete Google or GitHub sign-in. Please try again."
+      : null,
+  );
   const [submitting, setSubmitting] = useState(false);
   const destination = getSafeNextPath(searchParams.get("next"));
 
@@ -124,6 +129,8 @@ function LoginFormFields() {
       <Button type="submit" className="mt-8 w-full" disabled={submitting}>
         {submitting ? "Logging in…" : "Log in"}
       </Button>
+
+      <OAuthButtons nextPath={destination} disabled={submitting} />
 
       <p className="mt-6 text-center text-sm text-muted">
         Need an account?{" "}
