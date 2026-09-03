@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --background: #f7f6f3;
+  --foreground: #141414;
+  --muted: #5c5c5c;
+  --muted-foreground: #6b6b6b;
+  --card: #ffffff;
+  --card-border: #e8e6e1;
+  --accent: #1f4d3a;
+  --accent-hover: #17392b;
+  --accent-foreground: #f7f6f3;
+  --accent-soft: #e6efe9;
+  --ring: #1f4d3a;
+  --nav: rgba(247, 246, 243, 0.86);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-ring: var(--ring);
+  --color-nav: var(--nav);
+  --font-sans: var(--font-sans-family);
+  --font-display: var(--font-display-family);
+}
+
+html[data-theme="dark"] {
+  --background: #0d0f0e;
+  --foreground: #eceae6;
+  --muted: #a3a29c;
+  --muted-foreground: #8f8e88;
+  --card: #161917;
+  --card-border: #262926;
+  --accent: #7dba9a;
+  --accent-hover: #95c9ad;
+  --accent-foreground: #0d0f0e;
+  --accent-soft: #1a2720;
+  --ring: #7dba9a;
+  --nav: rgba(13, 15, 14, 0.86);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {
+    --background: #0d0f0e;
+    --foreground: #eceae6;
+    --muted: #a3a29c;
+    --muted-foreground: #8f8e88;
+    --card: #161917;
+    --card-border: #262926;
+    --accent: #7dba9a;
+    --accent-hover: #95c9ad;
+    --accent-foreground: #0d0f0e;
+    --accent-soft: #1a2720;
+    --ring: #7dba9a;
+    --nav: rgba(13, 15, 14, 0.86);
+  }
+}
+
+* {
+  border-color: var(--card-border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans-family), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.7s ease-out both;
+}
