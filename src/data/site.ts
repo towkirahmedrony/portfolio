@@ -1,16 +1,16 @@
 import type { NavItem, SocialLink } from "@/types";
 
 export const site = {
-  name: "Alex Rivera",
+  name: "Shakib Shahriar",
   role: "Freelance Web Developer",
-  tagline: "I design and build fast, conversion-focused websites for ambitious businesses.",
+  tagline: "I design and build fast, modern websites for businesses and individuals.",
   description:
-    "Alex Rivera is a freelance web developer specializing in modern business websites, portfolios, landing pages, and custom web applications.",
-  email: "hello@alexrivera.dev",
-  whatsapp: "+15551234567",
-  whatsappDisplay: "+1 (555) 123-4567",
+    "Shakib Shahriar is a freelance web developer specializing in modern business websites, portfolios, landing pages, and custom web applications.",
+  email: "shakib.shahriarr@gmail.com",
+  whatsapp: "+8801353297648",
+  whatsappDisplay: "+880 1353-297648",
   location: "Available worldwide",
-  url: "https://alexrivera.dev",
+  url: "https://techbarta.tech",
 } as const;
 
 export const navigation: NavItem[] = [
@@ -21,9 +21,4 @@ export const navigation: NavItem[] = [
   { href: "/contact", label: "Contact" },
 ];
 
-export const socialLinks: SocialLink[] = [
-  { label: "GitHub", href: "https://github.com" },
-  { label: "LinkedIn", href: "https://linkedin.com" },
-  { label: "X", href: "https://x.com" },
-  { label: "Dribbble", href: "https://dribbble.com" },
-];
+export const socialLinks: SocialLink[] = [];

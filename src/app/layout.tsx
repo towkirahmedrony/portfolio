@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Instrument_Sans, Newsreader } from "next/font/google";
 import { Footer } from "@/components/footer";
 import { Navbar } from "@/components/navbar";
-import { ThemeScript } from "@/components/theme-script";
 import { site } from "@/data/site";
 import "./globals.css";
 
@@ -16,6 +15,8 @@ const newsreader = Newsreader({
   subsets: ["latin"],
   style: ["normal", "italic"],
 });
+
+const themeScript = `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t)}else if(window.matchMedia("(prefers-color-scheme: dark)").matches){document.documentElement.setAttribute("data-theme","dark")}else{document.documentElement.setAttribute("data-theme","light")}}catch(e){}})()`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -52,7 +53,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${instrumentSans.variable} ${newsreader.variable} h-full antialiased`}
     >
       <head>
-        <ThemeScript />
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: themeScript }}
+        />
       </head>
       <body className="flex min-h-full flex-col font-sans">
         <Navbar />
