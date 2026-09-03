@@ -12,7 +12,9 @@ import { StepReview } from "@/components/project-request/step-review";
 import { StepType } from "@/components/project-request/step-type";
 import { initialProjectRequest, TOTAL_STEPS } from "@/data/project-request";
 import {
+  buildProjectReferralPayload,
   firstInvalidStep,
+  getNormalizedProjectRequest,
   validateProjectRequest,
   validateStep,
 } from "@/lib/project-request";
@@ -21,6 +23,7 @@ import type {
   ProjectRequestErrors,
   ProjectRequestStep,
 } from "@/types/project-request";
+import type { ProjectReferralPayload } from "@/types/referral";
 
 export function ProjectRequestForm() {
   const formId = useId();
@@ -29,13 +32,23 @@ export function ProjectRequestForm() {
   const [errors, setErrors] = useState<ProjectRequestErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedData, setSubmittedData] = useState<ProjectRequest | null>(
+    null,
+  );
+  const [submittedReferral, setSubmittedReferral] =
+    useState<ProjectReferralPayload | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   function updateField<K extends keyof ProjectRequest>(
     field: K,
     value: ProjectRequest[K],
   ) {
-    setData((current) => ({ ...current, [field]: value }));
+    const nextValue =
+      field === "referralCode" && typeof value === "string"
+        ? value.toUpperCase()
+        : value;
+
+    setData((current) => ({ ...current, [field]: nextValue }));
     setErrors((current) => {
       if (!current[field]) {
         return current;
@@ -92,10 +105,16 @@ export function ProjectRequestForm() {
     setSubmitting(true);
     setFormError(null);
 
+    const normalized = getNormalizedProjectRequest(data);
+    const referral = buildProjectReferralPayload(normalized);
+
     await new Promise((resolve) => {
       window.setTimeout(resolve, 700);
     });
 
+    setData(normalized);
+    setSubmittedData(normalized);
+    setSubmittedReferral(referral);
     setSubmitting(false);
     setSubmitted(true);
   }
@@ -105,11 +124,18 @@ export function ProjectRequestForm() {
     setErrors({});
     setStep(1);
     setSubmitted(false);
+    setSubmittedData(null);
+    setSubmittedReferral(null);
     setFormError(null);
   }
 
   if (submitted) {
-    return <ProjectRequestSuccess onReset={handleReset} />;
+    return (
+      <ProjectRequestSuccess
+        onReset={handleReset}
+        referralCode={submittedReferral?.referralCode ?? submittedData?.referralCode ?? ""}
+      />
+    );
   }
 
   return (

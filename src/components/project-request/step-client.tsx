@@ -58,6 +58,27 @@ export function StepClient({ data, errors, onChange }: Props) {
           onChange={(event) => onChange("company", event.target.value)}
         />
       </Field>
+      <div className="sm:col-span-2">
+        <Field
+          id="referralCode"
+          label="Referral Code (Optional)"
+          hint="Have a referral code? Enter it here to receive 5% off your first project."
+        >
+          <TextInput
+            id="referralCode"
+            name="referralCode"
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            value={data.referralCode}
+            onChange={(event) => onChange("referralCode", event.target.value)}
+            onBlur={(event) =>
+              onChange("referralCode", event.target.value.trim())
+            }
+            className="uppercase tracking-[0.08em]"
+          />
+        </Field>
+      </div>
     </div>
   );
 }

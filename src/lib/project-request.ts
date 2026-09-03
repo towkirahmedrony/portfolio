@@ -1,4 +1,9 @@
 import { featureOptions } from "@/data/project-request";
+import {
+  REFERRAL_CLIENT_DISCOUNT_PERCENT,
+  REFERRAL_REFERRER_REWARD_PERCENT,
+  type ProjectReferralPayload,
+} from "@/types/referral";
 import type {
   ProjectRequest,
   ProjectRequestErrors,
@@ -9,6 +14,38 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function isBlank(value: string): boolean {
   return value.trim().length === 0;
+}
+
+export function normalizeReferralCode(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+export function buildProjectReferralPayload(
+  data: ProjectRequest,
+): ProjectReferralPayload {
+  const referralCode = normalizeReferralCode(data.referralCode);
+
+  return {
+    referralCode: referralCode || null,
+    referredBy: null,
+    referralStatus: "unverified",
+    referredProject: "first",
+    clientDiscountPercent: REFERRAL_CLIENT_DISCOUNT_PERCENT,
+    referrerRewardPercent: REFERRAL_REFERRER_REWARD_PERCENT,
+    rewardStatus: "pending",
+    rewardUsed: false,
+    rewardExpiresAt: null,
+    discountsStackable: false,
+  };
+}
+
+export function getNormalizedProjectRequest(
+  data: ProjectRequest,
+): ProjectRequest {
+  return {
+    ...data,
+    referralCode: normalizeReferralCode(data.referralCode),
+  };
 }
 
 export function validateStep(
@@ -66,7 +103,7 @@ export function stepHasErrors(
   step: ProjectRequestStep,
 ): boolean {
   const keysByStep: Record<ProjectRequestStep, Array<keyof ProjectRequest>> = {
-    1: ["fullName", "email", "phone", "company"],
+    1: ["fullName", "email", "phone", "company", "referralCode"],
     2: ["projectType", "websiteStatus"],
     3: ["pageCount", "description", "features", "additionalRequirements"],
     4: [

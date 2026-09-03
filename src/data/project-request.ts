@@ -25,6 +25,7 @@ export const initialProjectRequest: ProjectRequest = {
   email: "",
   phone: "",
   company: "",
+  referralCode: "",
   projectType: "",
   websiteStatus: "",
   pageCount: "",

@@ -51,6 +51,7 @@ export type ProjectRequest = {
   email: string;
   phone: string;
   company: string;
+  referralCode: string;
   projectType: ProjectType | "";
   websiteStatus: WebsiteStatus | "";
   pageCount: string;

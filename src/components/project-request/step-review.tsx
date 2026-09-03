@@ -9,7 +9,7 @@ import {
   websiteStatusOptions,
   yesNoOptions,
 } from "@/data/project-request";
-import { formatFeatureList } from "@/lib/project-request";
+import { formatFeatureList, normalizeReferralCode } from "@/lib/project-request";
 import type { ProjectRequest, ProjectRequestStep } from "@/types/project-request";
 
 type Props = {
@@ -80,6 +80,18 @@ export function StepReview({ data, onEdit }: Props) {
         <Item label="Email" value={display(data.email)} />
         <Item label="Phone / WhatsApp" value={display(data.phone)} />
         <Item label="Company" value={display(data.company)} />
+        {normalizeReferralCode(data.referralCode) ? (
+          <>
+            <Item
+              label="Referral Code"
+              value={normalizeReferralCode(data.referralCode)}
+            />
+            <Item
+              label="Verification"
+              value="Referral code will be verified before the discount is applied."
+            />
+          </>
+        ) : null}
       </ReviewBlock>
 
       <ReviewBlock title="Project type" step={2} onEdit={onEdit}>
