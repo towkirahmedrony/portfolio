@@ -51,10 +51,10 @@ export function ReferralSection({ referral }: { referral: CustomerReferral }) {
     <Card className="hover:translate-y-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="font-display text-xl tracking-tight">Referrals</h3>
-        <Badge>Mock data</Badge>
+        <Badge>{referral.code ? "Your code" : "Unavailable"}</Badge>
       </div>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-        Share your code with another client. Referral account data is not
+        Share your referral code with another client. Reward history is not
         connected yet and will later come from the database.
       </p>
 

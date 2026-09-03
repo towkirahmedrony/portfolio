@@ -26,6 +26,16 @@ export type ProfileUpdate = {
   job_title: string | null;
 };
 
+export type ReferralCodeRow = {
+  id: string;
+  owner_id: string;
+  code: string;
+  is_active: boolean;
+  created_at: string;
+  expires_at: string | null;
+  used_count: number;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -49,9 +59,41 @@ export type Database = {
         Update: ProfileUpdate;
         Relationships: [];
       };
+      referral_codes: {
+        Row: ReferralCodeRow;
+        Insert: {
+          id?: string;
+          owner_id: string;
+          code: string;
+          is_active?: boolean;
+          created_at?: string;
+          expires_at?: string | null;
+          used_count?: number;
+        };
+        Update: {
+          code?: string;
+          is_active?: boolean;
+          expires_at?: string | null;
+          used_count?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "referral_codes_owner_id_fkey";
+            columns: ["owner_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      sync_customer_session: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+    };
     Enums: {
       profile_role: ProfileRole;
       profile_status: ProfileStatus;

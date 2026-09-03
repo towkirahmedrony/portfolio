@@ -6,8 +6,7 @@ import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfileInfo } from "@/components/profile/profile-info";
 import { ReferralSection } from "@/components/profile/referral-section";
 import { Card } from "@/components/ui/card";
-import { mockCustomerReferral } from "@/data/profile";
-import { mapProfileRow, toProfileUpdate } from "@/lib/profile";
+import { mapProfileRow, mapReferralCode, toProfileUpdate } from "@/lib/profile";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type {
@@ -15,6 +14,7 @@ import type {
   CustomerProfile as CustomerProfileData,
   CustomerProfileDraft,
   CustomerProfileErrors,
+  CustomerReferral,
 } from "@/types/profile";
 
 type LoadState =
@@ -70,6 +70,9 @@ export function CustomerProfile() {
   );
   const [profile, setProfile] = useState<CustomerProfileData | null>(null);
   const [account, setAccount] = useState<CustomerAccount | null>(null);
+  const [referral, setReferral] = useState<CustomerReferral>(() =>
+    mapReferralCode(null),
+  );
   const [draft, setDraft] = useState<CustomerProfileDraft | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -106,6 +109,16 @@ export function CustomerProfile() {
           return;
         }
 
+        try {
+          await supabase.rpc("sync_customer_session");
+        } catch {
+          // Continue loading the existing profile if session sync is unavailable.
+        }
+
+        if (cancelled) {
+          return;
+        }
+
         const { data, error } = await supabase
           .from("profiles")
           .select(
@@ -129,8 +142,22 @@ export function CustomerProfile() {
         }
 
         const mapped = mapProfileRow(data, user.email ?? "");
+        const { data: referralRow } = await supabase
+          .from("referral_codes")
+          .select("code")
+          .eq("owner_id", user.id)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (cancelled) {
+          return;
+        }
+
         setProfile(mapped.profile);
         setAccount(mapped.account);
+        setReferral(mapReferralCode(referralRow?.code ?? null));
         setDraft(toDraft(mapped.profile));
         setLoadState("ready");
       } catch {
@@ -307,7 +334,7 @@ export function CustomerProfile() {
         />
         <AccountInfo account={account} />
       </div>
-      <ReferralSection referral={mockCustomerReferral} />
+      <ReferralSection referral={referral} />
     </div>
   );
 }

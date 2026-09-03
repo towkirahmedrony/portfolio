@@ -1,8 +1,14 @@
+import {
+  REFERRAL_CLIENT_DISCOUNT_PERCENT,
+  REFERRAL_REFERRER_REWARD_PERCENT,
+} from "@/types/referral";
+import { site } from "@/data/site";
 import type { ProfileRow, ProfileUpdate } from "@/types/database";
 import type {
   CustomerAccount,
   CustomerProfile,
   CustomerProfileDraft,
+  CustomerReferral,
 } from "@/types/profile";
 
 function emptyToNull(value: string): string | null {
@@ -78,5 +84,25 @@ export function toProfileUpdate(draft: CustomerProfileDraft): ProfileUpdate {
     company_name: emptyToNull(draft.companyName),
     job_title: emptyToNull(draft.jobTitle),
     avatar_url: emptyToNull(draft.avatarUrl),
+  };
+}
+
+export function mapReferralCode(code: string | null | undefined): CustomerReferral {
+  const trimmed = code?.trim() ?? "";
+
+  return {
+    code: trimmed,
+    link: trimmed ? `${site.url}/start-project?ref=${trimmed}` : "",
+    totalReferrals: 0,
+    qualifiedReferrals: 0,
+    availableRewardPercent: 0,
+    availableRewardStatus: "Not available",
+    terms: [
+      `A referred client receives ${REFERRAL_CLIENT_DISCOUNT_PERCENT}% off their first project.`,
+      `You receive a ${REFERRAL_REFERRER_REWARD_PERCENT}% reward on your next project after a referral qualifies.`,
+      "Referral discounts do not stack with other offers.",
+      "Reward availability and qualification will be confirmed from your account data later.",
+    ],
+    history: [],
   };
 }

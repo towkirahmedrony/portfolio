@@ -49,11 +49,17 @@ export function AccountInfo({ account }: { account: CustomerAccount }) {
         <AccountRow label="Account Status" value={statusLabel(account.status)} />
         <AccountRow
           label="Email Verification"
-          value={account.emailVerified ? "Verified" : "Unverified"}
+          value={account.emailVerified ? "Verified" : "Verification required"}
         />
         <AccountRow label="Member Since" value={account.memberSince} />
         <AccountRow label="Last Active" value={account.lastActive} />
       </dl>
+      {account.emailVerified ? null : (
+        <p className="mt-6 text-sm text-accent" role="status">
+          Email verification is required. Check your inbox for the verification
+          link from your account provider.
+        </p>
+      )}
     </Card>
   );
 }

@@ -44,6 +44,14 @@ export async function proxy(request: NextRequest) {
     return redirect;
   }
 
+  if (user) {
+    try {
+      await supabase.rpc("sync_customer_session");
+    } catch {
+      // Session refresh should not fail the request if activity sync is unavailable.
+    }
+  }
+
   return response;
 }
 

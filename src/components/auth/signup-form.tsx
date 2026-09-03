@@ -6,7 +6,7 @@ import { Suspense, useState, type FormEvent } from "react";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Button } from "@/components/ui/button";
 import { Field, TextInput } from "@/components/ui/form-field";
-import { getSafeNextPath, isValidEmail } from "@/lib/auth";
+import { getEmailRedirectTo, getSafeNextPath, isValidEmail } from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
@@ -83,6 +83,10 @@ function SignupFormFields() {
         email: email.trim(),
         password,
         options: {
+          emailRedirectTo: getEmailRedirectTo(
+            window.location.origin,
+            destination,
+          ),
           data: {
             full_name: trimmedName,
             display_name: trimmedName.split(" ")[0] ?? trimmedName,
@@ -96,13 +100,26 @@ function SignupFormFields() {
         return;
       }
 
-      if (data.session) {
+      const emailConfirmed = Boolean(data.user?.email_confirmed_at);
+
+      if (data.session && emailConfirmed) {
+        try {
+          await supabase.rpc("sync_customer_session");
+        } catch {
+          // Account already exists; profile sync retries on the next authenticated request.
+        }
         router.push(destination);
         router.refresh();
         return;
       }
 
-      setNotice("Account created. Log in to continue.");
+      if (data.session && !emailConfirmed) {
+        await supabase.auth.signOut();
+      }
+
+      setNotice(
+        "Check your email to verify your account. You can log in after verification.",
+      );
       setSubmitting(false);
     } catch {
       setFormError("Could not create your account. Please try again.");
@@ -197,7 +214,12 @@ function SignupFormFields() {
             Go to login
           </Link>
         </p>
-      ) : null}
+      ) : (
+        <p className="mt-6 text-sm text-muted">
+          Email and password accounts require email verification before you can
+          log in.
+        </p>
+      )}
 
       <Button type="submit" className="mt-8 w-full" disabled={submitting}>
         {submitting ? "Creating account…" : "Sign up"}

@@ -17,7 +17,7 @@ export default function ProfilePage() {
       <PageHero
         eyebrow="Customer"
         title="Your profile"
-        description="Review your customer details and account information from your profile. Referral figures remain sample data until that backend is connected."
+        description="Review your customer details and account information from your profile. Referral rewards remain unconnected until that backend is available."
       />
       <section className="py-12 sm:py-16">
         <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">

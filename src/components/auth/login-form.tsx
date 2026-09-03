@@ -6,7 +6,11 @@ import { Suspense, useState, type FormEvent } from "react";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Button } from "@/components/ui/button";
 import { Field, TextInput } from "@/components/ui/form-field";
-import { getSafeNextPath, isValidEmail } from "@/lib/auth";
+import {
+  getSafeNextPath,
+  isEmailNotConfirmedError,
+  isValidEmail,
+} from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
@@ -21,9 +25,19 @@ function LoginFormFields() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<LoginErrors>({});
-  const [formError, setFormError] = useState<string | null>(
-    searchParams.get("error") === "oauth"
-      ? "Could not complete Google or GitHub sign-in. Please try again."
+  const [formError, setFormError] = useState<string | null>(() => {
+    const error = searchParams.get("error");
+    if (error === "oauth") {
+      return "Could not complete Google or GitHub sign-in. Please try again.";
+    }
+    if (error === "verification") {
+      return "Could not verify your email. Request a new verification link by signing up again, or contact support.";
+    }
+    return null;
+  });
+  const [notice, setNotice] = useState<string | null>(
+    searchParams.get("verified") === "1"
+      ? "Email verified. You can log in."
       : null,
   );
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +62,7 @@ function LoginFormFields() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
+    setNotice(null);
 
     const nextErrors = validate();
     if (Object.keys(nextErrors).length > 0) {
@@ -70,9 +85,19 @@ function LoginFormFields() {
       });
 
       if (error) {
-        setFormError("Could not log in. Check your email and password.");
+        setFormError(
+          isEmailNotConfirmedError(error)
+            ? "Please verify your email before logging in. Check your inbox for the verification link."
+            : "Could not log in. Check your email and password.",
+        );
         setSubmitting(false);
         return;
+      }
+
+      try {
+        await supabase.rpc("sync_customer_session");
+      } catch {
+        // Login already succeeded; profile sync retries on the next authenticated request.
       }
 
       router.push(destination);
@@ -123,6 +148,11 @@ function LoginFormFields() {
       {formError ? (
         <p className="mt-6 text-sm text-accent" role="alert">
           {formError}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="mt-6 text-sm text-muted" role="status">
+          {notice}
         </p>
       ) : null}
 
