@@ -95,7 +95,8 @@ function SignupFormFields() {
       });
 
       if (error) {
-        setFormError("Could not create your account. Please try again.");
+        console.error("Supabase sign up error:", error);
+        setFormError(error.message || "Could not create your account. Please try again.");
         setSubmitting(false);
         return;
       }
@@ -105,8 +106,8 @@ function SignupFormFields() {
       if (data.session && emailConfirmed) {
         try {
           await supabase.rpc("sync_customer_session");
-        } catch {
-          // Account already exists; profile sync retries on the next authenticated request.
+        } catch (rpcErr) {
+          console.error("RPC error during signup:", rpcErr);
         }
         router.push(destination);
         router.refresh();
@@ -121,8 +122,10 @@ function SignupFormFields() {
         "Check your email to verify your account. You can log in after verification.",
       );
       setSubmitting(false);
-    } catch {
-      setFormError("Could not create your account. Please try again.");
+    } catch (err: unknown) {
+      console.error("Unexpected signup error:", err);
+      const message = err instanceof Error ? err.message : "Could not create your account. Please try again.";
+      setFormError(message);
       setSubmitting(false);
     }
   }

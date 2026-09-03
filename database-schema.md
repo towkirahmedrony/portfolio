@@ -1,7 +1,7 @@
 # Database Schema — Agency / Client Platform
 
-Backend: Supabase (Postgres). Source migration: `supabase/migrations/..._init_schema.sql`.
-This file is a human/agent-readable reference — the `.sql` migration is the source of truth for actual DDL.
+Backend: Supabase (Postgres). Source migrations: `supabase/migrations/..._init_schema.sql` and `supabase/migrations/..._add_status_history_and_payment_schedule.sql`.
+This file is a human/agent-readable reference — the `.sql` migrations are the source of truth for actual DDL.
 
 ## Relationship overview
 
@@ -15,6 +15,7 @@ auth.users
           ├── project_requests
           │       └── projects
           │              ├── project_requirements
+          │              ├── project_status_history
           │              ├── project_milestones
           │              ├── project_notes
           │              ├── project_files
@@ -22,6 +23,7 @@ auth.users
           │              ├── quotes
           │              │     └── quote_items
           │              ├── project_discounts
+          │              ├── payment_schedule
           │              └── invoices
           │                    ├── invoice_items
           │                    └── payments
@@ -49,6 +51,7 @@ Business rule: new referred client gets a **5% discount** (`referral_settings.ne
 | `invoice_status` | draft, issued, partially_paid, paid, overdue, cancelled, refunded |
 | `payment_type` | advance, milestone, final, full, refund |
 | `payment_status` | pending, processing, succeeded, failed, cancelled, refunded, partially_refunded |
+| `payment_schedule_status` | upcoming, due, invoiced, paid, cancelled |
 | `review_status` | pending, approved, rejected, hidden |
 | `contact_status` | new, read, replied, archived, spam |
 | `file_category` | design, logo, content, document, attachment, deliverable, other |
@@ -58,6 +61,7 @@ Business rule: new referred client gets a **5% discount** (`referral_settings.ne
 - **Phase 1 (core):** profiles, referral_settings, referral_codes, project_requests, projects, project_requirements, referrals, referral_rewards, project_discounts, quotes, quote_items, project_milestones, project_notes, project_messages, project_files, notifications
 - **Phase 2 (payments):** invoices, invoice_items, payments, payment_events
 - **Phase 3 (admin / CMS):** services, service_features, portfolio_projects, portfolio_project_images, reviews, contact_messages, audit_logs, notification_preferences
+- **Phase 4 (order tracking, added later):** project_status_history, payment_schedule (optional — only if payments are split into installments)
 
 ---
 
@@ -217,6 +221,19 @@ Final agreed scope — may differ from the original request.
 | constraints | text | |
 | created_at / updated_at | timestamptz | |
 
+### `project_status_history`
+Client-facing order status timeline — separate from `audit_logs`, which is raw jsonb diffs for admin/technical use. Auto-populated by a trigger on `projects.status` changes.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| project_id | uuid FK → projects.id | on delete cascade |
+| from_status | project_status | nullable (null on first insert) |
+| to_status | project_status | not null |
+| note | text | short client-facing message |
+| changed_by | uuid FK → profiles.id | nullable |
+| created_at | timestamptz | |
+
 ### `project_discounts`
 Actual financial discount record — referral driven or manual/coupon.
 
@@ -318,6 +335,22 @@ A project can have multiple quote versions.
 | quantity / unit_price / amount | numeric | |
 | sort_order | integer | default 0 |
 | created_at | timestamptz | |
+
+### `payment_schedule`
+Optional installment plan (advance / milestone / final) shown to the client before an invoice is issued for each portion. Only needed if payments are split rather than billed in full.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| project_id | uuid FK → projects.id | |
+| invoice_id | uuid FK → invoices.id | nullable, linked once that installment is invoiced |
+| sequence | integer | not null, order of installments; unique with project_id |
+| label | text | not null, e.g. "Advance", "Milestone 1", "Final Payment" |
+| amount | numeric | not null |
+| currency | text | default `BDT` |
+| due_date | date | |
+| status | payment_schedule_status | default `upcoming` |
+| created_at / updated_at | timestamptz | |
 
 ### `invoices`
 | Column | Type | Notes |
@@ -494,6 +527,6 @@ Webhook idempotency log (prevents double-processing gateway callbacks).
 
 ## Security notes
 
-- RLS is enabled on every table above (see migration). Policies still need to be written: clients should only see rows tied to their own `profiles.id`; admins (`profiles.role = 'admin'`) see everything.
+- RLS is enabled on every table above (see migrations). Policies still need to be written: clients should only see rows tied to their own `profiles.id`; admins (`profiles.role = 'admin'`) see everything.
 - `service_role` key must never reach the browser or be committed to the repo — it bypasses RLS entirely.
 - Anonymous `/start-project` submissions (no login) should go through a restricted insert policy or a server-side endpoint, not an open public policy.

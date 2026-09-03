@@ -1,5 +1,4 @@
 "use client";
-
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
@@ -79,7 +78,7 @@ function LoginFormFields() {
 
     try {
       const supabase = createBrowserSupabaseClient();
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
@@ -94,15 +93,24 @@ function LoginFormFields() {
         return;
       }
 
-      try {
-        await supabase.rpc("sync_customer_session");
-      } catch {
-        // Login already succeeded; profile sync retries on the next authenticated request.
+      // ১. ডাটাবেজ ফাংশন দিয়ে আপডেট করার চেষ্টা
+      const { error: rpcError } = await supabase.rpc("sync_customer_session");
+      if (rpcError) {
+        console.error("RPC Error:", rpcError);
+      }
+      
+      // ২. সরাসরি আপডেট করার ফলব্যাক (যদি RPC কোনো কারণে কাজ না করে)
+      if (authData?.user?.id) {
+        await supabase
+          .from("profiles")
+          .update({ last_seen_at: new Date().toISOString() })
+          .eq("id", authData.user.id);
       }
 
       router.push(destination);
       router.refresh();
-    } catch {
+    } catch (err) {
+      console.error(err);
       setFormError("Could not log in. Please try again.");
       setSubmitting(false);
     }

@@ -171,14 +171,16 @@ begin
     full_name,
     display_name,
     avatar_url,
-    email_verified
+    email_verified,
+    last_seen_at
   )
   values (
     new.id,
     public.profile_full_name_from_auth(new.email, new.raw_user_meta_data),
     public.profile_display_name_from_auth(new.email, new.raw_user_meta_data),
     public.profile_avatar_url_from_auth(new.raw_user_meta_data),
-    public.auth_user_email_verified(new.id, new.email_confirmed_at)
+    public.auth_user_email_verified(new.id, new.email_confirmed_at),
+    now()
   )
   on conflict (id) do nothing;
 
@@ -283,33 +285,32 @@ begin
     full_name,
     display_name,
     avatar_url,
-    email_verified
+    email_verified,
+    last_seen_at
   )
   values (
     uid,
     public.profile_full_name_from_auth(user_email, user_meta),
     public.profile_display_name_from_auth(user_email, user_meta),
     public.profile_avatar_url_from_auth(user_meta),
-    verified
+    verified,
+    now()
   )
   on conflict (id) do nothing;
 
+  -- Ensure config is explicitly set directly before our update block
   perform set_config('app.bypass_profile_protect', 'on', true);
 
   update public.profiles
-  set email_verified = verified
-  where id = uid
-    and email_verified is distinct from verified;
+  set 
+    email_verified = verified,
+    last_seen_at = case 
+      when last_seen_at is null or last_seen_at < now() - interval '15 minutes' then now()
+      else last_seen_at 
+    end
+  where id = uid;
 
   perform public.ensure_referral_code(uid);
-
-  update public.profiles
-  set last_seen_at = now()
-  where id = uid
-    and (
-      last_seen_at is null
-      or last_seen_at < now() - interval '15 minutes'
-    );
 end;
 $$;
 
