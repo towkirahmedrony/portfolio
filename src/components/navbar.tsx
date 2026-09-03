@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { navigation, site } from "@/data/site";
 import { cn } from "@/lib/utils";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ButtonLink } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -49,6 +50,7 @@ export function Navbar() {
 
         <div className="hidden items-center gap-3 md:flex">
           <ThemeToggle />
+          <SignOutButton />
           <ButtonLink href="/start-project" size="md">
             Start a Project
           </ButtonLink>
@@ -99,6 +101,7 @@ export function Navbar() {
                 {item.label}
               </Link>
             ))}
+            <SignOutButton />
             <ButtonLink href="/start-project" onClick={() => setOpen(false)}>
               Start a Project
             </ButtonLink>

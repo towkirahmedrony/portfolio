@@ -265,7 +265,7 @@ export function CustomerProfile() {
     return (
       <ProfileState
         title="Sign in to view your profile"
-        description="This page loads the currently authenticated customer from public.profiles. Sign-in is not part of this screen yet."
+        description="This page loads the currently authenticated customer from public.profiles."
       />
     );
   }
