@@ -80,9 +80,6 @@ export function ProfileHeader({
   saveError?: string | null;
   onEdit: () => void;
 }) {
-  const subtitle =
-    profile.displayName || profile.jobTitle || profile.companyName;
-
   return (
     <Card className="hover:translate-y-0">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
@@ -101,8 +98,8 @@ export function ProfileHeader({
             <h2 className="font-display mt-2 text-2xl tracking-tight sm:text-3xl">
               {profile.fullName || "Not provided"}
             </h2>
-            {subtitle ? (
-              <p className="mt-1 text-sm text-muted">{subtitle}</p>
+            {profile.email ? (
+              <p className="mt-1 text-sm text-muted">{profile.email}</p>
             ) : null}
           </div>
         </div>

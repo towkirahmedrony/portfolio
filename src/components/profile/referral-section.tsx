@@ -33,6 +33,7 @@ function Stat({
 }
 
 export function ReferralSection({ referral }: { referral: CustomerReferral }) {
+  const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState<"code" | "link" | null>(null);
 
   async function handleCopy(kind: "code" | "link") {
@@ -48,106 +49,146 @@ export function ReferralSection({ referral }: { referral: CustomerReferral }) {
   }
 
   return (
-    <Card className="hover:translate-y-0">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="font-display text-xl tracking-tight">Referrals</h3>
-        <Badge>{referral.code ? "Your code" : "Unavailable"}</Badge>
-      </div>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-        Share your referral code with another client. Reward history is not
-        connected yet and will later come from the database.
-      </p>
-
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-card-border bg-background px-4 py-4">
-          <p className="text-xs font-medium tracking-[0.16em] text-muted uppercase">
-            Referral code
-          </p>
-          <p className="mt-2 font-display text-2xl tracking-[0.12em]">
-            {referral.code || "—"}
-          </p>
-          <Button
-            variant="secondary"
-            className="mt-4"
-            onClick={() => handleCopy("code")}
-            disabled={!referral.code}
-          >
-            {copied === "code" ? "Copied" : "Copy code"}
-          </Button>
-        </div>
-
-        <div className="rounded-xl border border-card-border bg-background px-4 py-4">
-          <p className="text-xs font-medium tracking-[0.16em] text-muted uppercase">
-            Referral link
-          </p>
-          <p className="mt-2 break-all text-sm font-medium">
-            {referral.link || "Not provided"}
-          </p>
-          <Button
-            variant="secondary"
-            className="mt-4"
-            onClick={() => handleCopy("link")}
-            disabled={!referral.link}
-          >
-            {copied === "link" ? "Copied" : "Copy link"}
-          </Button>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
-        <Stat label="Total referrals" value={String(referral.totalReferrals)} />
-        <Stat
-          label="Qualified referrals"
-          value={String(referral.qualifiedReferrals)}
-        />
-        <Stat
-          label="Available reward"
-          value={
-            referral.availableRewardPercent > 0
-              ? `${referral.availableRewardPercent}% · ${referral.availableRewardStatus}`
-              : "—"
+    <Card className="hover:translate-y-0 transition-all">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setIsOpen((prev) => !prev)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsOpen((prev) => !prev);
           }
-        />
+        }}
+        className="flex cursor-pointer select-none items-center justify-between gap-3"
+      >
+        <div className="flex items-center gap-3">
+          <h3 className="font-display text-xl tracking-tight">Referrals</h3>
+          <Badge>{referral.code ? "Your code" : "Unavailable"}</Badge>
+        </div>
+
+        <div className="flex items-center gap-2 text-sm text-muted">
+          <span>{isOpen ? "Hide details" : "View details"}</span>
+          <svg
+            className={`h-4 w-4 transform transition-transform duration-200 ${
+              isOpen ? "rotate-180" : ""
+            }`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </div>
       </div>
 
-      <div className="mt-8">
-        <h4 className="text-sm font-medium">Reward status and history</h4>
-        {referral.history.length > 0 ? (
-          <ul className="mt-4 divide-y divide-card-border overflow-hidden rounded-xl border border-card-border">
-            {referral.history.map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-col gap-1 bg-background px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <p className="text-sm font-medium">{item.referredName}</p>
-                  <p className="text-xs text-muted">{item.date}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge>{item.status}</Badge>
-                  <span className="text-sm text-muted">
-                    {item.rewardPercent}%
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-4 rounded-xl border border-card-border bg-background px-4 py-4 text-sm text-muted">
-            Referral history will appear here once the referral system is
-            connected.
+      {isOpen && (
+        <div className="mt-4 border-t border-card-border pt-4 animate-in fade-in duration-200">
+          <p className="max-w-2xl text-sm leading-6 text-muted">
+            Share your referral code with another client. Reward history is not
+            connected yet and will later come from the database.
           </p>
-        )}
-      </div>
 
-      <div className="mt-8">
-        <h4 className="text-sm font-medium">Referral terms</h4>
-        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-muted">
-          {referral.terms.map((term) => (
-            <li key={term}>{term}</li>
-          ))}
-        </ul>
-      </div>
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-card-border bg-background px-4 py-4">
+              <p className="text-xs font-medium tracking-[0.16em] text-muted uppercase">
+                Referral code
+              </p>
+              <p className="mt-2 font-display text-2xl tracking-[0.12em]">
+                {referral.code || "—"}
+              </p>
+              <Button
+                variant="secondary"
+                className="mt-4"
+                onClick={() => handleCopy("code")}
+                disabled={!referral.code}
+              >
+                {copied === "code" ? "Copied" : "Copy code"}
+              </Button>
+            </div>
+
+            <div className="rounded-xl border border-card-border bg-background px-4 py-4">
+              <p className="text-xs font-medium tracking-[0.16em] text-muted uppercase">
+                Referral link
+              </p>
+              <p className="mt-2 break-all text-sm font-medium">
+                {referral.link || "Not provided"}
+              </p>
+              <Button
+                variant="secondary"
+                className="mt-4"
+                onClick={() => handleCopy("link")}
+                disabled={!referral.link}
+              >
+                {copied === "link" ? "Copied" : "Copy link"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <Stat
+              label="Total referrals"
+              value={String(referral.totalReferrals)}
+            />
+            <Stat
+              label="Qualified referrals"
+              value={String(referral.qualifiedReferrals)}
+            />
+            <Stat
+              label="Available reward"
+              value={
+                referral.availableRewardPercent > 0
+                  ? `${referral.availableRewardPercent}% · ${referral.availableRewardStatus}`
+                  : "—"
+              }
+            />
+          </div>
+
+          <div className="mt-8">
+            <h4 className="text-sm font-medium">Reward status and history</h4>
+            {referral.history.length > 0 ? (
+              <ul className="mt-4 divide-y divide-card-border overflow-hidden rounded-xl border border-card-border">
+                {referral.history.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex flex-col gap-1 bg-background px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{item.referredName}</p>
+                      <p className="text-xs text-muted">{item.date}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge>{item.status}</Badge>
+                      <span className="text-sm text-muted">
+                        {item.rewardPercent}%
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 rounded-xl border border-card-border bg-background px-4 py-4 text-sm text-muted">
+                Referral history will appear here once the referral system is
+                connected.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-8">
+            <h4 className="text-sm font-medium">Referral terms</h4>
+            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-muted">
+              {referral.terms.map((term) => (
+                <li key={term}>{term}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

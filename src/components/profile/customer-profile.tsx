@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfileInfo } from "@/components/profile/profile-info";
+import { ProjectTracking } from "@/components/profile/project-tracking";
 import { ReferralSection } from "@/components/profile/referral-section";
 import { Card } from "@/components/ui/card";
 import { mapProfileRow, mapReferralCode, toProfileUpdate } from "@/lib/profile";
@@ -332,6 +333,7 @@ export function CustomerProfile() {
           onCancel={cancelEditing}
         />
       </div>
+      <ProjectTracking />
       <ReferralSection referral={referral} />
     </div>
   );
