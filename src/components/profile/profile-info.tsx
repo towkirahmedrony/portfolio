@@ -95,7 +95,6 @@ export function ProfileInfo({
             <Field
               id="displayName"
               label="Display Name"
-              required
               error={errors.displayName}
             >
               <TextInput

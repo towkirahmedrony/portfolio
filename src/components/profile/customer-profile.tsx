@@ -43,10 +43,6 @@ function validateDraft(draft: CustomerProfileDraft): CustomerProfileErrors {
     errors.fullName = "Please enter your full name.";
   }
 
-  if (draft.displayName.trim().length === 0) {
-    errors.displayName = "Please enter a display name.";
-  }
-
   return errors;
 }
 
@@ -292,6 +288,7 @@ export function CustomerProfile() {
     <div className="grid gap-5">
       <ProfileHeader
         profile={editing ? { ...profile, ...draft } : profile}
+        role={account.role}
         editing={editing}
         status={status}
         saveError={saveError}

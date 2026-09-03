@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import type { CustomerProfile } from "@/types/profile";
+import type { CustomerProfile, ProfileRole } from "@/types/profile";
 
 export function getProfileInitials(name: string): string {
   return name
@@ -61,19 +61,28 @@ export function ProfileAvatar({
   );
 }
 
+function roleLabel(role: ProfileRole): string {
+  return role === "admin" ? "Admin" : "Customer";
+}
+
 export function ProfileHeader({
   profile,
+  role,
   editing,
   status,
   saveError,
   onEdit,
 }: {
   profile: CustomerProfile;
+  role: ProfileRole;
   editing: boolean;
   status: "idle" | "saved" | "cancelled";
   saveError?: string | null;
   onEdit: () => void;
 }) {
+  const subtitle =
+    profile.displayName || profile.jobTitle || profile.companyName;
+
   return (
     <Card className="hover:translate-y-0">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
@@ -87,14 +96,14 @@ export function ProfileHeader({
               <p className="text-xs font-medium tracking-[0.22em] text-accent uppercase">
                 Customer profile
               </p>
-              <Badge>Client</Badge>
+              <Badge>{roleLabel(role)}</Badge>
             </div>
             <h2 className="font-display mt-2 text-2xl tracking-tight sm:text-3xl">
-              {profile.fullName}
+              {profile.fullName || "Not provided"}
             </h2>
-            <p className="mt-1 text-sm text-muted">
-              {profile.displayName ? `${profile.displayName}` : "Customer"}
-            </p>
+            {subtitle ? (
+              <p className="mt-1 text-sm text-muted">{subtitle}</p>
+            ) : null}
           </div>
         </div>
 
