@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { AccountInfo } from "@/components/profile/account-info";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfileInfo } from "@/components/profile/profile-info";
 import { ReferralSection } from "@/components/profile/referral-section";
@@ -321,7 +320,7 @@ export function CustomerProfile() {
         saveError={saveError}
         onEdit={startEditing}
       />
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div>
         <ProfileInfo
           profile={profile}
           draft={draft}
@@ -332,7 +331,6 @@ export function CustomerProfile() {
           onSave={handleSave}
           onCancel={cancelEditing}
         />
-        <AccountInfo account={account} />
       </div>
       <ReferralSection referral={referral} />
     </div>
