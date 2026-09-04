@@ -1,33 +1,54 @@
 "use client";
 
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { FormProgress } from "@/components/project-request/progress";
 import { ProjectRequestSuccess } from "@/components/project-request/success";
-import { StepBudget } from "@/components/project-request/step-budget";
-import { StepClient } from "@/components/project-request/step-client";
-import { StepDesign } from "@/components/project-request/step-design";
-import { StepRequirements } from "@/components/project-request/step-requirements";
+import { StepFields } from "@/components/project-request/step-fields";
 import { StepReview } from "@/components/project-request/step-review";
-import { StepType } from "@/components/project-request/step-type";
-import { initialProjectRequest, TOTAL_STEPS } from "@/data/project-request";
+import { emptyProjectRequest } from "@/lib/order-form";
 import {
   firstInvalidStep,
   getNormalizedProjectRequest,
+  isReferralFieldKey,
   validateProjectRequest,
   validateStep,
 } from "@/lib/project-request";
 import { submitProjectRequest } from "@/lib/submit-project-request";
 import type {
+  OrderFormConfig,
   ProjectRequest,
   ProjectRequestErrors,
   ProjectRequestStep,
 } from "@/types/project-request";
 
-export function ProjectRequestForm() {
+type Props = {
+  config: OrderFormConfig;
+  serviceId: string | null;
+  initialReferralCode?: string;
+};
+
+export function ProjectRequestForm({
+  config,
+  serviceId,
+  initialReferralCode = "",
+}: Props) {
   const formId = useId();
+  const totalSteps = config.steps.length;
+  const initialValues = useMemo(() => {
+    const values = emptyProjectRequest(config);
+    if (initialReferralCode) {
+      const referralField = config.fields.find((field) =>
+        isReferralFieldKey(field.fieldKey),
+      );
+      if (referralField) {
+        values[referralField.fieldKey] = initialReferralCode;
+      }
+    }
+    return values;
+  }, [config, initialReferralCode]);
   const [step, setStep] = useState<ProjectRequestStep>(1);
-  const [data, setData] = useState<ProjectRequest>(initialProjectRequest);
+  const [data, setData] = useState<ProjectRequest>(initialValues);
   const [errors, setErrors] = useState<ProjectRequestErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -36,12 +57,9 @@ export function ProjectRequestForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const submittingRef = useRef(false);
 
-  function updateField<K extends keyof ProjectRequest>(
-    field: K,
-    value: ProjectRequest[K],
-  ) {
+  function updateField(field: string, value: string | string[]) {
     const nextValue =
-      field === "referralCode" && typeof value === "string"
+      isReferralFieldKey(field) && typeof value === "string"
         ? value.toUpperCase()
         : value;
 
@@ -66,24 +84,24 @@ export function ProjectRequestForm() {
     if (step === 1) {
       return;
     }
-    goToStep((step - 1) as ProjectRequestStep);
+    goToStep(step - 1);
   }
 
   function handleNext() {
-    const stepErrors = validateStep(step, data);
+    const stepErrors = validateStep(step, data, config);
     if (Object.keys(stepErrors).length > 0) {
       setErrors(stepErrors);
       return;
     }
 
     setErrors({});
-    goToStep(Math.min(step + 1, TOTAL_STEPS) as ProjectRequestStep);
+    goToStep(Math.min(step + 1, totalSteps));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (step < TOTAL_STEPS) {
+    if (step < totalSteps) {
       handleNext();
       return;
     }
@@ -92,10 +110,10 @@ export function ProjectRequestForm() {
       return;
     }
 
-    const allErrors = validateProjectRequest(data);
+    const allErrors = validateProjectRequest(data, config);
     if (Object.keys(allErrors).length > 0) {
       setErrors(allErrors);
-      const invalid = firstInvalidStep(allErrors);
+      const invalid = firstInvalidStep(allErrors, config);
       if (invalid) {
         setStep(invalid);
       }
@@ -111,13 +129,20 @@ export function ProjectRequestForm() {
     setData(normalized);
 
     try {
-      const result = await submitProjectRequest(normalized);
+      const result = await submitProjectRequest(normalized, config, serviceId);
       if (!result.ok) {
         setFormError(result.error);
         return;
       }
 
-      setSubmittedReferralCode(normalized.referralCode);
+      const referralField = config.fields.find((field) =>
+        isReferralFieldKey(field.fieldKey),
+      );
+      setSubmittedReferralCode(
+        referralField
+          ? String(normalized[referralField.fieldKey] ?? "")
+          : "",
+      );
       setRequestNumber(result.requestNumber);
       setSubmitted(true);
     } catch {
@@ -129,7 +154,7 @@ export function ProjectRequestForm() {
   }
 
   function handleReset() {
-    setData(initialProjectRequest);
+    setData(initialValues);
     setErrors({});
     setStep(1);
     setSubmitted(false);
@@ -148,6 +173,8 @@ export function ProjectRequestForm() {
     );
   }
 
+  const current = config.steps[step - 1];
+
   return (
     <form
       id={formId}
@@ -155,30 +182,19 @@ export function ProjectRequestForm() {
       noValidate
       className="rounded-3xl border border-card-border bg-card p-5 sm:p-8 lg:p-10"
     >
-      <FormProgress step={step} />
+      <FormProgress step={step} config={config} />
 
       <div aria-live="polite">
-        {step === 1 ? (
-          <StepClient data={data} errors={errors} onChange={updateField} />
-        ) : null}
-        {step === 2 ? (
-          <StepType data={data} errors={errors} onChange={updateField} />
-        ) : null}
-        {step === 3 ? (
-          <StepRequirements
+        {current?.isReview ? (
+          <StepReview data={data} config={config} onEdit={goToStep} />
+        ) : current ? (
+          <StepFields
+            step={current}
+            config={config}
             data={data}
             errors={errors}
             onChange={updateField}
           />
-        ) : null}
-        {step === 4 ? (
-          <StepDesign data={data} onChange={updateField} />
-        ) : null}
-        {step === 5 ? (
-          <StepBudget data={data} errors={errors} onChange={updateField} />
-        ) : null}
-        {step === 6 ? (
-          <StepReview data={data} onEdit={goToStep} />
         ) : null}
       </div>
 
@@ -197,7 +213,7 @@ export function ProjectRequestForm() {
           Previous
         </Button>
 
-        {step < TOTAL_STEPS ? (
+        {step < totalSteps ? (
           <Button type="submit" disabled={submitting}>
             Next
           </Button>

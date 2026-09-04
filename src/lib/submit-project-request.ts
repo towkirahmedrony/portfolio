@@ -4,7 +4,7 @@ import {
   generateRequestNumber,
   toProjectRequestInsert,
 } from "@/lib/project-request";
-import type { ProjectRequest } from "@/types/project-request";
+import type { OrderFormConfig, ProjectRequest } from "@/types/project-request";
 
 const UNIQUE_VIOLATION = "23505";
 const MAX_REQUEST_NUMBER_ATTEMPTS = 5;
@@ -23,6 +23,8 @@ function uniqueViolation(error: { code?: string; message?: string }): boolean {
 
 export async function submitProjectRequest(
   data: ProjectRequest,
+  config: OrderFormConfig,
+  serviceId: string | null,
 ): Promise<SubmitProjectRequestResult> {
   if (!isSupabaseConfigured()) {
     return {
@@ -33,7 +35,12 @@ export async function submitProjectRequest(
 
   const supabase = createBrowserSupabaseClient();
   await supabase.auth.getUser();
-  const payload = toProjectRequestInsert(data, generateRequestNumber());
+  const payload = toProjectRequestInsert(
+    data,
+    generateRequestNumber(),
+    config,
+    serviceId,
+  );
 
   for (let attempt = 0; attempt < MAX_REQUEST_NUMBER_ATTEMPTS; attempt += 1) {
     const insertPayload =

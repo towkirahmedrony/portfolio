@@ -170,6 +170,51 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+export type OrderFormStepRow = {
+  id: string;
+  step_key: string;
+  title: string;
+  description: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OrderFormFieldRow = {
+  id: string;
+  field_key: string;
+  step_id: string;
+  input_type: string;
+  label: string;
+  hint: string | null;
+  placeholder: string | null;
+  options_group: string | null;
+  required: boolean;
+  visible: boolean;
+  sort_order: number;
+  conditional: Json;
+  constraints: Json;
+  default_value: Json | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OrderFormOptionRow = {
+  id: string;
+  group: string;
+  slug: string;
+  label: string;
+  description: string | null;
+  requires_text: boolean;
+  sort_order: number;
+  is_active: boolean;
+  meta: Json;
+  created_at: string;
+  updated_at: string;
+};
+
 export type NotificationPreferenceRow = {
   id: string;
   user_id: string;
@@ -301,6 +346,8 @@ export type ProjectRequestRow = {
   referral_code_id: string | null;
   source: string | null;
   status: RequestStatus;
+  service_id: string | null;
+  form_snapshot: Json;
   submitted_at: string;
   updated_at: string;
 };
@@ -330,6 +377,8 @@ export type ProjectRequestInsert = {
   deadline_date?: string | null;
   referral_code_entered?: string | null;
   source?: string | null;
+  service_id?: string | null;
+  form_snapshot?: Json;
 };
 
 export type QuoteRow = {
@@ -616,8 +665,29 @@ export type Database = {
             referencedRelation: "referral_codes";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "project_requests_service_id_fkey";
+            columns: ["service_id"];
+            isOneToOne: false;
+            referencedRelation: "services";
+            referencedColumns: ["id"];
+          },
         ];
       };
+      order_form_steps: TableDef<OrderFormStepRow>;
+      order_form_fields: TableDef<
+        OrderFormFieldRow,
+        [
+          {
+            foreignKeyName: "order_form_fields_step_id_fkey";
+            columns: ["step_id"];
+            isOneToOne: false;
+            referencedRelation: "order_form_steps";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      order_form_options: TableDef<OrderFormOptionRow>;
       quotes: TableDef<
         QuoteRow,
         [

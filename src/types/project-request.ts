@@ -1,76 +1,61 @@
-export type ProjectType =
-  | "business"
-  | "portfolio"
-  | "ecommerce"
-  | "landing"
-  | "blog"
-  | "web-application"
-  | "custom";
+import type { Json } from "@/types/database";
 
-export type WebsiteStatus = "new" | "redesign";
+export type OrderFormInputType =
+  | "text"
+  | "email"
+  | "tel"
+  | "textarea"
+  | "date"
+  | "radio"
+  | "checkbox_group"
+  | "select";
 
-export type ProjectFeature =
-  | "contact-form"
-  | "user-login"
-  | "payment"
-  | "ecommerce"
-  | "blog"
-  | "search"
-  | "admin-panel"
-  | "booking"
-  | "chat"
-  | "other";
-
-export type DesignStyle =
-  | "minimal"
-  | "modern"
-  | "corporate"
-  | "creative"
-  | "luxury"
-  | "other";
-
-export type YesNo = "yes" | "no";
-
-export type BudgetRange =
-  | "under-100"
-  | "100-300"
-  | "300-500"
-  | "500-1000"
-  | "1000-plus";
-
-export type Deadline =
-  | "flexible"
-  | "1-week"
-  | "1-2-weeks"
-  | "2-4-weeks"
-  | "1-2-months"
-  | "specific";
-
-export type ProjectRequest = {
-  fullName: string;
-  email: string;
-  phone: string;
-  company: string;
-  referralCode: string;
-  projectType: ProjectType | "";
-  websiteStatus: WebsiteStatus | "";
-  pageCount: string;
-  description: string;
-  features: ProjectFeature[];
-  additionalRequirements: string;
-  hasDesign: YesNo | "";
-  referenceUrls: string;
-  designStyle: DesignStyle | "";
-  designStyleOther: string;
-  hasLogo: YesNo | "";
-  hasBrandColors: YesNo | "";
-  budget: BudgetRange | "";
-  deadline: Deadline | "";
-  specificDate: string;
+export type OrderFormOption = {
+  id: string;
+  group: string;
+  slug: string;
+  label: string;
+  description: string | null;
+  requiresText: boolean;
+  sortOrder: number;
+  meta: Record<string, unknown>;
 };
 
-export type ProjectRequestErrors = Partial<
-  Record<keyof ProjectRequest, string>
->;
+export type OrderFormFieldConfig = {
+  id: string;
+  fieldKey: string;
+  stepId: string;
+  inputType: OrderFormInputType;
+  label: string;
+  hint: string | null;
+  placeholder: string | null;
+  optionsGroup: string | null;
+  required: boolean;
+  visible: boolean;
+  sortOrder: number;
+  conditional: Record<string, unknown>;
+  constraints: Record<string, unknown>;
+  defaultValue: Json | null;
+  options: OrderFormOption[];
+};
 
-export type ProjectRequestStep = 1 | 2 | 3 | 4 | 5 | 6;
+export type OrderFormStepConfig = {
+  id: string;
+  stepKey: string;
+  title: string;
+  description: string | null;
+  sortOrder: number;
+  isReview: boolean;
+  fields: OrderFormFieldConfig[];
+};
+
+export type OrderFormConfig = {
+  steps: OrderFormStepConfig[];
+  fields: OrderFormFieldConfig[];
+  optionsByGroup: Record<string, OrderFormOption[]>;
+};
+
+export type ProjectRequestValue = string | string[];
+export type ProjectRequest = Record<string, ProjectRequestValue>;
+export type ProjectRequestErrors = Record<string, string>;
+export type ProjectRequestStep = number;

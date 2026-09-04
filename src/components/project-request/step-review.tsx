@@ -1,25 +1,23 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { getStringValue, isFieldVisible } from "@/lib/order-form";
 import {
-  budgetOptions,
-  deadlineOptions,
-  designStyleOptions,
-  getOptionLabel,
-  projectTypeOptions,
-  websiteStatusOptions,
-  yesNoOptions,
-} from "@/data/project-request";
-import { formatFeatureList, normalizeReferralCode } from "@/lib/project-request";
-import type { ProjectRequest, ProjectRequestStep } from "@/types/project-request";
+  displayFieldValue,
+  isReferralFieldKey,
+  normalizeReferralCode,
+} from "@/lib/project-request";
+import type {
+  OrderFormConfig,
+  OrderFormStepConfig,
+  ProjectRequest,
+  ProjectRequestStep,
+} from "@/types/project-request";
 
 type Props = {
   data: ProjectRequest;
+  config: OrderFormConfig;
   onEdit: (step: ProjectRequestStep) => void;
 };
-
-function display(value: string): string {
-  return value.trim() ? value.trim() : "Not specified";
-}
 
 function ReviewBlock({
   title,
@@ -62,88 +60,57 @@ function Item({
   );
 }
 
-export function StepReview({ data, onEdit }: Props) {
-  const designStyle =
-    data.designStyle === "other" && data.designStyleOther.trim()
-      ? data.designStyleOther
-      : getOptionLabel(designStyleOptions, data.designStyle);
+function isWideField(step: OrderFormStepConfig, fieldKey: string): boolean {
+  const field = step.fields.find((item) => item.fieldKey === fieldKey);
+  return (
+    field?.inputType === "textarea" ||
+    field?.constraints.span === "full" ||
+    field?.constraints.span === 2
+  );
+}
 
-  const deadline =
-    data.deadline === "specific" && data.specificDate
-      ? data.specificDate
-      : getOptionLabel(deadlineOptions, data.deadline);
-
+export function StepReview({ data, config, onEdit }: Props) {
   return (
     <div className="grid gap-4">
-      <ReviewBlock title="Client information" step={1} onEdit={onEdit}>
-        <Item label="Full name" value={display(data.fullName)} />
-        <Item label="Email" value={display(data.email)} />
-        <Item label="Phone / WhatsApp" value={display(data.phone)} />
-        <Item label="Company" value={display(data.company)} />
-        {normalizeReferralCode(data.referralCode) ? (
-          <>
-            <Item
-              label="Referral Code"
-              value={normalizeReferralCode(data.referralCode)}
-            />
-            <Item
-              label="Verification"
-              value="Referral code will be verified before the discount is applied."
-            />
-          </>
-        ) : null}
-      </ReviewBlock>
+      {config.steps.map((step, index) => {
+        if (step.isReview) {
+          return null;
+        }
 
-      <ReviewBlock title="Project type" step={2} onEdit={onEdit}>
-        <Item
-          label="Website type"
-          value={getOptionLabel(projectTypeOptions, data.projectType)}
-        />
-        <Item
-          label="Status"
-          value={getOptionLabel(websiteStatusOptions, data.websiteStatus)}
-        />
-      </ReviewBlock>
+        const visibleFields = step.fields.filter((field) =>
+          isFieldVisible(field, data),
+        );
+        const referralField = visibleFields.find((field) =>
+          isReferralFieldKey(field.fieldKey),
+        );
+        const referralCode = referralField
+          ? normalizeReferralCode(getStringValue(data, referralField.fieldKey))
+          : "";
 
-      <ReviewBlock title="Requirements" step={3} onEdit={onEdit}>
-        <Item label="Number of pages" value={display(data.pageCount)} />
-        <Item label="Features" value={formatFeatureList(data)} />
-        <Item label="Description" value={display(data.description)} wide />
-        <Item
-          label="Additional requirements"
-          value={display(data.additionalRequirements)}
-          wide
-        />
-      </ReviewBlock>
-
-      <ReviewBlock title="Design" step={4} onEdit={onEdit}>
-        <Item
-          label="Existing design / Figma"
-          value={getOptionLabel(yesNoOptions, data.hasDesign)}
-        />
-        <Item label="Preferred style" value={designStyle} />
-        <Item
-          label="Logo"
-          value={getOptionLabel(yesNoOptions, data.hasLogo)}
-        />
-        <Item
-          label="Brand colors"
-          value={getOptionLabel(yesNoOptions, data.hasBrandColors)}
-        />
-        <Item
-          label="Reference URLs"
-          value={display(data.referenceUrls)}
-          wide
-        />
-      </ReviewBlock>
-
-      <ReviewBlock title="Budget and timeline" step={5} onEdit={onEdit}>
-        <Item
-          label="Estimated budget"
-          value={getOptionLabel(budgetOptions, data.budget)}
-        />
-        <Item label="Expected deadline" value={deadline} />
-      </ReviewBlock>
+        return (
+          <ReviewBlock
+            key={step.id}
+            title={step.title}
+            step={index + 1}
+            onEdit={onEdit}
+          >
+            {visibleFields.map((field) => (
+              <Item
+                key={field.id}
+                label={field.label}
+                value={displayFieldValue(field, data)}
+                wide={isWideField(step, field.fieldKey)}
+              />
+            ))}
+            {referralCode ? (
+              <Item
+                label="Verification"
+                value="Referral code will be verified before the discount is applied."
+              />
+            ) : null}
+          </ReviewBlock>
+        );
+      })}
     </div>
   );
 }

@@ -65,7 +65,9 @@ function ServiceCard({ service }: { service: Service }) {
           </p>
         ) : null}
         <div className="mt-6">
-          <ButtonLink href="/start-project">Start this project</ButtonLink>
+          <ButtonLink href={`/start-project?service=${service.slug}`}>
+            Start this project
+          </ButtonLink>
         </div>
       </div>
       <div className="grid gap-6">
