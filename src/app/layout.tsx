@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { Instrument_Sans, Newsreader } from "next/font/google";
-import { Footer } from "@/components/footer";
-import { Navbar } from "@/components/navbar";
+import { PublicChrome } from "@/components/public-chrome";
 import { site } from "@/data/site";
 import "./globals.css";
 
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
@@ -59,9 +59,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className="flex min-h-full flex-col font-sans">
-        <Navbar />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <PublicChrome>{children}</PublicChrome>
       </body>
     </html>
   );

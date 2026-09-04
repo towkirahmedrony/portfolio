@@ -33,10 +33,14 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && request.nextUrl.pathname.startsWith("/profile")) {
+  const pathname = request.nextUrl.pathname;
+  const isProtected =
+    pathname.startsWith("/profile") || pathname.startsWith("/admin");
+
+  if (!user && isProtected) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("next", request.nextUrl.pathname);
+    loginUrl.searchParams.set("next", pathname);
     const redirect = NextResponse.redirect(loginUrl);
     response.cookies.getAll().forEach((cookie) => {
       redirect.cookies.set(cookie);
@@ -56,5 +60,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/profile"],
+  matcher: ["/profile/:path*", "/admin/:path*"],
 };
