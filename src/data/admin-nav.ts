@@ -15,7 +15,7 @@ export const adminNavSections: AdminNavSection[] = [
     items: [
       { id: "project-requests", label: "Project Requests", href: "/admin/project-requests", icon: "orders", roles: ["admin"] },
       { id: "projects", label: "Projects", href: "/admin/projects", icon: "projects", roles: ["admin"] },
-      { id: "clients", label: "Clients", href: "/admin/clients", icon: "clients", roles: ["admin"], enabled: false },
+      { id: "clients", label: "Clients", href: "/admin/clients", icon: "clients", roles: ["admin"] },
       { id: "quotes", label: "Quotes", href: "/admin/quotes", icon: "quotes", roles: ["admin"] },
       { id: "invoices", label: "Invoices", href: "/admin/invoices", icon: "invoices", roles: ["admin"] },
       { id: "payments", label: "Payments", href: "/admin/payments", icon: "payments", roles: ["admin"] },

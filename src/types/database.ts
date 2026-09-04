@@ -696,6 +696,18 @@ export type Database = {
         };
         Returns: string;
       };
+      admin_auth_emails: {
+        Args: { p_ids: string[] };
+        Returns: Array<{ profile_id: string; email: string }>;
+      };
+      admin_set_client_status: {
+        Args: { p_client_id: string; p_status: string };
+        Returns: undefined;
+      };
+      admin_set_client_email_verified: {
+        Args: { p_client_id: string; p_email_verified: boolean };
+        Returns: undefined;
+      };
     };
     Enums: {
       profile_role: ProfileRole;
