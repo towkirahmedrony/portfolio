@@ -76,6 +76,42 @@ export type RewardStatus =
   | "expired"
   | "cancelled";
 
+export type ReferralStatus =
+  | "pending"
+  | "qualified"
+  | "reward_pending"
+  | "reward_available"
+  | "completed"
+  | "cancelled"
+  | "invalid";
+
+export type ReferralRow = {
+  id: string;
+  referrer_id: string;
+  referred_client_id: string | null;
+  referral_code_id: string;
+  project_request_id: string | null;
+  first_project_id: string | null;
+  status: ReferralStatus;
+  client_discount_percent: number;
+  referrer_reward_percent: number;
+  created_at: string;
+  qualified_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+};
+
+export type ReferralSettingsRow = {
+  id: string;
+  new_client_discount_percent: number;
+  referrer_reward_percent: number;
+  minimum_project_amount: number | null;
+  reward_validity_days: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProfileRow = {
   id: string;
   full_name: string;
@@ -661,6 +697,33 @@ export type Database = {
           },
         ]
       >;
+      referrals: TableDef<
+        ReferralRow,
+        [
+          {
+            foreignKeyName: "referrals_referrer_id_fkey";
+            columns: ["referrer_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "referrals_referred_client_id_fkey";
+            columns: ["referred_client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "referrals_referral_code_id_fkey";
+            columns: ["referral_code_id"];
+            isOneToOne: false;
+            referencedRelation: "referral_codes";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      referral_settings: TableDef<ReferralSettingsRow>;
       audit_logs: TableDef<
         AuditLogRow,
         [
@@ -708,6 +771,16 @@ export type Database = {
         Args: { p_client_id: string; p_email_verified: boolean };
         Returns: undefined;
       };
+      admin_update_referral_settings: {
+        Args: {
+          p_client_discount_percent: number;
+          p_referrer_reward_percent: number;
+          p_minimum_project_amount?: number | null;
+          p_reward_validity_days?: number | null;
+          p_is_active?: boolean;
+        };
+        Returns: undefined;
+      };
     };
     Enums: {
       profile_role: ProfileRole;
@@ -719,6 +792,7 @@ export type Database = {
       invoice_status: InvoiceStatus;
       payment_status: PaymentStatus;
       reward_status: RewardStatus;
+      referral_status: ReferralStatus;
       milestone_status: MilestoneStatus;
       file_category: FileCategory;
       discount_source_type: DiscountSourceType;

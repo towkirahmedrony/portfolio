@@ -25,7 +25,7 @@ export const adminNavSections: AdminNavSection[] = [
     id: "growth",
     label: "Growth",
     items: [
-      { id: "referrals", label: "Referrals", href: "/admin/referrals", icon: "referrals", roles: ["admin"], enabled: false },
+      { id: "referrals", label: "Referrals", href: "/admin/referrals", icon: "referrals", roles: ["admin"] },
       { id: "messages", label: "Messages", href: "/admin/messages", icon: "messages", roles: ["admin"] },
       { id: "notifications", label: "Notifications", href: "/admin/notifications", icon: "notifications", roles: ["admin"], enabled: false },
     ],
