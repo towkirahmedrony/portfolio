@@ -494,6 +494,8 @@ export async function saveService(formData: FormData): Promise<ActionResult> {
 
   revalidatePath("/admin/services");
   revalidatePath(`/admin/services/${saved.id}`);
+  revalidatePath("/");
+  revalidatePath("/services");
   if (!id) {
     redirect(`/admin/services/${saved.id}`);
   }
@@ -528,6 +530,8 @@ export async function setServiceFlag(formData: FormData): Promise<ActionResult> 
 
   revalidatePath("/admin/services");
   revalidatePath(`/admin/services/${id}`);
+  revalidatePath("/");
+  revalidatePath("/services");
   return { ok: true };
 }
 
@@ -570,6 +574,8 @@ export async function reorderService(formData: FormData): Promise<ActionResult> 
   }
 
   revalidatePath("/admin/services");
+  revalidatePath("/");
+  revalidatePath("/services");
   return { ok: true };
 }
 
@@ -587,6 +593,8 @@ export async function deleteService(formData: FormData): Promise<ActionResult> {
   }
 
   revalidatePath("/admin/services");
+  revalidatePath("/");
+  revalidatePath("/services");
   return { ok: true };
 }
 
@@ -636,5 +644,7 @@ export async function saveServiceFeatures(
 
   revalidatePath("/admin/services");
   revalidatePath(`/admin/services/${serviceId}`);
+  revalidatePath("/");
+  revalidatePath("/services");
   return { ok: true };
 }

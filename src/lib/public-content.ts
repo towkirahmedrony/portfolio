@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createPublicSupabaseClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Project, Service } from "@/types";
 import type {
@@ -92,7 +92,7 @@ export async function getPublicProjects(
   }
 
   try {
-    const supabase = await createServerSupabaseClient();
+    const supabase = createPublicSupabaseClient();
 
     let builder = supabase
       .from("portfolio_projects")
@@ -113,13 +113,33 @@ export async function getPublicProjects(
   }
 }
 
+function toPublicService(
+  row: ServiceRow,
+  features: string[] = [],
+): Service {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.name,
+    shortDescription: row.short_description,
+    description: row.description,
+    startingPrice:
+      row.starting_price == null ? null : Number(row.starting_price),
+    currency: row.currency || "BDT",
+    estimatedDaysMin: row.estimated_days_min,
+    estimatedDaysMax: row.estimated_days_max,
+    features,
+    featured: row.featured,
+  };
+}
+
 export async function getPublicServices(): Promise<PublicContentResult<Service[]>> {
   if (!isSupabaseConfigured()) {
     return { status: "unavailable" };
   }
 
   try {
-    const supabase = await createServerSupabaseClient();
+    const supabase = createPublicSupabaseClient();
 
     const { data, error } = await supabase
       .from("services")
@@ -134,16 +154,12 @@ export async function getPublicServices(): Promise<PublicContentResult<Service[]
     }
 
     const serviceIds = serviceRows.map((row) => row.id);
-    const { data: featureData, error: featuresError } = await supabase
+    const { data: featureData } = await supabase
       .from("service_features")
       .select("service_id, feature, sort_order, id")
       .in("service_id", serviceIds)
       .order("sort_order", { ascending: true })
       .order("id", { ascending: true });
-
-    if (featuresError) {
-      return toResult([] as Service[], featuresError, true);
-    }
 
     const featuresByService = new Map<string, string[]>();
     for (const feature of (featureData ?? []) as ServiceFeatureRow[]) {
@@ -152,19 +168,9 @@ export async function getPublicServices(): Promise<PublicContentResult<Service[]
       featuresByService.set(feature.service_id, list);
     }
 
-    const services: Service[] = serviceRows.map((row: ServiceRow) => ({
-      id: row.id,
-      slug: row.slug,
-      title: row.name,
-      shortDescription: row.short_description,
-      description: row.description,
-      startingPrice: row.starting_price,
-      currency: row.currency,
-      estimatedDaysMin: row.estimated_days_min,
-      estimatedDaysMax: row.estimated_days_max,
-      features: featuresByService.get(row.id) ?? [],
-      featured: row.featured,
-    }));
+    const services: Service[] = serviceRows.map((row: ServiceRow) =>
+      toPublicService(row, featuresByService.get(row.id) ?? []),
+    );
 
     return { status: "ok", data: services };
   } catch {

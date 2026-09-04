@@ -59,9 +59,9 @@ function ServiceCard({ service }: { service: Service }) {
     <Card className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
       <div>
         <h2 className="font-display text-2xl tracking-tight">{service.title}</h2>
-        {service.description ? (
+        {service.description || service.shortDescription ? (
           <p className="mt-4 text-sm leading-7 text-muted sm:text-base">
-            {service.description}
+            {service.description || service.shortDescription}
           </p>
         ) : null}
         <div className="mt-6">

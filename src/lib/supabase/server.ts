@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "@/types/database";
 import { supabaseAnonKey, supabaseUrl } from "@/lib/supabase/env";
@@ -22,6 +23,24 @@ export async function createServerSupabaseClient() {
           });
         } catch {}
       },
+    },
+  });
+}
+
+/**
+ * Anonymous client for public CMS reads. Cookie sessions would otherwise
+ * query as `authenticated`, and public RLS policies are `anon`-only.
+ */
+export function createPublicSupabaseClient() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
     },
   });
 }
