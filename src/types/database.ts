@@ -47,6 +47,28 @@ export type PaymentStatus =
   | "refunded"
   | "partially_refunded";
 
+export type ProjectPriority = "low" | "normal" | "high" | "urgent";
+
+export type MilestoneStatus = "pending" | "in_progress" | "completed" | "skipped";
+
+export type FileCategory =
+  | "design"
+  | "logo"
+  | "content"
+  | "document"
+  | "attachment"
+  | "deliverable"
+  | "other";
+
+export type DiscountSourceType =
+  | "referral"
+  | "reward"
+  | "coupon"
+  | "manual"
+  | "promotion";
+
+export type PaymentType = "advance" | "milestone" | "final" | "full" | "refund";
+
 export type RewardStatus =
   | "pending"
   | "available"
@@ -103,7 +125,7 @@ export type ProjectRow = {
   title: string;
   description: string | null;
   status: ProjectStatus;
-  priority: string;
+  priority: ProjectPriority;
   currency: string;
   estimated_budget: number | null;
   agreed_price: number | null;
@@ -246,6 +268,105 @@ export type ProjectMessageRow = {
   read_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ProjectRequirementRow = {
+  id: string;
+  project_id: string;
+  summary: string | null;
+  scope: string | null;
+  pages: number | null;
+  features: unknown;
+  design_notes: string | null;
+  technical_notes: string | null;
+  content_notes: string | null;
+  third_party_services: unknown;
+  constraints: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectStatusHistoryRow = {
+  id: string;
+  project_id: string;
+  from_status: ProjectStatus | null;
+  to_status: ProjectStatus;
+  note: string | null;
+  changed_by: string | null;
+  created_at: string;
+};
+
+export type ProjectDiscountRow = {
+  id: string;
+  project_id: string;
+  source_type: DiscountSourceType;
+  source_id: string | null;
+  code: string | null;
+  label: string | null;
+  percent: number | null;
+  fixed_amount: number | null;
+  discount_amount: number;
+  currency: string;
+  created_at: string;
+};
+
+export type ProjectMilestoneRow = {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  status: MilestoneStatus;
+  sort_order: number;
+  due_date: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectNoteRow = {
+  id: string;
+  project_id: string;
+  author_id: string;
+  note: string;
+  is_internal: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectFileRow = {
+  id: string;
+  project_id: string;
+  uploaded_by: string;
+  bucket_name: string;
+  storage_path: string;
+  original_name: string;
+  mime_type: string | null;
+  file_size_bytes: number | null;
+  category: FileCategory;
+  is_public: boolean;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type QuoteItemRow = {
+  id: string;
+  quote_id: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  amount: number;
+  sort_order: number;
+  created_at: string;
+};
+
+export type InvoiceItemRow = {
+  id: string;
+  invoice_id: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  amount: number;
+  created_at: string;
 };
 
 export type ReferralRewardRow = {
@@ -412,6 +533,102 @@ export type Database = {
           },
         ]
       >;
+      project_requirements: TableDef<
+        ProjectRequirementRow,
+        [
+          {
+            foreignKeyName: "project_requirements_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      project_status_history: TableDef<
+        ProjectStatusHistoryRow,
+        [
+          {
+            foreignKeyName: "project_status_history_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      project_milestones: TableDef<
+        ProjectMilestoneRow,
+        [
+          {
+            foreignKeyName: "project_milestones_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      project_notes: TableDef<
+        ProjectNoteRow,
+        [
+          {
+            foreignKeyName: "project_notes_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      project_files: TableDef<
+        ProjectFileRow,
+        [
+          {
+            foreignKeyName: "project_files_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      project_discounts: TableDef<
+        ProjectDiscountRow,
+        [
+          {
+            foreignKeyName: "project_discounts_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      quote_items: TableDef<
+        QuoteItemRow,
+        [
+          {
+            foreignKeyName: "quote_items_quote_id_fkey";
+            columns: ["quote_id"];
+            isOneToOne: false;
+            referencedRelation: "quotes";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      invoice_items: TableDef<
+        InvoiceItemRow,
+        [
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey";
+            columns: ["invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
       referral_rewards: TableDef<
         ReferralRewardRow,
         [
@@ -448,11 +665,16 @@ export type Database = {
       profile_role: ProfileRole;
       profile_status: ProfileStatus;
       project_status: ProjectStatus;
+      project_priority: ProjectPriority;
       request_status: RequestStatus;
       quote_status: QuoteStatus;
       invoice_status: InvoiceStatus;
       payment_status: PaymentStatus;
       reward_status: RewardStatus;
+      milestone_status: MilestoneStatus;
+      file_category: FileCategory;
+      discount_source_type: DiscountSourceType;
+      payment_type: PaymentType;
     };
     CompositeTypes: Record<string, never>;
   };

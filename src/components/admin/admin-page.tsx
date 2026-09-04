@@ -4,13 +4,15 @@ export function AdminPage({
   title,
   description,
   children,
+  className,
 }: {
   title: string;
   description: string;
   children?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className={className ?? "mx-auto w-full max-w-5xl"}>
       <header className="mb-8 max-w-2xl">
         <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
           {title}
