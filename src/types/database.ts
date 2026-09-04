@@ -162,6 +162,21 @@ export type ServiceFeatureRow = {
   sort_order: number;
 };
 
+export type ContactStatus = "new" | "read" | "replied" | "archived" | "spam";
+
+export type ContactMessageRow = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  subject: string | null;
+  message: string;
+  status: ContactStatus;
+  created_at: string;
+  read_at: string | null;
+  replied_at: string | null;
+};
+
 export type ReviewStatus = "pending" | "approved" | "rejected" | "hidden";
 
 export type ReviewRow = {
@@ -814,6 +829,7 @@ export type Database = {
         ]
       >;
       service_features: TableDef<ServiceFeatureRow>;
+      contact_messages: TableDef<ContactMessageRow>;
       reviews: TableDef<
         ReviewRow,
         [
@@ -903,6 +919,7 @@ export type Database = {
       reward_status: RewardStatus;
       referral_status: ReferralStatus;
       review_status: ReviewStatus;
+      contact_status: ContactStatus;
       milestone_status: MilestoneStatus;
       file_category: FileCategory;
       discount_source_type: DiscountSourceType;
