@@ -11,6 +11,15 @@ export type ProjectStatus =
   | "completed"
   | "cancelled";
 
+export type RequestStatus =
+  | "new"
+  | "reviewing"
+  | "quoted"
+  | "approved"
+  | "rejected"
+  | "converted"
+  | "cancelled";
+
 export type ProfileRow = {
   id: string;
   full_name: string;
@@ -72,6 +81,66 @@ export type ProjectRow = {
   updated_at: string;
 };
 
+export type ProjectRequestRow = {
+  id: string;
+  request_number: string;
+  client_id: string | null;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  company_name: string | null;
+  project_type: string | null;
+  website_status: string | null;
+  page_count: number | null;
+  description: string | null;
+  required_features: string[] | null;
+  has_design: boolean | null;
+  figma_url: string | null;
+  reference_urls: string[] | null;
+  design_style: string | null;
+  has_logo: boolean | null;
+  has_brand_colors: boolean | null;
+  brand_colors: string | null;
+  budget_min: number | null;
+  budget_max: number | null;
+  budget_currency: string;
+  deadline_type: string | null;
+  deadline_date: string | null;
+  referral_code_entered: string | null;
+  referral_code_id: string | null;
+  source: string | null;
+  status: RequestStatus;
+  submitted_at: string;
+  updated_at: string;
+};
+
+export type ProjectRequestInsert = {
+  request_number?: string;
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  company_name?: string | null;
+  project_type?: string | null;
+  website_status?: string | null;
+  page_count?: number | null;
+  description?: string | null;
+  required_features?: string[] | null;
+  has_design?: boolean | null;
+  figma_url?: string | null;
+  reference_urls?: string[] | null;
+  design_style?: string | null;
+  has_logo?: boolean | null;
+  has_brand_colors?: boolean | null;
+  brand_colors?: string | null;
+  budget_min?: number | null;
+  budget_max?: number | null;
+  budget_currency?: string | null;
+  deadline_type?: string | null;
+  deadline_date?: string | null;
+  referral_code_entered?: string | null;
+  source?: string | null;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -109,6 +178,27 @@ export type Database = {
           }
         ];
       };
+      project_requests: {
+        Row: ProjectRequestRow;
+        Insert: ProjectRequestInsert;
+        Update: Partial<ProjectRequestRow>;
+        Relationships: [
+          {
+            foreignKeyName: "project_requests_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "project_requests_referral_code_id_fkey";
+            columns: ["referral_code_id"];
+            isOneToOne: false;
+            referencedRelation: "referral_codes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -121,6 +211,7 @@ export type Database = {
       profile_role: ProfileRole;
       profile_status: ProfileStatus;
       project_status: ProjectStatus;
+      request_status: RequestStatus;
     };
     CompositeTypes: Record<string, never>;
   };

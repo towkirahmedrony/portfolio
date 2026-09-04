@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { FormProgress } from "@/components/project-request/progress";
 import { ProjectRequestSuccess } from "@/components/project-request/success";
@@ -12,18 +12,17 @@ import { StepReview } from "@/components/project-request/step-review";
 import { StepType } from "@/components/project-request/step-type";
 import { initialProjectRequest, TOTAL_STEPS } from "@/data/project-request";
 import {
-  buildProjectReferralPayload,
   firstInvalidStep,
   getNormalizedProjectRequest,
   validateProjectRequest,
   validateStep,
 } from "@/lib/project-request";
+import { submitProjectRequest } from "@/lib/submit-project-request";
 import type {
   ProjectRequest,
   ProjectRequestErrors,
   ProjectRequestStep,
 } from "@/types/project-request";
-import type { ProjectReferralPayload } from "@/types/referral";
 
 export function ProjectRequestForm() {
   const formId = useId();
@@ -32,12 +31,10 @@ export function ProjectRequestForm() {
   const [errors, setErrors] = useState<ProjectRequestErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [submittedData, setSubmittedData] = useState<ProjectRequest | null>(
-    null,
-  );
-  const [submittedReferral, setSubmittedReferral] =
-    useState<ProjectReferralPayload | null>(null);
+  const [submittedReferralCode, setSubmittedReferralCode] = useState("");
+  const [requestNumber, setRequestNumber] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
 
   function updateField<K extends keyof ProjectRequest>(
     field: K,
@@ -91,6 +88,10 @@ export function ProjectRequestForm() {
       return;
     }
 
+    if (submitting || submittingRef.current) {
+      return;
+    }
+
     const allErrors = validateProjectRequest(data);
     if (Object.keys(allErrors).length > 0) {
       setErrors(allErrors);
@@ -102,21 +103,29 @@ export function ProjectRequestForm() {
       return;
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     setFormError(null);
 
     const normalized = getNormalizedProjectRequest(data);
-    const referral = buildProjectReferralPayload(normalized);
-
-    await new Promise((resolve) => {
-      window.setTimeout(resolve, 700);
-    });
-
     setData(normalized);
-    setSubmittedData(normalized);
-    setSubmittedReferral(referral);
-    setSubmitting(false);
-    setSubmitted(true);
+
+    try {
+      const result = await submitProjectRequest(normalized);
+      if (!result.ok) {
+        setFormError(result.error);
+        return;
+      }
+
+      setSubmittedReferralCode(normalized.referralCode);
+      setRequestNumber(result.requestNumber);
+      setSubmitted(true);
+    } catch {
+      setFormError("Could not submit your project request. Please try again.");
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
 
   function handleReset() {
@@ -124,8 +133,8 @@ export function ProjectRequestForm() {
     setErrors({});
     setStep(1);
     setSubmitted(false);
-    setSubmittedData(null);
-    setSubmittedReferral(null);
+    setSubmittedReferralCode("");
+    setRequestNumber(null);
     setFormError(null);
   }
 
@@ -133,7 +142,8 @@ export function ProjectRequestForm() {
     return (
       <ProjectRequestSuccess
         onReset={handleReset}
-        referralCode={submittedReferral?.referralCode ?? submittedData?.referralCode ?? ""}
+        requestNumber={requestNumber}
+        referralCode={submittedReferralCode}
       />
     );
   }

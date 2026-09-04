@@ -2,9 +2,11 @@ import { Button, ButtonLink } from "@/components/ui/button";
 
 export function ProjectRequestSuccess({
   onReset,
+  requestNumber,
   referralCode,
 }: {
   onReset: () => void;
+  requestNumber?: string | null;
   referralCode?: string;
 }) {
   return (
@@ -15,6 +17,12 @@ export function ProjectRequestSuccess({
       <h2 className="font-display mt-3 text-3xl tracking-tight">
         Thanks! Your project request has been received.
       </h2>
+      {requestNumber ? (
+        <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-muted sm:text-base">
+          Your request number is{" "}
+          <span className="font-medium text-foreground">{requestNumber}</span>.
+        </p>
+      ) : null}
       <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-muted sm:text-base">
         I will review the brief and follow up with next steps. Nothing has been
         billed, and you can send another request if the details change.
