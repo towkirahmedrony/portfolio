@@ -13,7 +13,7 @@ export function FileDownloader({ bucketName, storagePath }: { bucketName: string
       const { data, error } = await supabase.storage.from(bucketName).createSignedUrl(storagePath, 3600);
       if (error) throw error;
       if (data?.signedUrl) window.open(data.signedUrl, "_blank");
-    } catch (err) {
+    } catch {
       alert("Failed to download file. It might be unavailable.");
     } finally {
       setDownloading(false);

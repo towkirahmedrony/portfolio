@@ -5,6 +5,7 @@ import { ProjectTracking } from "@/components/profile/project-tracking";
 import { ReferralSection } from "@/components/profile/referral-section";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { mapProfileRow, mapReferralCode } from "@/lib/profile";
+import type { ProfileRow } from "@/types/database";
 
 export const metadata: Metadata = {
   title: "Customer Profile",
@@ -18,12 +19,12 @@ export default async function ProfilePage() {
 
   if (!user) redirect("/login");
 
-  try { await supabase.rpc("sync_customer_session"); } catch (error) {}
+  try { await supabase.rpc("sync_customer_session"); } catch {}
 
   const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
   const { data: referralRow } = await supabase.from("referral_codes").select("code").eq("owner_id", user.id).eq("is_active", true).order("created_at", { ascending: true }).limit(1).maybeSingle();
 
-  const mapped = mapProfileRow((profileData || { id: user.id }) as any, user.email ?? "");
+  const mapped = mapProfileRow((profileData || { id: user.id }) as ProfileRow, user.email ?? "");
   const referral = mapReferralCode(referralRow?.code ?? null);
 
   return (

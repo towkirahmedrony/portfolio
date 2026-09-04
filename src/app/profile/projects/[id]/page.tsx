@@ -7,7 +7,7 @@ import { FileDownloader } from "@/components/profile/file-downloader";
 
 type MilestoneRow = { id: string; title: string; description: string | null; status: string; due_date: string | null; };
 type InvoiceRow = { id: string; total: number; amount_paid: number; amount_due: number; status: string; currency: string; };
-type RequirementRow = { id: string; scope: string; pages: number; features: any; constraints: string; };
+type RequirementRow = { id: string; scope: string; pages: number; features: unknown; constraints: string; };
 type FileRow = { id: string; original_name: string; category: string; file_size_bytes: number; created_at: string; bucket_name: string; storage_path: string; is_public: boolean; };
 type HistoryRow = { id: string; to_status: string; note: string; created_at: string; };
 type DiscountRow = { id: string; label: string; discount_amount: number; currency: string; };
@@ -101,7 +101,7 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
             <div className="mt-4 space-y-2 text-sm">
               <p><span className="text-muted">Pages:</span> {`${requirements.pages || "N/A"}`}</p>
               {requirements.scope && <p className="text-muted line-clamp-2">{requirements.scope}</p>}
-              {requirements.features && Array.isArray(requirements.features) && (
+              {Array.isArray(requirements.features) && requirements.features.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {requirements.features.slice(0, 3).map((f: string, i: number) => <Badge key={i} className="text-[10px]">{f}</Badge>)}
                   {requirements.features.length > 3 && <Badge className="text-[10px]">{`+${requirements.features.length - 3} more`}</Badge>}

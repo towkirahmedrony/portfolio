@@ -1,14 +1,22 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { CallToAction } from "@/components/cta";
 import { ProjectCard } from "@/components/project-card";
+import {
+  ContentStateMessage,
+  HomeCardSkeleton,
+  ProjectGridSkeleton,
+} from "@/components/public/content-states";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Section } from "@/components/ui/section";
 import { processSteps } from "@/data/process";
-import { projects } from "@/data/projects";
-import { services } from "@/data/services";
 import { site } from "@/data/site";
 import { reasons } from "@/data/skills";
+import { getPublicProjects, getPublicServices } from "@/lib/public-content";
+import type { Service } from "@/types";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: `${site.name} — Freelance Web Developer`,
@@ -19,9 +27,77 @@ export const metadata: Metadata = {
   },
 };
 
-export default function HomePage() {
-  const featured = projects.filter((project) => project.featured).slice(0, 6);
+function HomeServiceCard({ service }: { service: Service }) {
+  const blurb = service.shortDescription || service.description;
 
+  return (
+    <Card>
+      <h3 className="font-display text-xl tracking-tight">{service.title}</h3>
+      {blurb ? (
+        <p className="mt-3 text-sm leading-6 text-muted">{blurb}</p>
+      ) : null}
+    </Card>
+  );
+}
+
+async function HomeServicesContent() {
+  const result = await getPublicServices();
+
+  if (result.status === "ok") {
+    return (
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {result.data.map((service) => (
+          <HomeServiceCard key={service.id} service={service} />
+        ))}
+      </div>
+    );
+  }
+
+  if (result.status === "empty") {
+    return (
+      <ContentStateMessage>
+        Services are not published yet. Check back soon.
+      </ContentStateMessage>
+    );
+  }
+
+  return (
+    <ContentStateMessage>
+      The services overview is temporarily unavailable. Please try again shortly.
+    </ContentStateMessage>
+  );
+}
+
+async function HomeFeaturedWorkContent() {
+  const result = await getPublicProjects({ featuredOnly: true });
+
+  if (result.status === "ok") {
+    const featured = result.data.slice(0, 6);
+    return (
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {featured.map((project) => (
+          <ProjectCard key={project.id} project={project} />
+        ))}
+      </div>
+    );
+  }
+
+  if (result.status === "empty") {
+    return (
+      <ContentStateMessage>
+        No featured projects yet. Check back soon for new work.
+      </ContentStateMessage>
+    );
+  }
+
+  return (
+    <ContentStateMessage>
+      The featured work is temporarily unavailable. Please try again shortly.
+    </ContentStateMessage>
+  );
+}
+
+export default function HomePage() {
   return (
     <>
       <section className="relative overflow-hidden pt-28 pb-20 sm:pt-36 sm:pb-28">
@@ -59,18 +135,9 @@ export default function HomePage() {
         title="Websites that look considered and work hard."
         description="From a first company site to a custom application, each engagement is scoped around clarity, performance, and a result you can stand behind."
       >
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {services.map((service) => (
-            <Card key={service.id}>
-              <h3 className="font-display text-xl tracking-tight">
-                {service.title}
-              </h3>
-              <p className="mt-3 text-sm leading-6 text-muted">
-                {service.shortDescription}
-              </p>
-            </Card>
-          ))}
-        </div>
+        <Suspense fallback={<HomeCardSkeleton />}>
+          <HomeServicesContent />
+        </Suspense>
       </Section>
 
       <Section
@@ -84,11 +151,9 @@ export default function HomePage() {
           </ButtonLink>
         }
       >
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {featured.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
+        <Suspense fallback={<ProjectGridSkeleton />}>
+          <HomeFeaturedWorkContent />
+        </Suspense>
       </Section>
 
       <Section

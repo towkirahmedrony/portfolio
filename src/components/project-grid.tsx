@@ -1,22 +1,35 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { projectCategories, projects } from "@/data/projects";
 import { ProjectCard } from "@/components/project-card";
 import { cn } from "@/lib/utils";
-import type { ProjectCategory } from "@/types";
+import type { Project } from "@/types";
 
-type Filter = "All" | ProjectCategory;
+type Filter = "All" | string;
 
-export function ProjectGrid() {
+export function ProjectGrid({ projects }: { projects: Project[] }) {
   const [filter, setFilter] = useState<Filter>("All");
+
+  const categories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          projects
+            .map((project) => project.category)
+            .filter((category): category is string => Boolean(category)),
+        ),
+      ),
+    [projects],
+  );
+
+  const filters: Filter[] = ["All", ...categories];
 
   const visible = useMemo(() => {
     if (filter === "All") {
       return projects;
     }
     return projects.filter((project) => project.category === filter);
-  }, [filter]);
+  }, [filter, projects]);
 
   return (
     <div>
@@ -25,7 +38,7 @@ export function ProjectGrid() {
         role="tablist"
         aria-label="Filter projects by category"
       >
-        {projectCategories.map((category) => {
+        {filters.map((category) => {
           const active = filter === category;
           return (
             <button
