@@ -162,6 +162,14 @@ export type ServiceFeatureRow = {
   sort_order: number;
 };
 
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
 export type ContactStatus = "new" | "read" | "replied" | "archived" | "spam";
 
 export type ContactMessageRow = {
