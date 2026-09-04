@@ -1008,6 +1008,10 @@ export type Database = {
         };
         Returns: undefined;
       };
+      admin_convert_project_request: {
+        Args: { p_request_id: string };
+        Returns: string;
+      };
     };
     Enums: {
       profile_role: ProfileRole;
