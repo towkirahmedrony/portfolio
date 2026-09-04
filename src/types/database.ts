@@ -20,6 +20,40 @@ export type RequestStatus =
   | "converted"
   | "cancelled";
 
+export type QuoteStatus =
+  | "draft"
+  | "sent"
+  | "viewed"
+  | "accepted"
+  | "rejected"
+  | "expired"
+  | "cancelled";
+
+export type InvoiceStatus =
+  | "draft"
+  | "issued"
+  | "partially_paid"
+  | "paid"
+  | "overdue"
+  | "cancelled"
+  | "refunded";
+
+export type PaymentStatus =
+  | "pending"
+  | "processing"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "refunded"
+  | "partially_refunded";
+
+export type RewardStatus =
+  | "pending"
+  | "available"
+  | "redeemed"
+  | "expired"
+  | "cancelled";
+
 export type ProfileRow = {
   id: string;
   full_name: string;
@@ -141,6 +175,123 @@ export type ProjectRequestInsert = {
   source?: string | null;
 };
 
+export type QuoteRow = {
+  id: string;
+  project_id: string;
+  version: number;
+  currency: string;
+  subtotal: number;
+  discount_total: number;
+  tax_total: number;
+  total: number;
+  notes: string | null;
+  terms: string | null;
+  status: QuoteStatus;
+  valid_until: string | null;
+  sent_at: string | null;
+  accepted_at: string | null;
+  rejected_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InvoiceRow = {
+  id: string;
+  invoice_number: string;
+  project_id: string;
+  client_id: string;
+  quote_id: string | null;
+  currency: string;
+  subtotal: number;
+  discount_total: number;
+  tax_total: number;
+  total: number;
+  amount_paid: number;
+  amount_due: number;
+  status: InvoiceStatus;
+  issue_date: string;
+  due_date: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PaymentRow = {
+  id: string;
+  invoice_id: string;
+  project_id: string;
+  client_id: string;
+  amount: number;
+  currency: string;
+  payment_type: string;
+  payment_method: string | null;
+  provider: string | null;
+  provider_payment_id: string | null;
+  status: PaymentStatus;
+  transaction_reference: string | null;
+  paid_at: string | null;
+  failed_at: string | null;
+  failure_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectMessageRow = {
+  id: string;
+  project_id: string;
+  sender_id: string;
+  message: string;
+  reply_to_id: string | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReferralRewardRow = {
+  id: string;
+  referral_id: string;
+  referrer_id: string;
+  reward_type: string;
+  reward_percent: number;
+  status: RewardStatus;
+  available_from: string | null;
+  expires_at: string | null;
+  redeemed_project_id: string | null;
+  redeemed_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AuditLogRow = {
+  id: string;
+  actor_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+};
+
+type ForeignKey = {
+  foreignKeyName: string;
+  columns: string[];
+  isOneToOne: boolean;
+  referencedRelation: string;
+  referencedColumns: string[];
+};
+
+type TableDef<Row, Relationships extends ForeignKey[] = []> = {
+  Row: Row;
+  Insert: Partial<Row>;
+  Update: Partial<Row>;
+  Relationships: Relationships;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -199,6 +350,92 @@ export type Database = {
           },
         ];
       };
+      quotes: TableDef<
+        QuoteRow,
+        [
+          {
+            foreignKeyName: "quotes_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      invoices: TableDef<
+        InvoiceRow,
+        [
+          {
+            foreignKeyName: "invoices_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "invoices_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      payments: TableDef<
+        PaymentRow,
+        [
+          {
+            foreignKeyName: "payments_invoice_id_fkey";
+            columns: ["invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payments_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      project_messages: TableDef<
+        ProjectMessageRow,
+        [
+          {
+            foreignKeyName: "project_messages_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      referral_rewards: TableDef<
+        ReferralRewardRow,
+        [
+          {
+            foreignKeyName: "referral_rewards_referrer_id_fkey";
+            columns: ["referrer_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      audit_logs: TableDef<
+        AuditLogRow,
+        [
+          {
+            foreignKeyName: "audit_logs_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
     };
     Views: Record<string, never>;
     Functions: {
@@ -212,6 +449,10 @@ export type Database = {
       profile_status: ProfileStatus;
       project_status: ProjectStatus;
       request_status: RequestStatus;
+      quote_status: QuoteStatus;
+      invoice_status: InvoiceStatus;
+      payment_status: PaymentStatus;
+      reward_status: RewardStatus;
     };
     CompositeTypes: Record<string, never>;
   };
