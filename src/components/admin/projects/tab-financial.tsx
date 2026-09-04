@@ -99,17 +99,46 @@ export function ProjectFinancialTab({
         result={invoices}
         emptyMessage="No invoices yet."
         render={(rows) => (
-          <Table
-            headers={["Number", "Status", "Total", "Paid", "Due", "Issue date"]}
-            rows={rows.map((row) => [
-              row.invoice_number,
-              formatStatusLabel(row.status),
-              formatMoney(Number(row.total), row.currency),
-              formatMoney(Number(row.amount_paid), row.currency),
-              formatMoney(Number(row.amount_due), row.currency),
-              formatDate(row.issue_date),
-            ])}
-          />
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[40rem] text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-muted">
+                <tr>
+                  {["Number", "Status", "Total", "Paid", "Due", "Issue date"].map((header) => (
+                    <th key={header} className="px-2 py-2">
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-t border-card-border/70">
+                    <td className="px-2 py-2">
+                      <Link href={`/admin/invoices/${row.id}`} className="text-foreground hover:underline">
+                        {row.invoice_number}
+                      </Link>
+                    </td>
+                    <td className="px-2 py-2">
+                      <StatusPill
+                        label={formatStatusLabel(row.status)}
+                        className="border-card-border bg-background text-muted"
+                      />
+                    </td>
+                    <td className="px-2 py-2 text-foreground">
+                      {formatMoney(Number(row.total), row.currency)}
+                    </td>
+                    <td className="px-2 py-2 text-foreground">
+                      {formatMoney(Number(row.amount_paid), row.currency)}
+                    </td>
+                    <td className="px-2 py-2 text-foreground">
+                      {formatMoney(Number(row.amount_due), row.currency)}
+                    </td>
+                    <td className="px-2 py-2 text-foreground">{formatDate(row.issue_date)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       />
       <FinancialSection

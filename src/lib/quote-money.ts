@@ -133,6 +133,33 @@ export function formatMoney(amount: number, currency: string): string {
   }
 }
 
+export function paymentContribution(payment: {
+  amount: number;
+  status: string;
+  payment_type: string;
+}): number {
+  if (payment.status !== "succeeded") {
+    return 0;
+  }
+
+  const amount = roundMoney(Number(payment.amount));
+  if (!Number.isFinite(amount) || amount < 0) {
+    return 0;
+  }
+
+  return payment.payment_type === "refund" ? -amount : amount;
+}
+
+export function sumSucceededPayments(
+  payments: Array<{ amount: number; status: string; payment_type: string }>,
+): number {
+  return roundMoney(payments.reduce((sum, payment) => sum + paymentContribution(payment), 0));
+}
+
+export function calculateAmountDue(total: number, amountPaid: number): number {
+  return roundMoney(Math.max(0, roundMoney(total) - roundMoney(amountPaid)));
+}
+
 export function assertMatchingTotals(
   submitted: QuoteTotals,
   calculated: QuoteTotals,

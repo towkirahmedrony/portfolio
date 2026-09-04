@@ -245,7 +245,7 @@ export type PaymentRow = {
   client_id: string;
   amount: number;
   currency: string;
-  payment_type: string;
+  payment_type: PaymentType;
   payment_method: string | null;
   provider: string | null;
   provider_payment_id: string | null;
@@ -256,6 +256,18 @@ export type PaymentRow = {
   failure_reason: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type PaymentEventRow = {
+  id: string;
+  provider: string;
+  event_id: string;
+  event_type: string;
+  payload: Record<string, unknown> | unknown;
+  processed: boolean;
+  processed_at: string | null;
+  error_message: string | null;
+  created_at: string;
 };
 
 export type ProjectMessageRow = {
@@ -500,6 +512,13 @@ export type Database = {
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "invoices_quote_id_fkey";
+            columns: ["quote_id"];
+            isOneToOne: false;
+            referencedRelation: "quotes";
+            referencedColumns: ["id"];
+          },
         ]
       >;
       payments: TableDef<
@@ -629,6 +648,7 @@ export type Database = {
           },
         ]
       >;
+      payment_events: TableDef<PaymentEventRow>;
       referral_rewards: TableDef<
         ReferralRewardRow,
         [
@@ -659,6 +679,22 @@ export type Database = {
       sync_customer_session: {
         Args: Record<string, never>;
         Returns: undefined;
+      };
+      admin_create_invoice_from_quote: {
+        Args: { p_quote_id: string; p_due_date?: string | null };
+        Returns: string;
+      };
+      admin_record_manual_payment: {
+        Args: {
+          p_invoice_id: string;
+          p_amount: number;
+          p_payment_type: string;
+          p_payment_method?: string | null;
+          p_provider?: string | null;
+          p_transaction_reference?: string | null;
+          p_paid_at?: string | null;
+        };
+        Returns: string;
       };
     };
     Enums: {

@@ -3,7 +3,9 @@
 import { useActionState, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 
-type ActionResult = { ok: true; quoteId?: string } | { ok: false; error: string };
+type ActionResult =
+  | { ok: true; quoteId?: string; invoiceId?: string }
+  | { ok: false; error: string };
 
 export function ActionForm({
   action,

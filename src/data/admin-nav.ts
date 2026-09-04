@@ -17,8 +17,8 @@ export const adminNavSections: AdminNavSection[] = [
       { id: "projects", label: "Projects", href: "/admin/projects", icon: "projects", roles: ["admin"] },
       { id: "clients", label: "Clients", href: "/admin/clients", icon: "clients", roles: ["admin"], enabled: false },
       { id: "quotes", label: "Quotes", href: "/admin/quotes", icon: "quotes", roles: ["admin"] },
-      { id: "invoices", label: "Invoices", href: "/admin/invoices", icon: "invoices", roles: ["admin"], enabled: false },
-      { id: "payments", label: "Payments", href: "/admin/payments", icon: "payments", roles: ["admin"], enabled: false },
+      { id: "invoices", label: "Invoices", href: "/admin/invoices", icon: "invoices", roles: ["admin"] },
+      { id: "payments", label: "Payments", href: "/admin/payments", icon: "payments", roles: ["admin"] },
     ],
   },
   {
@@ -45,6 +45,7 @@ export const adminNavSections: AdminNavSection[] = [
     label: "System",
     items: [
       { id: "audit-logs", label: "Audit Logs", href: "/admin/audit-logs", icon: "audit", roles: ["admin"] },
+      { id: "payment-events", label: "Payment Events", href: "/admin/payment-events", icon: "payments", roles: ["admin"] },
     ],
   },
 ];

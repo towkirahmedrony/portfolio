@@ -11,6 +11,7 @@ import {
   sendQuoteToClient,
   updateQuoteStatus,
 } from "@/lib/admin-quote-actions";
+import { createInvoiceFromQuote } from "@/lib/admin-invoice-actions";
 import { isQuotePdfExportSupported } from "@/lib/quote-pdf";
 import type { QuoteRow } from "@/types/database";
 
@@ -33,6 +34,14 @@ export function QuoteActions({ quote }: { quote: QuoteRow }) {
               <input type="hidden" name="quoteId" value={quote.id} />
               <SubmitButton variant="secondary" pendingLabel="Creating version…">
                 Create new version
+              </SubmitButton>
+            </ActionForm>
+          ) : null}
+          {quote.status === "accepted" ? (
+            <ActionForm action={createInvoiceFromQuote}>
+              <input type="hidden" name="quoteId" value={quote.id} />
+              <SubmitButton variant="secondary" pendingLabel="Creating invoice…">
+                Create invoice
               </SubmitButton>
             </ActionForm>
           ) : null}
