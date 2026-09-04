@@ -13,7 +13,11 @@ import { Section } from "@/components/ui/section";
 import { processSteps } from "@/data/process";
 import { site } from "@/data/site";
 import { reasons } from "@/data/skills";
-import { getPublicProjects, getPublicServices } from "@/lib/public-content";
+import {
+  getPublicProjects,
+  getPublicServices,
+  HOME_PROJECTS_LIMIT,
+} from "@/lib/public-content";
 import type { Service } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -69,13 +73,12 @@ async function HomeServicesContent() {
 }
 
 async function HomeFeaturedWorkContent() {
-  const result = await getPublicProjects({ featuredOnly: true });
+  const result = await getPublicProjects({ limit: HOME_PROJECTS_LIMIT });
 
   if (result.status === "ok") {
-    const featured = result.data.slice(0, 6);
     return (
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {featured.map((project) => (
+        {result.data.map((project) => (
           <ProjectCard key={project.id} project={project} />
         ))}
       </div>
@@ -85,7 +88,7 @@ async function HomeFeaturedWorkContent() {
   if (result.status === "empty") {
     return (
       <ContentStateMessage>
-        No featured projects yet. Check back soon for new work.
+        No published projects yet. Check back soon for new work.
       </ContentStateMessage>
     );
   }

@@ -73,9 +73,15 @@ function toPublicProject(row: PortfolioProjectRow): Project {
   };
 }
 
+/** Max published projects shown on the homepage selected-work section. */
+export const HOME_PROJECTS_LIMIT = 6;
+
 export type PublicProjectQuery = {
-  /** Only include projects flagged as featured (homepage "selected work"). */
-  featuredOnly?: boolean;
+  /**
+   * Optional cap for list views such as the homepage.
+   * Omit to return every published project (ordered by sort_order).
+   */
+  limit?: number;
 };
 
 export async function getPublicProjects(
@@ -95,8 +101,8 @@ export async function getPublicProjects(
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false });
 
-    if (query.featuredOnly) {
-      builder = builder.eq("featured", true);
+    if (typeof query.limit === "number") {
+      builder = builder.limit(query.limit);
     }
 
     const { data, error } = await builder;
