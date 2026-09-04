@@ -112,6 +112,56 @@ export type ReferralSettingsRow = {
   updated_at: string;
 };
 
+export type PortfolioProjectRow = {
+  id: string;
+  title: string;
+  slug: string;
+  short_description: string | null;
+  description: string | null;
+  category: string | null;
+  technologies: string[];
+  live_url: string | null;
+  github_url: string | null;
+  thumbnail_url: string | null;
+  featured: boolean;
+  published: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PortfolioProjectImageRow = {
+  id: string;
+  portfolio_project_id: string;
+  image_url: string;
+  alt_text: string | null;
+  sort_order: number;
+};
+
+export type ServiceRow = {
+  id: string;
+  name: string;
+  slug: string;
+  short_description: string | null;
+  description: string | null;
+  starting_price: number | null;
+  currency: string;
+  estimated_days_min: number | null;
+  estimated_days_max: number | null;
+  published: boolean;
+  featured: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ServiceFeatureRow = {
+  id: string;
+  service_id: string;
+  feature: string;
+  sort_order: number;
+};
+
 export type ProfileRow = {
   id: string;
   full_name: string;
@@ -724,6 +774,32 @@ export type Database = {
         ]
       >;
       referral_settings: TableDef<ReferralSettingsRow>;
+      portfolio_projects: TableDef<
+        PortfolioProjectRow,
+        [
+          {
+            foreignKeyName: "portfolio_projects_id_fkey";
+            columns: ["id"];
+            isOneToOne: false;
+            referencedRelation: "portfolio_project_images";
+            referencedColumns: ["portfolio_project_id"];
+          },
+        ]
+      >;
+      portfolio_project_images: TableDef<PortfolioProjectImageRow>;
+      services: TableDef<
+        ServiceRow,
+        [
+          {
+            foreignKeyName: "services_id_fkey";
+            columns: ["id"];
+            isOneToOne: false;
+            referencedRelation: "service_features";
+            referencedColumns: ["service_id"];
+          },
+        ]
+      >;
+      service_features: TableDef<ServiceFeatureRow>;
       audit_logs: TableDef<
         AuditLogRow,
         [
