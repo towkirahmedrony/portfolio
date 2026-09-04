@@ -1,15 +1,49 @@
 import { AdminPage, AdminPlaceholderCard } from "@/components/admin/admin-page";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export default function AdminDashboardPage() {
+export default async function AdminDashboardPage() {
+  const supabase = await createServerSupabaseClient();
+
+  // Fetch real counts from the database
+  const [
+    { count: projectsCount, error: projectsError },
+    { count: requestsCount, error: requestsError },
+  ] = await Promise.all([
+    supabase.from("projects").select("*", { count: "exact", head: true }),
+    supabase.from("project_requests").select("*", { count: "exact", head: true }),
+  ]);
+
   return (
     <AdminPage
       title="Dashboard"
-      description="A starting point for managing project requests, clients, and site content. Feature modules will be added here later."
+      description="Overview of your projects and incoming requests."
     >
-      <AdminPlaceholderCard
-        title="Overview is not connected yet"
-        description="This admin shell is ready. Add dashboard widgets and reports here without changing the layout."
-      />
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <AdminPlaceholderCard
+          title="Total Projects"
+          description={
+            projectsError
+              ? "Error loading projects"
+              : `${projectsCount || 0} active projects`
+          }
+        />
+        <AdminPlaceholderCard
+          title="Project Requests"
+          description={
+            requestsError
+              ? "Error loading requests"
+              : `${requestsCount || 0} pending requests`
+          }
+        />
+        <AdminPlaceholderCard
+          title="Invoices"
+          description="Invoicing feature coming soon."
+        />
+        <AdminPlaceholderCard
+          title="Clients"
+          description="Client management coming soon."
+        />
+      </div>
     </AdminPage>
   );
 }

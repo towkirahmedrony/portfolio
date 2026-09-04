@@ -32,12 +32,9 @@ export function AdminPlaceholderCard({
   description: string;
 }) {
   return (
-    <section className="rounded-3xl border border-card-border bg-card p-6 sm:p-8">
-      <p className="text-xs font-medium tracking-[0.18em] text-accent uppercase">
-        Coming later
-      </p>
-      <h3 className="font-display mt-3 text-xl tracking-tight">{title}</h3>
-      <p className="mt-3 max-w-xl text-sm leading-7 text-muted">{description}</p>
+    <section className="rounded-3xl border border-card-border bg-card p-6 flex flex-col justify-center h-full">
+      <h3 className="font-display text-xl tracking-tight text-foreground">{title}</h3>
+      <p className="mt-2 text-sm leading-relaxed text-muted">{description}</p>
     </section>
   );
 }
