@@ -30,6 +30,14 @@ auth.users
           │
           ├── notifications
           └── reviews
+
+order_form_steps
+    └── order_form_fields  (options_group ↔ order_form_options."group", loose reference, not FK)
+
+order_form_options   (standalone lookup table, not FK-linked to steps/fields)
+
+services
+    └── project_requests.service_id  (nullable FK, which service the request was for)
 ```
 
 Business rule: new referred client gets a **5% discount** (`referral_settings.new_client_discount_percent`), referrer gets a **2% reward** on their next project (`referral_settings.referrer_reward_percent`).
@@ -62,6 +70,7 @@ Business rule: new referred client gets a **5% discount** (`referral_settings.ne
 - **Phase 2 (payments):** invoices, invoice_items, payments, payment_events
 - **Phase 3 (admin / CMS):** services, service_features, portfolio_projects, portfolio_project_images, reviews, contact_messages, audit_logs, notification_preferences
 - **Phase 4 (order tracking, added later):** project_status_history, payment_schedule (optional — only if payments are split into installments)
+- **Phase 5 (dynamic order form, added later):** order_form_options, order_form_steps, order_form_fields
 
 ---
 
@@ -150,6 +159,64 @@ Separate from `referrals` so a reward's own lifecycle (available → redeemed) i
 
 ---
 
+## Order form configuration
+Drives the dynamic `/start-project` form (steps → fields → options) so form structure can change without code changes. Answers submitted through this form are captured as a full JSON snapshot on `project_requests.form_snapshot`; the individual `project_requests` columns remain the canonical/queryable copy of the same data.
+
+### `order_form_steps`
+One row per wizard step (e.g. "Project type", "Design", "Budget & timeline").
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| step_key | text | unique |
+| title | text | not null |
+| description | text | |
+| sort_order | integer | default 0 |
+| is_active | boolean | default true |
+| created_at / updated_at | timestamptz | auto-touched |
+
+### `order_form_fields`
+One row per input on a step.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| field_key | text | unique |
+| step_id | uuid FK → order_form_steps.id | on delete cascade |
+| input_type | text | one of: text, email, tel, textarea, date, radio, checkbox_group, select |
+| label | text | not null |
+| hint | text | |
+| placeholder | text | |
+| options_group | text | loosely references `order_form_options."group"` (not a DB-level FK) |
+| required | boolean | default false |
+| visible | boolean | default true |
+| sort_order | integer | default 0 |
+| conditional | jsonb | default `{}`; show/hide logic based on other field values |
+| constraints | jsonb | default `{}`; e.g. min/max length, regex |
+| default_value | jsonb | |
+| is_active | boolean | default true |
+| created_at / updated_at | timestamptz | auto-touched |
+
+### `order_form_options`
+Selectable choices for radio / checkbox_group / select fields, grouped by `"group"`.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| group | text | one of: project_type, website_status, feature, design_style, page_count, budget_range, deadline |
+| slug | text | unique with `group` |
+| label | text | not null |
+| description | text | |
+| requires_text | boolean | default false; e.g. an "Other" option that needs a free-text follow-up |
+| sort_order | integer | default 0 |
+| is_active | boolean | default true |
+| meta | jsonb | default `{}` |
+| created_at / updated_at | timestamptz | auto-touched |
+
+**Access pattern:** public (`anon`/`authenticated`) can `SELECT` active rows on all three tables; only admins (`public.is_admin()`) can write. `order_form_fields` additionally requires its parent step to be active before it's publicly visible.
+
+---
+
 ## Project pipeline
 
 ### `project_requests`
@@ -184,6 +251,8 @@ The `/start-project` form submission — a snapshot of client-provided info, sep
 | referral_code_id | uuid FK → referral_codes.id | resolved code |
 | source | text | |
 | status | request_status | default `new` |
+| service_id | uuid FK → services.id | nullable, on delete set null; which service the request was for |
+| form_snapshot | jsonb | not null, default `{}`; full snapshot of the dynamic order-form answers as submitted (see [Order form configuration](#order-form-configuration)) |
 | submitted_at / updated_at | timestamptz | |
 
 ### `projects`
