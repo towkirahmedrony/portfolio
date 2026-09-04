@@ -7,6 +7,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { mapProfileRow, mapReferralCode } from "@/lib/profile";
 import type { ProfileRow } from "@/types/database";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Customer Profile",
   description: "View and update your customer profile, account details, and referral information.",

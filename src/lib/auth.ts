@@ -12,6 +12,14 @@ export function getSafeNextPath(value: string | null | undefined): string {
   return value;
 }
 
+export function isAdminPath(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
+}
+
+export function getLoginRedirectPath(nextPath: string): string {
+  return `/login?next=${encodeURIComponent(getSafeNextPath(nextPath))}`;
+}
+
 export function isEmailNotConfirmedError(error: {
   code?: string;
   message?: string;

@@ -970,6 +970,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: undefined;
       };
+      is_active_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
       admin_create_invoice_from_quote: {
         Args: { p_quote_id: string; p_due_date?: string | null };
         Returns: string;

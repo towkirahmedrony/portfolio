@@ -20,6 +20,8 @@ function formatBytes(bytes: number) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function ProjectDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = await params;
   const supabase = await createServerSupabaseClient();
