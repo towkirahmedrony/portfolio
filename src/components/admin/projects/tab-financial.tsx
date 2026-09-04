@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { AdminPanel, QueryStateNotice, StatusPill } from "@/components/admin/projects/query-state";
 import { formatMoney } from "@/lib/admin-dashboard";
 import { formatDate, formatDateTime, formatStatusLabel, type QueryResult } from "@/lib/admin-projects";
@@ -28,18 +29,51 @@ export function ProjectFinancialTab({
         result={quotes}
         emptyMessage="No quotes for this project."
         render={(rows) => (
-          <Table
-            headers={["Version", "Status", "Subtotal", "Discount", "Tax", "Total", "Valid until"]}
-            rows={rows.map((row) => [
-              `v${row.version}`,
-              formatStatusLabel(row.status),
-              formatMoney(Number(row.subtotal), row.currency),
-              formatMoney(Number(row.discount_total), row.currency),
-              formatMoney(Number(row.tax_total), row.currency),
-              formatMoney(Number(row.total), row.currency),
-              formatDateTime(row.valid_until),
-            ])}
-          />
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[40rem] text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-muted">
+                <tr>
+                  {["Version", "Status", "Subtotal", "Discount", "Tax", "Total", "Valid until"].map(
+                    (header) => (
+                      <th key={header} className="px-2 py-2">
+                        {header}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-t border-card-border/70">
+                    <td className="px-2 py-2">
+                      <Link href={`/admin/quotes/${row.id}`} className="text-foreground hover:underline">
+                        v{row.version}
+                      </Link>
+                    </td>
+                    <td className="px-2 py-2">
+                      <StatusPill
+                        label={formatStatusLabel(row.status)}
+                        className="border-card-border bg-background text-muted"
+                      />
+                    </td>
+                    <td className="px-2 py-2 text-foreground">
+                      {formatMoney(Number(row.subtotal), row.currency)}
+                    </td>
+                    <td className="px-2 py-2 text-foreground">
+                      {formatMoney(Number(row.discount_total), row.currency)}
+                    </td>
+                    <td className="px-2 py-2 text-foreground">
+                      {formatMoney(Number(row.tax_total), row.currency)}
+                    </td>
+                    <td className="px-2 py-2 text-foreground">
+                      {formatMoney(Number(row.total), row.currency)}
+                    </td>
+                    <td className="px-2 py-2 text-foreground">{formatDateTime(row.valid_until)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       />
       <FinancialSection
