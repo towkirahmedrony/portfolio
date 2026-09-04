@@ -6,6 +6,7 @@ import { FormProgress } from "@/components/project-request/progress";
 import { ProjectRequestSuccess } from "@/components/project-request/success";
 import { StepFields } from "@/components/project-request/step-fields";
 import { StepReview } from "@/components/project-request/step-review";
+import { ContentStateMessage } from "@/components/public/content-states";
 import { emptyProjectRequest } from "@/lib/order-form";
 import {
   firstInvalidStep,
@@ -35,6 +36,7 @@ export function ProjectRequestForm({
 }: Props) {
   const formId = useId();
   const totalSteps = config.steps.length;
+  const hasSteps = totalSteps > 0;
   const initialValues = useMemo(() => {
     const values = emptyProjectRequest(config);
     if (initialReferralCode) {
@@ -76,18 +78,25 @@ export function ProjectRequestForm({
   }
 
   function goToStep(next: ProjectRequestStep) {
-    setStep(next);
+    if (!hasSteps) {
+      return;
+    }
+    setStep(Math.min(Math.max(next, 1), totalSteps));
     setFormError(null);
   }
 
   function handlePrevious() {
-    if (step === 1) {
+    if (!hasSteps || step <= 1) {
       return;
     }
     goToStep(step - 1);
   }
 
   function handleNext() {
+    if (!hasSteps) {
+      return;
+    }
+
     const stepErrors = validateStep(step, data, config);
     if (Object.keys(stepErrors).length > 0) {
       setErrors(stepErrors);
@@ -100,6 +109,10 @@ export function ProjectRequestForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!hasSteps) {
+      return;
+    }
 
     if (step < totalSteps) {
       handleNext();
@@ -170,6 +183,14 @@ export function ProjectRequestForm({
         requestNumber={requestNumber}
         referralCode={submittedReferralCode}
       />
+    );
+  }
+
+  if (!hasSteps) {
+    return (
+      <ContentStateMessage>
+        The project request form is not available yet. Please check back soon.
+      </ContentStateMessage>
     );
   }
 

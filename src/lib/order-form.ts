@@ -78,11 +78,12 @@ function isReviewStep(
   stepKey: string,
   fieldCount: number,
   isLast: boolean,
+  hasFieldSteps: boolean,
 ): boolean {
   if (stepKey === "review") {
     return true;
   }
-  return fieldCount === 0 && isLast;
+  return hasFieldSteps && fieldCount === 0 && isLast;
 }
 
 function optionsForField(
@@ -425,6 +426,10 @@ export function buildOrderFormConfig(
     fieldsByStep.set(field.stepId, list);
   }
 
+  const hasFieldSteps = steps.some(
+    (step) => (fieldsByStep.get(step.id) ?? []).length > 0,
+  );
+
   const stepConfigs: OrderFormStepConfig[] = steps.map((step, index) => {
     const stepFields = fieldsByStep.get(step.id) ?? [];
     const isLast = index === steps.length - 1;
@@ -434,7 +439,12 @@ export function buildOrderFormConfig(
       title: step.title,
       description: step.description,
       sortOrder: step.sort_order,
-      isReview: isReviewStep(step.step_key, stepFields.length, isLast),
+      isReview: isReviewStep(
+        step.step_key,
+        stepFields.length,
+        isLast,
+        hasFieldSteps,
+      ),
       fields: stepFields,
     };
   });

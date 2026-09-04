@@ -96,6 +96,28 @@ export function ServiceListSkeleton({ count = 3 }: { count?: number }) {
   );
 }
 
+export function OrderFormSkeleton() {
+  return (
+    <div
+      className="rounded-3xl border border-card-border bg-card p-5 sm:p-8 lg:p-10"
+      aria-busy="true"
+      aria-label="Loading project request form"
+      role="status"
+    >
+      <div className="mb-8 space-y-4">
+        <div className="h-3 w-28 animate-pulse rounded bg-card-border" />
+        <div className="h-4 w-2/3 animate-pulse rounded bg-card-border" />
+        <div className="h-1 w-full animate-pulse rounded-full bg-card-border" />
+      </div>
+      <div className="grid gap-5">
+        <div className="h-12 w-full animate-pulse rounded-xl bg-card-border" />
+        <div className="h-12 w-full animate-pulse rounded-xl bg-card-border" />
+        <div className="h-24 w-full animate-pulse rounded-xl bg-card-border" />
+      </div>
+    </div>
+  );
+}
+
 export function HomeCardSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div

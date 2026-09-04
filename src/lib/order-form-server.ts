@@ -83,10 +83,7 @@ export async function getOrderFormConfig(): Promise<
       options,
     );
 
-    if (
-      config.steps.every((step) => step.fields.length === 0) &&
-      !config.steps.some((step) => step.isReview)
-    ) {
+    if (!config.steps.some((step) => step.fields.length > 0)) {
       return { status: "empty" };
     }
 

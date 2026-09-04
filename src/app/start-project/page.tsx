@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { ProjectRequestForm } from "@/components/project-request/project-request-form";
-import { ContentStateMessage } from "@/components/public/content-states";
+import {
+  ContentStateMessage,
+  OrderFormSkeleton,
+} from "@/components/public/content-states";
 import { PageHero } from "@/components/ui/section";
 import {
   getOrderFormConfig,
@@ -21,7 +25,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function StartProjectPage({
+async function StartProjectForm({
   searchParams,
 }: {
   searchParams: Promise<{
@@ -37,6 +41,41 @@ export default async function StartProjectPage({
     resolveServiceId(serviceParam),
   ]);
 
+  if (configResult.status === "ok") {
+    return (
+      <ProjectRequestForm
+        config={configResult.data}
+        serviceId={serviceId}
+        initialReferralCode={referralCode}
+      />
+    );
+  }
+
+  if (configResult.status === "empty") {
+    return (
+      <ContentStateMessage>
+        The project request form is not available yet. Please check back soon.
+      </ContentStateMessage>
+    );
+  }
+
+  return (
+    <ContentStateMessage>
+      The project request form is temporarily unavailable. Please try again
+      shortly.
+    </ContentStateMessage>
+  );
+}
+
+export default function StartProjectPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    ref?: string | string[];
+    service?: string | string[];
+    service_id?: string | string[];
+  }>;
+}) {
   return (
     <>
       <PageHero
@@ -46,23 +85,9 @@ export default async function StartProjectPage({
       />
       <section className="py-12 sm:py-16">
         <div className="mx-auto w-full max-w-3xl px-5 sm:px-8">
-          {configResult.status === "ok" ? (
-            <ProjectRequestForm
-              config={configResult.data}
-              serviceId={serviceId}
-              initialReferralCode={referralCode}
-            />
-          ) : configResult.status === "empty" ? (
-            <ContentStateMessage>
-              The project request form is not available yet. Please check back
-              soon.
-            </ContentStateMessage>
-          ) : (
-            <ContentStateMessage>
-              The project request form is temporarily unavailable. Please try
-              again shortly.
-            </ContentStateMessage>
-          )}
+          <Suspense fallback={<OrderFormSkeleton />}>
+            <StartProjectForm searchParams={searchParams} />
+          </Suspense>
         </div>
       </section>
     </>
