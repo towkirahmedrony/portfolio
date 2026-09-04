@@ -162,6 +162,20 @@ export type ServiceFeatureRow = {
   sort_order: number;
 };
 
+export type ReviewStatus = "pending" | "approved" | "rejected" | "hidden";
+
+export type ReviewRow = {
+  id: string;
+  project_id: string;
+  client_id: string;
+  rating: number;
+  title: string | null;
+  review: string;
+  status: ReviewStatus;
+  submitted_at: string;
+  published_at: string | null;
+};
+
 export type ProfileRow = {
   id: string;
   full_name: string;
@@ -800,6 +814,25 @@ export type Database = {
         ]
       >;
       service_features: TableDef<ServiceFeatureRow>;
+      reviews: TableDef<
+        ReviewRow,
+        [
+          {
+            foreignKeyName: "reviews_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reviews_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
       audit_logs: TableDef<
         AuditLogRow,
         [
@@ -869,6 +902,7 @@ export type Database = {
       payment_status: PaymentStatus;
       reward_status: RewardStatus;
       referral_status: ReferralStatus;
+      review_status: ReviewStatus;
       milestone_status: MilestoneStatus;
       file_category: FileCategory;
       discount_source_type: DiscountSourceType;
