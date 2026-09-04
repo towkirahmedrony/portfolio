@@ -24,9 +24,15 @@ function transpileToTemp(sourcePath) {
 const { decideAdminAccess } = await import(
   transpileToTemp("/workspace/src/lib/admin-access.ts")
 );
-const { isAdminPath, getLoginRedirectPath, getSafeNextPath } = await import(
-  transpileToTemp("/workspace/src/lib/auth.ts")
-);
+const {
+  isAdminPath,
+  isAdminLoginPath,
+  isProtectedAdminPath,
+  getLoginRedirectPath,
+  getAdminLoginRedirectPath,
+  getSafeNextPath,
+  getSafeAdminNextPath,
+} = await import(transpileToTemp("/workspace/src/lib/auth.ts"));
 
 function assert(condition, message) {
   if (!condition) {
@@ -34,13 +40,15 @@ function assert(condition, message) {
   }
 }
 
-assert(isAdminPath("/admin"), "1. /admin is an admin route");
-assert(
-  isAdminPath("/admin/projects/abc"),
-  "4. nested admin routes are protected",
-);
+assert(isAdminPath("/admin"), "/admin is an admin route");
+assert(isAdminPath("/admin/projects/abc"), "nested admin routes are admin paths");
+assert(isAdminLoginPath("/admin/login"), "/admin/login is the admin login page");
+assert(!isProtectedAdminPath("/admin/login"), "/admin/login is not a protected dashboard route");
+assert(isProtectedAdminPath("/admin"), "/admin dashboard is protected");
+assert(isProtectedAdminPath("/admin/quotes/new"), "nested dashboard routes are protected");
 assert(!isAdminPath("/start-project"), "public /start-project stays public");
 assert(!isAdminPath("/profile"), "customer profile is not an admin route");
+assert(!isAdminPath("/login"), "client login is not an admin route");
 
 assert(
   decideAdminAccess({
@@ -49,7 +57,7 @@ assert(
     rpcError: false,
     profile: null,
   }) === "unauthenticated",
-  "1. unauthenticated access to /admin is denied",
+  "unauthenticated access to /admin is denied",
 );
 
 assert(
@@ -64,7 +72,7 @@ assert(
       status: "active",
     },
   }) === "forbidden",
-  "2. authenticated non-admin access is denied",
+  "authenticated non-admin access is denied",
 );
 
 assert(
@@ -79,17 +87,43 @@ assert(
       status: "active",
     },
   }) === "allow",
-  "3. authenticated admin access is allowed",
+  "authenticated admin access is allowed",
 );
 
 assert(
-  getLoginRedirectPath("/admin") === "/login?next=%2Fadmin",
-  "unauthenticated users are sent to the existing login page",
+  getLoginRedirectPath("/profile") === "/login?next=%2Fprofile",
+  "clients are sent to the customer login page",
 );
 
 assert(
-  getSafeNextPath("/admin/quotes/new") === "/admin/quotes/new",
-  "login next path preserves nested admin routes",
+  getSafeNextPath("/admin") === "/profile",
+  "client login cannot target the admin dashboard",
+);
+
+assert(
+  getSafeNextPath("/admin/quotes/new") === "/profile",
+  "client OAuth/login cannot land on nested admin routes",
+);
+
+assert(
+  getAdminLoginRedirectPath("/admin") === "/admin/login?next=%2Fadmin",
+  "unauthenticated users are sent to the dedicated admin login page",
+);
+
+assert(
+  getAdminLoginRedirectPath("/admin/projects/1") ===
+    "/admin/login?next=%2Fadmin%2Fprojects%2F1",
+  "admin login preserves nested dashboard destinations",
+);
+
+assert(
+  getSafeAdminNextPath("/login") === "/admin",
+  "admin login ignores non-admin next paths",
+);
+
+assert(
+  getSafeAdminNextPath("/admin/login") === "/admin",
+  "admin login does not loop back onto itself",
 );
 
 console.log("admin guard tests passed");

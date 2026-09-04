@@ -29,7 +29,7 @@ export function AdminSidebar({
         <AdminNav sections={sections} onNavigate={onNavigate} />
       </div>
       <div className="border-t border-card-border px-3 py-4">
-        <SignOutButton />
+        <SignOutButton redirectTo="/admin/login" />
       </div>
     </div>
   );

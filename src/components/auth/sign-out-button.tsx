@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
-export function SignOutButton() {
+export function SignOutButton({
+  redirectTo = "/login",
+}: {
+  redirectTo?: string;
+}) {
   const router = useRouter();
   const [signedIn, setSignedIn] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -58,7 +62,7 @@ export function SignOutButton() {
     }
 
     setSignedIn(false);
-    router.push("/login");
+    router.push(redirectTo);
     router.refresh();
   }
 

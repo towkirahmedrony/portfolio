@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { decideAdminAccess } from "@/lib/admin-access";
-import { getLoginRedirectPath, isAdminPath } from "@/lib/auth";
+import { getAdminLoginRedirectPath, isProtectedAdminPath } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { AdminSessionUser } from "@/types/admin";
@@ -10,7 +10,7 @@ async function getRequestedAdminPath(): Promise<string> {
   try {
     const headerStore = await headers();
     const pathname = headerStore.get("x-pathname");
-    if (pathname && isAdminPath(pathname)) {
+    if (pathname && isProtectedAdminPath(pathname)) {
       return pathname;
     }
   } catch {
@@ -22,7 +22,7 @@ async function getRequestedAdminPath(): Promise<string> {
 
 export async function requireAdmin(): Promise<AdminSessionUser> {
   if (!isSupabaseConfigured()) {
-    redirect(getLoginRedirectPath(await getRequestedAdminPath()));
+    redirect(getAdminLoginRedirectPath(await getRequestedAdminPath()));
   }
 
   const supabase = await createServerSupabaseClient();
@@ -31,7 +31,7 @@ export async function requireAdmin(): Promise<AdminSessionUser> {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(getLoginRedirectPath(await getRequestedAdminPath()));
+    redirect(getAdminLoginRedirectPath(await getRequestedAdminPath()));
   }
 
   try {

@@ -1,6 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { getSafeNextPath, isAdminPath } from "@/lib/auth";
+import {
+  getSafeAdminNextPath,
+  getSafeNextPath,
+  isAdminLoginPath,
+  isProtectedAdminPath,
+} from "@/lib/auth";
 import type { Database } from "@/types/database";
 
 function copyCookies(from: NextResponse, to: NextResponse) {
@@ -53,17 +58,22 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
-  const isProtected =
-    pathname.startsWith("/profile") || isAdminPath(pathname);
+  const search = request.nextUrl.search;
+  const requestedPath = `${pathname}${search}`;
 
-  if (!user && isProtected) {
+  if (!user && pathname.startsWith("/profile")) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
-    loginUrl.searchParams.set(
-      "next",
-      getSafeNextPath(`${pathname}${request.nextUrl.search}`),
-    );
+    loginUrl.searchParams.set("next", getSafeNextPath(requestedPath));
+    return copyCookies(response, NextResponse.redirect(loginUrl));
+  }
+
+  if (!user && isProtectedAdminPath(pathname)) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/admin/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("next", getSafeAdminNextPath(requestedPath));
     return copyCookies(response, NextResponse.redirect(loginUrl));
   }
 
@@ -74,13 +84,25 @@ export async function proxy(request: NextRequest) {
       // Session refresh should not fail the request if activity sync is unavailable.
     }
 
-    if (isAdminPath(pathname)) {
+    if (isProtectedAdminPath(pathname)) {
       const { data: isAdmin, error } = await supabase.rpc("is_active_admin");
       if (!error && isAdmin !== true) {
         const profileUrl = request.nextUrl.clone();
         profileUrl.pathname = "/profile";
         profileUrl.search = "";
         return copyCookies(response, NextResponse.redirect(profileUrl));
+      }
+    }
+
+    if (isAdminLoginPath(pathname)) {
+      const { data: isAdmin, error } = await supabase.rpc("is_active_admin");
+      if (!error && isAdmin === true) {
+        const adminUrl = request.nextUrl.clone();
+        adminUrl.pathname = getSafeAdminNextPath(
+          request.nextUrl.searchParams.get("next"),
+        );
+        adminUrl.search = "";
+        return copyCookies(response, NextResponse.redirect(adminUrl));
       }
     }
   }
