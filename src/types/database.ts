@@ -170,6 +170,18 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+export type NotificationPreferenceRow = {
+  id: string;
+  user_id: string;
+  email_project_updates: boolean;
+  email_messages: boolean;
+  email_quotes: boolean;
+  email_payments: boolean;
+  email_referrals: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ContactStatus = "new" | "read" | "replied" | "archived" | "spam";
 
 export type ContactMessageRow = {
@@ -838,6 +850,18 @@ export type Database = {
       >;
       service_features: TableDef<ServiceFeatureRow>;
       contact_messages: TableDef<ContactMessageRow>;
+      notification_preferences: TableDef<
+        NotificationPreferenceRow,
+        [
+          {
+            foreignKeyName: "notification_preferences_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
       reviews: TableDef<
         ReviewRow,
         [
