@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { CustomerProfile } from "@/components/profile/customer-profile";
+import { CustomerRequests } from "@/components/profile/customer-requests";
 import { ProjectTracking } from "@/components/profile/project-tracking";
 import { ReferralSection } from "@/components/profile/referral-section";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -82,7 +83,7 @@ export default async function ProfilePage() {
       <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
         <div className="grid gap-5">
           <CustomerProfile initialProfile={mapped.profile} initialAccount={mapped.account} />
-          {/* Server Component as child */}
+          <CustomerRequests />
           <ProjectTracking />
           <ReferralSection referral={referral} />
         </div>

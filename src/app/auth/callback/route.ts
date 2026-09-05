@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
-import { getSafeNextPath, isAdminPath } from "@/lib/auth";
+import {
+  getPathnameFromNext,
+  getSafeNextPath,
+  isAdminPath,
+} from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const EMAIL_OTP_TYPES = new Set<EmailOtpType>([
@@ -30,6 +34,9 @@ export async function GET(request: Request) {
     const loginUrl = new URL("/login", requestUrl.origin);
     loginUrl.searchParams.set("error", error);
     loginUrl.searchParams.set("next", next);
+    if (getPathnameFromNext(next) === "/start-project") {
+      loginUrl.searchParams.set("reason", "place-order");
+    }
     return NextResponse.redirect(loginUrl);
   }
 

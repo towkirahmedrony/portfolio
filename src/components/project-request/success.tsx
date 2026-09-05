@@ -34,7 +34,7 @@ export function ProjectRequestSuccess({
         </p>
       ) : null}
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <ButtonLink href="/">Back home</ButtonLink>
+        <ButtonLink href="/profile">View in profile</ButtonLink>
         <Button variant="secondary" onClick={onReset}>
           Submit another request
         </Button>

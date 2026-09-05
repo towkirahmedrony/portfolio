@@ -7,8 +7,11 @@ import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Button } from "@/components/ui/button";
 import { Field, TextInput } from "@/components/ui/form-field";
 import {
+  getAuthPageHref,
+  getPathnameFromNext,
   getSafeNextPath,
   isEmailNotConfirmedError,
+  isPlaceOrderAuthReason,
   isValidEmail,
 } from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
@@ -41,6 +44,9 @@ function LoginFormFields() {
   );
   const [submitting, setSubmitting] = useState(false);
   const destination = getSafeNextPath(searchParams.get("next"));
+  const placeOrder =
+    isPlaceOrderAuthReason(searchParams.get("reason")) ||
+    getPathnameFromNext(destination) === "/start-project";
 
   function validate(): LoginErrors {
     const nextErrors: LoginErrors = {};
@@ -149,6 +155,13 @@ function LoginFormFields() {
         </Field>
       </div>
 
+      {placeOrder ? (
+        <p className="mt-6 text-sm text-muted" role="status">
+          Sign in to place your project order. Your answers are saved and will
+          be waiting on the review step after you return.
+        </p>
+      ) : null}
+
       {formError ? (
         <p className="mt-6 text-sm text-accent" role="alert">
           {formError}
@@ -169,7 +182,7 @@ function LoginFormFields() {
       <p className="mt-6 text-center text-sm text-muted">
         Need an account?{" "}
         <Link
-          href={`/signup?next=${encodeURIComponent(destination)}`}
+          href={getAuthPageHref("/signup", destination, placeOrder ? "place-order" : null)}
           className="font-medium text-accent hover:text-accent-hover"
         >
           Sign up

@@ -11,7 +11,7 @@ const MAX_REQUEST_NUMBER_ATTEMPTS = 5;
 
 export type SubmitProjectRequestResult =
   | { ok: true; requestNumber: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; unauthenticated?: true };
 
 function uniqueViolation(error: { code?: string; message?: string }): boolean {
   if (error.code === UNIQUE_VIOLATION) {
@@ -34,7 +34,19 @@ export async function submitProjectRequest(
   }
 
   const supabase = createBrowserSupabaseClient();
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return {
+      ok: false,
+      unauthenticated: true,
+      error: "Sign in or create an account to place this order.",
+    };
+  }
+
   const payload = toProjectRequestInsert(
     data,
     generateRequestNumber(),

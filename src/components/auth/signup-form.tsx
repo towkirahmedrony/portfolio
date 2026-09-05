@@ -6,7 +6,14 @@ import { Suspense, useState, type FormEvent } from "react";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Button } from "@/components/ui/button";
 import { Field, TextInput } from "@/components/ui/form-field";
-import { getEmailRedirectTo, getSafeNextPath, isValidEmail } from "@/lib/auth";
+import {
+  getAuthPageHref,
+  getEmailRedirectTo,
+  getPathnameFromNext,
+  getSafeNextPath,
+  isPlaceOrderAuthReason,
+  isValidEmail,
+} from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
@@ -29,6 +36,9 @@ function SignupFormFields() {
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const destination = getSafeNextPath(searchParams.get("next"));
+  const placeOrder =
+    isPlaceOrderAuthReason(searchParams.get("reason")) ||
+    getPathnameFromNext(destination) === "/start-project";
 
   function validate(): SignupErrors {
     const nextErrors: SignupErrors = {};
@@ -202,6 +212,13 @@ function SignupFormFields() {
         </Field>
       </div>
 
+      {placeOrder ? (
+        <p className="mt-6 text-sm text-muted" role="status">
+          Create an account to place your project order. Your answers are saved
+          and will be waiting on the review step after you return.
+        </p>
+      ) : null}
+
       {formError ? (
         <p className="mt-6 text-sm text-accent" role="alert">
           {formError}
@@ -211,7 +228,7 @@ function SignupFormFields() {
         <p className="mt-6 text-sm text-muted" role="status">
           {notice}{" "}
           <Link
-            href={`/login?next=${encodeURIComponent(destination)}`}
+            href={getAuthPageHref("/login", destination, placeOrder ? "place-order" : null)}
             className="font-medium text-accent hover:text-accent-hover"
           >
             Go to login
@@ -233,7 +250,7 @@ function SignupFormFields() {
       <p className="mt-6 text-center text-sm text-muted">
         Already have an account?{" "}
         <Link
-          href={`/login?next=${encodeURIComponent(destination)}`}
+          href={getAuthPageHref("/login", destination, placeOrder ? "place-order" : null)}
           className="font-medium text-accent hover:text-accent-hover"
         >
           Log in
