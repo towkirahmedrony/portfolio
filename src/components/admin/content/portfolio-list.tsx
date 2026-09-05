@@ -38,7 +38,7 @@ export function PortfolioProjectsTable({
                   {project.thumbnail_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={project.thumbnail_url}
+                      src={project.thumbnail_url.trim()}
                       alt=""
                       className="h-10 w-14 shrink-0 rounded-lg border border-card-border object-cover"
                     />
