@@ -33,6 +33,9 @@ const ALLOWED_NEXT_PATHNAMES = new Set([
 ]);
 
 const PLACE_ORDER_REASON = "place-order";
+export const ORDER_SUBMIT_SECTION_ID = "order-submit-section";
+export const ORDER_SUBMIT_SECTION_HASH = `#${ORDER_SUBMIT_SECTION_ID}`;
+export const PLACE_ORDER_NEXT_PATH = `/start-project${ORDER_SUBMIT_SECTION_HASH}`;
 
 function isAllowedNextPathname(pathname: string): boolean {
   if (ALLOWED_NEXT_PATHNAMES.has(pathname)) {
@@ -64,7 +67,9 @@ export function getSafeNextPath(value: string | null | undefined): string {
       return "/profile";
     }
 
-    return `${parsed.pathname}${parsed.search}`;
+    const hash =
+      parsed.hash === ORDER_SUBMIT_SECTION_HASH ? parsed.hash : "";
+    return `${parsed.pathname}${parsed.search}${hash}`;
   } catch {
     return "/profile";
   }
@@ -76,7 +81,7 @@ export function isPlaceOrderAuthReason(value: string | null | undefined): boolea
 
 export function getPlaceOrderLoginPath(): string {
   const params = new URLSearchParams();
-  params.set("next", "/start-project");
+  params.set("next", PLACE_ORDER_NEXT_PATH);
   params.set("reason", PLACE_ORDER_REASON);
   return `/login?${params.toString()}`;
 }

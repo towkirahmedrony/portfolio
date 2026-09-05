@@ -1,6 +1,7 @@
 import type { ProjectRequest, ProjectRequestValue } from "@/types/project-request";
 
 export const PROJECT_REQUEST_DRAFT_KEY = "start-project-draft";
+export const PROJECT_REQUEST_FOCUS_SUBMIT_KEY = "start-project-focus-submit";
 const DRAFT_VERSION = 1;
 const MAX_DRAFT_BYTES = 180_000;
 
@@ -127,6 +128,44 @@ export function clearProjectRequestDraft(): void {
   } catch {
     // Ignore storage access errors; the order has already been created.
   }
+}
+
+export function markProjectRequestFocusSubmit(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(PROJECT_REQUEST_FOCUS_SUBMIT_KEY, "1");
+  } catch {
+    // Ignore storage access errors; scroll-to-submit is a UX nicety.
+  }
+}
+
+export function hasProjectRequestFocusSubmit(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    return window.sessionStorage.getItem(PROJECT_REQUEST_FOCUS_SUBMIT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function consumeProjectRequestFocusSubmit(): boolean {
+  if (!hasProjectRequestFocusSubmit()) {
+    return false;
+  }
+
+  try {
+    window.sessionStorage.removeItem(PROJECT_REQUEST_FOCUS_SUBMIT_KEY);
+  } catch {
+    // Ignore storage access errors; the submit section has already been targeted.
+  }
+
+  return true;
 }
 
 export function mergeProjectRequestDraft(

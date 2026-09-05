@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -9,6 +10,7 @@ import {
   useSyncExternalStore,
   type FormEvent,
 } from "react";
+import { PlaceOrderAuthModal } from "@/components/auth/place-order-auth-modal";
 import { Button } from "@/components/ui/button";
 import { FormProgress } from "@/components/project-request/progress";
 import { ProjectRequestSuccess } from "@/components/project-request/success";
@@ -18,7 +20,7 @@ import {
   ContentStateMessage,
   OrderFormSkeleton,
 } from "@/components/public/content-states";
-import { getPlaceOrderLoginPath } from "@/lib/auth";
+import { ORDER_SUBMIT_SECTION_HASH, ORDER_SUBMIT_SECTION_ID } from "@/lib/auth";
 import { emptyProjectRequest } from "@/lib/order-form";
 import {
   firstInvalidStep,
@@ -29,11 +31,15 @@ import {
 } from "@/lib/project-request";
 import {
   clearProjectRequestDraft,
+  consumeProjectRequestFocusSubmit,
+  hasProjectRequestFocusSubmit,
   loadProjectRequestDraft,
+  markProjectRequestFocusSubmit,
   mergeProjectRequestDraft,
   saveProjectRequestDraft,
 } from "@/lib/project-request-draft";
 import { submitProjectRequest } from "@/lib/submit-project-request";
+import { cn } from "@/lib/utils";
 import type {
   OrderFormConfig,
   ProjectRequest,
@@ -123,9 +129,14 @@ function ProjectRequestFormInner({
   const [requestNumber, setRequestNumber] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(initial.notice);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [submitHighlight, setSubmitHighlight] = useState(false);
   const resolvedServiceId = initial.serviceId;
   const submittingRef = useRef(false);
   const skipPersistRef = useRef(false);
+  const submitSectionRef = useRef<HTMLDivElement>(null);
+  const highlightTimeoutRef = useRef<number | null>(null);
+  const didFocusSubmitRef = useRef(false);
   const persistRef = useRef({
     data: initial.data,
     step: initial.step,
@@ -174,6 +185,57 @@ function ProjectRequestFormInner({
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [hasSteps, submitted]);
+
+  const focusSubmitSection = useCallback(() => {
+    const node = submitSectionRef.current;
+    if (!node) {
+      return;
+    }
+
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    setSubmitHighlight(true);
+    if (highlightTimeoutRef.current) {
+      window.clearTimeout(highlightTimeoutRef.current);
+    }
+    highlightTimeoutRef.current = window.setTimeout(() => {
+      setSubmitHighlight(false);
+    }, 2200);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasSteps || submitted || step !== totalSteps || didFocusSubmitRef.current) {
+      return;
+    }
+
+    const shouldFocus =
+      hasProjectRequestFocusSubmit() ||
+      window.location.hash === ORDER_SUBMIT_SECTION_HASH;
+    if (!shouldFocus) {
+      return;
+    }
+
+    didFocusSubmitRef.current = true;
+    let timeoutId = 0;
+    const frame = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(() => {
+        consumeProjectRequestFocusSubmit();
+        focusSubmitSection();
+      }, 120);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeoutId);
+    };
+  }, [focusSubmitSection, hasSteps, step, submitted, totalSteps]);
 
   function updateField(field: string, value: string | string[]) {
     const nextValue =
@@ -224,14 +286,43 @@ function ProjectRequestFormInner({
     goToStep(Math.min(step + 1, totalSteps));
   }
 
-  function redirectToAuth(normalized: ProjectRequest) {
+  function persistReviewDraft(normalized: ProjectRequest) {
     saveProjectRequestDraft({
       data: normalized,
       step: totalSteps,
       serviceId: resolvedServiceId,
     });
-    window.location.assign(getPlaceOrderLoginPath());
   }
+
+  function openAuthModal(normalized: ProjectRequest) {
+    persistReviewDraft(normalized);
+    setAuthOpen(true);
+  }
+
+  const closeAuthModal = useCallback(() => {
+    setAuthOpen(false);
+  }, []);
+
+  const handleAuthenticated = useCallback(() => {
+    setAuthOpen(false);
+    setAuthNotice(
+      "You're signed in. Your order is ready to submit — click Submit Project Request to place it.",
+    );
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        focusSubmitSection();
+      });
+    });
+  }, [focusSubmitSection]);
+
+  const handleBeforeOAuth = useCallback(() => {
+    saveProjectRequestDraft({
+      data: persistRef.current.data,
+      step: totalSteps,
+      serviceId: persistRef.current.serviceId,
+    });
+    markProjectRequestFocusSubmit();
+  }, [totalSteps]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -276,7 +367,7 @@ function ProjectRequestFormInner({
       );
       if (!result.ok) {
         if (result.unauthenticated) {
-          redirectToAuth(normalized);
+          openAuthModal(normalized);
           return;
         }
         setFormError(result.error);
@@ -344,59 +435,78 @@ function ProjectRequestFormInner({
   const current = config.steps[step - 1];
 
   return (
-    <form
-      id={formId}
-      onSubmit={handleSubmit}
-      noValidate
-      className="rounded-3xl border border-card-border bg-card p-5 sm:p-8 lg:p-10"
-    >
-      <FormProgress step={step} config={config} />
+    <>
+      <form
+        id={formId}
+        onSubmit={handleSubmit}
+        noValidate
+        className="rounded-3xl border border-card-border bg-card p-5 sm:p-8 lg:p-10"
+      >
+        <FormProgress step={step} config={config} />
 
-      <div aria-live="polite">
-        {current?.isReview ? (
-          <StepReview data={data} config={config} onEdit={goToStep} />
-        ) : current ? (
-          <StepFields
-            step={current}
-            config={config}
-            data={data}
-            errors={errors}
-            onChange={updateField}
-          />
+        <div aria-live="polite">
+          {current?.isReview ? (
+            <StepReview data={data} config={config} onEdit={goToStep} />
+          ) : current ? (
+            <StepFields
+              step={current}
+              config={config}
+              data={data}
+              errors={errors}
+              onChange={updateField}
+            />
+          ) : null}
+        </div>
+
+        {authNotice ? (
+          <p className="mt-6 text-sm text-muted" role="status">
+            {authNotice}
+          </p>
         ) : null}
-      </div>
 
-      {authNotice ? (
-        <p className="mt-6 text-sm text-muted" role="status">
-          {authNotice}
-        </p>
-      ) : null}
+        {formError ? (
+          <p className="mt-6 text-sm text-accent" role="alert">
+            {formError}
+          </p>
+        ) : null}
 
-      {formError ? (
-        <p className="mt-6 text-sm text-accent" role="alert">
-          {formError}
-        </p>
-      ) : null}
-
-      <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-        <Button
-          variant="secondary"
-          onClick={handlePrevious}
-          disabled={step === 1 || submitting}
+        <div
+          ref={submitSectionRef}
+          id={ORDER_SUBMIT_SECTION_ID}
+          className={cn(
+            "mt-8 scroll-mt-24 rounded-2xl transition-[box-shadow,background-color] duration-500",
+            submitHighlight && "bg-accent-soft ring-2 ring-accent",
+          )}
         >
-          Previous
-        </Button>
+          <div className="flex flex-col-reverse gap-3 p-1 sm:flex-row sm:justify-between">
+            <Button
+              variant="secondary"
+              onClick={handlePrevious}
+              disabled={step === 1 || submitting}
+            >
+              Previous
+            </Button>
 
-        {step < totalSteps ? (
-          <Button type="submit" disabled={submitting}>
-            Next
-          </Button>
-        ) : (
-          <Button type="submit" disabled={submitting}>
-            {submitting ? "Submitting…" : "Submit Project Request"}
-          </Button>
-        )}
-      </div>
-    </form>
+            {step < totalSteps ? (
+              <Button type="submit" disabled={submitting}>
+                Next
+              </Button>
+            ) : (
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Submitting…" : "Submit Project Request"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </form>
+
+      {authOpen ? (
+        <PlaceOrderAuthModal
+          onClose={closeAuthModal}
+          onAuthenticated={handleAuthenticated}
+          onBeforeOAuth={handleBeforeOAuth}
+        />
+      ) : null}
+    </>
   );
 }

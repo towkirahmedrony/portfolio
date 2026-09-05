@@ -11,9 +11,11 @@ type OAuthProvider = "google" | "github";
 export function OAuthButtons({
   nextPath,
   disabled,
+  onBeforeStart,
 }: {
   nextPath: string;
   disabled?: boolean;
+  onBeforeStart?: () => void;
 }) {
   const [provider, setProvider] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +30,7 @@ export function OAuthButtons({
     }
 
     setProvider(nextProvider);
+    onBeforeStart?.();
 
     try {
       const supabase = createBrowserSupabaseClient();

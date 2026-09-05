@@ -16,6 +16,7 @@ import {
 } from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { cn } from "@/lib/utils";
 
 type SignupErrors = {
   fullName?: string;
@@ -24,9 +25,28 @@ type SignupErrors = {
   confirmPassword?: string;
 };
 
-function SignupFormFields() {
+export type SignupPanelProps = {
+  nextPath: string;
+  placeOrder?: boolean;
+  embedded?: boolean;
+  idPrefix?: string;
+  onSuccess?: () => void;
+  onSwitchToLogin?: () => void;
+  onBeforeOAuth?: () => void;
+  onVerificationPending?: () => void;
+};
+
+export function SignupPanel({
+  nextPath,
+  placeOrder = false,
+  embedded = false,
+  idPrefix = "",
+  onSuccess,
+  onSwitchToLogin,
+  onBeforeOAuth,
+  onVerificationPending,
+}: SignupPanelProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,10 +55,11 @@ function SignupFormFields() {
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const destination = getSafeNextPath(searchParams.get("next"));
-  const placeOrder =
-    isPlaceOrderAuthReason(searchParams.get("reason")) ||
-    getPathnameFromNext(destination) === "/start-project";
+  const destination = getSafeNextPath(nextPath);
+  const fullNameId = `${idPrefix}fullName`;
+  const emailId = `${idPrefix}email`;
+  const passwordId = `${idPrefix}password`;
+  const confirmPasswordId = `${idPrefix}confirmPassword`;
 
   function validate(): SignupErrors {
     const nextErrors: SignupErrors = {};
@@ -106,7 +127,9 @@ function SignupFormFields() {
 
       if (error) {
         console.error("Supabase sign up error:", error);
-        setFormError(error.message || "Could not create your account. Please try again.");
+        setFormError(
+          error.message || "Could not create your account. Please try again.",
+        );
         setSubmitting(false);
         return;
       }
@@ -119,6 +142,10 @@ function SignupFormFields() {
         } catch (rpcErr) {
           console.error("RPC error during signup:", rpcErr);
         }
+        if (onSuccess) {
+          onSuccess();
+          return;
+        }
         router.push(destination);
         router.refresh();
         return;
@@ -128,13 +155,17 @@ function SignupFormFields() {
         await supabase.auth.signOut();
       }
 
+      onVerificationPending?.();
       setNotice(
         "Check your email to verify your account. You can log in after verification.",
       );
       setSubmitting(false);
     } catch (err: unknown) {
       console.error("Unexpected signup error:", err);
-      const message = err instanceof Error ? err.message : "Could not create your account. Please try again.";
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Could not create your account. Please try again.";
       setFormError(message);
       setSubmitting(false);
     }
@@ -144,12 +175,14 @@ function SignupFormFields() {
     <form
       onSubmit={handleSubmit}
       noValidate
-      className="rounded-3xl border border-card-border bg-card p-5 sm:p-8"
+      className={cn(
+        !embedded && "rounded-3xl border border-card-border bg-card p-5 sm:p-8",
+      )}
     >
       <div className="grid gap-5">
-        <Field id="fullName" label="Full Name" required error={errors.fullName}>
+        <Field id={fullNameId} label="Full Name" required error={errors.fullName}>
           <TextInput
-            id="fullName"
+            id={fullNameId}
             name="fullName"
             autoComplete="name"
             value={fullName}
@@ -160,9 +193,9 @@ function SignupFormFields() {
             error={errors.fullName}
           />
         </Field>
-        <Field id="email" label="Email" required error={errors.email}>
+        <Field id={emailId} label="Email" required error={errors.email}>
           <TextInput
-            id="email"
+            id={emailId}
             name="email"
             type="email"
             autoComplete="email"
@@ -174,9 +207,9 @@ function SignupFormFields() {
             error={errors.email}
           />
         </Field>
-        <Field id="password" label="Password" required error={errors.password}>
+        <Field id={passwordId} label="Password" required error={errors.password}>
           <TextInput
-            id="password"
+            id={passwordId}
             name="password"
             type="password"
             autoComplete="new-password"
@@ -189,13 +222,13 @@ function SignupFormFields() {
           />
         </Field>
         <Field
-          id="confirmPassword"
+          id={confirmPasswordId}
           label="Confirm Password"
           required
           error={errors.confirmPassword}
         >
           <TextInput
-            id="confirmPassword"
+            id={confirmPasswordId}
             name="confirmPassword"
             type="password"
             autoComplete="new-password"
@@ -212,7 +245,7 @@ function SignupFormFields() {
         </Field>
       </div>
 
-      {placeOrder ? (
+      {placeOrder && !embedded ? (
         <p className="mt-6 text-sm text-muted" role="status">
           Create an account to place your project order. Your answers are saved
           and will be waiting on the review step after you return.
@@ -227,12 +260,26 @@ function SignupFormFields() {
       {notice ? (
         <p className="mt-6 text-sm text-muted" role="status">
           {notice}{" "}
-          <Link
-            href={getAuthPageHref("/login", destination, placeOrder ? "place-order" : null)}
-            className="font-medium text-accent hover:text-accent-hover"
-          >
-            Go to login
-          </Link>
+          {onSwitchToLogin ? (
+            <button
+              type="button"
+              className="font-medium text-accent hover:text-accent-hover"
+              onClick={onSwitchToLogin}
+            >
+              Go to login
+            </button>
+          ) : (
+            <Link
+              href={getAuthPageHref(
+                "/login",
+                destination,
+                placeOrder ? "place-order" : null,
+              )}
+              className="font-medium text-accent hover:text-accent-hover"
+            >
+              Go to login
+            </Link>
+          )}
         </p>
       ) : (
         <p className="mt-6 text-sm text-muted">
@@ -245,19 +292,47 @@ function SignupFormFields() {
         {submitting ? "Creating account…" : "Sign up"}
       </Button>
 
-      <OAuthButtons nextPath={destination} disabled={submitting} />
+      <OAuthButtons
+        nextPath={destination}
+        disabled={submitting}
+        onBeforeStart={onBeforeOAuth}
+      />
 
       <p className="mt-6 text-center text-sm text-muted">
         Already have an account?{" "}
-        <Link
-          href={getAuthPageHref("/login", destination, placeOrder ? "place-order" : null)}
-          className="font-medium text-accent hover:text-accent-hover"
-        >
-          Log in
-        </Link>
+        {onSwitchToLogin ? (
+          <button
+            type="button"
+            className="font-medium text-accent hover:text-accent-hover"
+            onClick={onSwitchToLogin}
+          >
+            Log in
+          </button>
+        ) : (
+          <Link
+            href={getAuthPageHref(
+              "/login",
+              destination,
+              placeOrder ? "place-order" : null,
+            )}
+            className="font-medium text-accent hover:text-accent-hover"
+          >
+            Log in
+          </Link>
+        )}
       </p>
     </form>
   );
+}
+
+function SignupFormFields() {
+  const searchParams = useSearchParams();
+  const destination = getSafeNextPath(searchParams.get("next"));
+  const placeOrder =
+    isPlaceOrderAuthReason(searchParams.get("reason")) ||
+    getPathnameFromNext(destination) === "/start-project";
+
+  return <SignupPanel nextPath={destination} placeOrder={placeOrder} />;
 }
 
 export function SignupForm() {

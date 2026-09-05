@@ -16,37 +16,45 @@ import {
 } from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { cn } from "@/lib/utils";
 
 type LoginErrors = {
   email?: string;
   password?: string;
 };
 
-function LoginFormFields() {
-  const searchParams = useSearchParams();
+export type LoginPanelProps = {
+  nextPath: string;
+  placeOrder?: boolean;
+  embedded?: boolean;
+  idPrefix?: string;
+  initialError?: string | null;
+  initialNotice?: string | null;
+  onSuccess?: () => void;
+  onSwitchToSignup?: () => void;
+  onBeforeOAuth?: () => void;
+};
+
+export function LoginPanel({
+  nextPath,
+  placeOrder = false,
+  embedded = false,
+  idPrefix = "",
+  initialError = null,
+  initialNotice = null,
+  onSuccess,
+  onSwitchToSignup,
+  onBeforeOAuth,
+}: LoginPanelProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<LoginErrors>({});
-  const [formError, setFormError] = useState<string | null>(() => {
-    const error = searchParams.get("error");
-    if (error === "oauth") {
-      return "Could not complete Google or GitHub sign-in. Please try again.";
-    }
-    if (error === "verification") {
-      return "Could not verify your email. Request a new verification link by signing up again, or contact support.";
-    }
-    return null;
-  });
-  const [notice, setNotice] = useState<string | null>(
-    searchParams.get("verified") === "1"
-      ? "Email verified. You can log in."
-      : null,
-  );
+  const [formError, setFormError] = useState<string | null>(initialError);
+  const [notice, setNotice] = useState<string | null>(initialNotice);
   const [submitting, setSubmitting] = useState(false);
-  const destination = getSafeNextPath(searchParams.get("next"));
-  const placeOrder =
-    isPlaceOrderAuthReason(searchParams.get("reason")) ||
-    getPathnameFromNext(destination) === "/start-project";
+  const destination = getSafeNextPath(nextPath);
+  const emailId = `${idPrefix}email`;
+  const passwordId = `${idPrefix}password`;
 
   function validate(): LoginErrors {
     const nextErrors: LoginErrors = {};
@@ -110,6 +118,11 @@ function LoginFormFields() {
         }
       }
 
+      if (onSuccess) {
+        onSuccess();
+        return;
+      }
+
       window.location.assign(destination);
     } catch (err) {
       console.error(err);
@@ -122,12 +135,14 @@ function LoginFormFields() {
     <form
       onSubmit={handleSubmit}
       noValidate
-      className="rounded-3xl border border-card-border bg-card p-5 sm:p-8"
+      className={cn(
+        !embedded && "rounded-3xl border border-card-border bg-card p-5 sm:p-8",
+      )}
     >
       <div className="grid gap-5">
-        <Field id="email" label="Email" required error={errors.email}>
+        <Field id={emailId} label="Email" required error={errors.email}>
           <TextInput
-            id="email"
+            id={emailId}
             name="email"
             type="email"
             autoComplete="email"
@@ -139,9 +154,9 @@ function LoginFormFields() {
             error={errors.email}
           />
         </Field>
-        <Field id="password" label="Password" required error={errors.password}>
+        <Field id={passwordId} label="Password" required error={errors.password}>
           <TextInput
-            id="password"
+            id={passwordId}
             name="password"
             type="password"
             autoComplete="current-password"
@@ -155,7 +170,7 @@ function LoginFormFields() {
         </Field>
       </div>
 
-      {placeOrder ? (
+      {placeOrder && !embedded ? (
         <p className="mt-6 text-sm text-muted" role="status">
           Sign in to place your project order. Your answers are saved and will
           be waiting on the review step after you return.
@@ -177,18 +192,62 @@ function LoginFormFields() {
         {submitting ? "Logging in…" : "Log in"}
       </Button>
 
-      <OAuthButtons nextPath={destination} disabled={submitting} />
+      <OAuthButtons
+        nextPath={destination}
+        disabled={submitting}
+        onBeforeStart={onBeforeOAuth}
+      />
 
       <p className="mt-6 text-center text-sm text-muted">
         Need an account?{" "}
-        <Link
-          href={getAuthPageHref("/signup", destination, placeOrder ? "place-order" : null)}
-          className="font-medium text-accent hover:text-accent-hover"
-        >
-          Sign up
-        </Link>
+        {onSwitchToSignup ? (
+          <button
+            type="button"
+            className="font-medium text-accent hover:text-accent-hover"
+            onClick={onSwitchToSignup}
+          >
+            Sign up
+          </button>
+        ) : (
+          <Link
+            href={getAuthPageHref(
+              "/signup",
+              destination,
+              placeOrder ? "place-order" : null,
+            )}
+            className="font-medium text-accent hover:text-accent-hover"
+          >
+            Sign up
+          </Link>
+        )}
       </p>
     </form>
+  );
+}
+
+function LoginFormFields() {
+  const searchParams = useSearchParams();
+  const destination = getSafeNextPath(searchParams.get("next"));
+  const placeOrder =
+    isPlaceOrderAuthReason(searchParams.get("reason")) ||
+    getPathnameFromNext(destination) === "/start-project";
+  const error = searchParams.get("error");
+  const initialError =
+    error === "oauth"
+      ? "Could not complete Google or GitHub sign-in. Please try again."
+      : error === "verification"
+        ? "Could not verify your email. Request a new verification link by signing up again, or contact support."
+        : null;
+  const initialNotice =
+    searchParams.get("verified") === "1" ? "Email verified. You can log in." : null;
+
+  return (
+    <LoginPanel
+      nextPath={destination}
+      placeOrder={placeOrder}
+      initialError={initialError}
+      initialNotice={initialNotice}
+    />
   );
 }
 
