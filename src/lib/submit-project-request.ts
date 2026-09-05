@@ -50,12 +50,15 @@ export async function submitProjectRequest(
     };
   }
 
-  const payload = toProjectRequestInsert(
-    data,
-    generateRequestNumber(),
-    config,
-    serviceId,
-  );
+  const payload = {
+    ...toProjectRequestInsert(
+      data,
+      generateRequestNumber(),
+      config,
+      serviceId,
+    ),
+    client_id: user.id,
+  };
 
   for (let attempt = 0; attempt < MAX_REQUEST_NUMBER_ATTEMPTS; attempt += 1) {
     const insertPayload =

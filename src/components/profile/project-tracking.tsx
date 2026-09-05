@@ -13,11 +13,15 @@ export async function ProjectTracking() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("projects")
     .select(`*, invoices(amount_paid, amount_due)`)
     .eq("client_id", user.id)
     .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[ProjectTracking] failed to load projects for", user.id, error);
+  }
 
   const projects = (data || []) as ProjectWithFinancials[];
 
@@ -32,7 +36,11 @@ export async function ProjectTracking() {
       </div>
 
       <div className="mt-6">
-        {projects.length === 0 ? (
+        {error ? (
+          <div className="rounded-xl border border-dashed border-destructive/40 p-6 text-center">
+            <p className="text-sm text-destructive">Could not load your projects right now. Please try again shortly.</p>
+          </div>
+        ) : projects.length === 0 ? (
           <div className="rounded-xl border border-dashed border-card-border p-6 text-center">
             <p className="text-sm text-muted">You have no active projects currently.</p>
           </div>
