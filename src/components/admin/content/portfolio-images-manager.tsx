@@ -81,7 +81,7 @@ export function PortfolioImagesManager({
       <header className="mb-4">
         <h3 className="font-display text-lg text-foreground">Gallery images</h3>
         <p className="mt-1 text-sm text-muted">
-          Images are stored in Supabase Storage (bucket: portfolio-images). Reorder with the
+          Images are stored in the photos bucket under photos/portfolio/. Reorder with the
           arrows, edit alt text, then save; or remove an image.
         </p>
       </header>
@@ -166,7 +166,7 @@ export function PortfolioImagesManager({
           <input
             name="file"
             type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+            accept="image/*"
             className="text-sm text-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-foreground file:px-3 file:py-2 file:text-xs file:font-medium file:text-background"
           />
         </div>

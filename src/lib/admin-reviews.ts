@@ -110,6 +110,7 @@ export async function getAdminReviews(
     const project = projectRefs.get(row.project_id);
     return {
       ...row,
+      photo_url: row.photo_url ?? null,
       clientName: client?.name ?? "Unknown client",
       clientCompany: client?.company ?? null,
       projectNumber: project?.project_number ?? "—",

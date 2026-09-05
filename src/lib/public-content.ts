@@ -1,5 +1,6 @@
 import { createPublicSupabaseClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { resolvePublicImageUrl } from "@/lib/photos";
 import type { Project, Service } from "@/types";
 import type {
   PortfolioProjectRow,
@@ -65,7 +66,7 @@ function toPublicProject(row: PortfolioProjectRow): Project {
     title: row.title,
     description: row.description || row.short_description || "",
     category: row.category || null,
-    image: row.thumbnail_url,
+    image: resolvePublicImageUrl(row.thumbnail_url),
     technologies: row.technologies ?? [],
     liveUrl: row.live_url,
     githubUrl: row.github_url,
@@ -130,6 +131,7 @@ function toPublicService(
     estimatedDaysMax: row.estimated_days_max,
     features,
     featured: row.featured,
+    image: resolvePublicImageUrl(row.image_url),
   };
 }
 

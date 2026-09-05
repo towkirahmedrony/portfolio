@@ -1,4 +1,9 @@
 import type { QueryResult } from "@/lib/admin-project-constants";
+import {
+  PHOTO_MAX_BYTES,
+  PHOTO_MIME_TYPES,
+  PHOTOS_BUCKET,
+} from "@/lib/photos";
 import type {
   PortfolioProjectImageRow,
   PortfolioProjectRow,
@@ -7,18 +12,13 @@ import type {
 } from "@/types/database";
 
 export { formatDate, formatDateTime } from "@/lib/admin-project-constants";
+export { isValidImageFile } from "@/lib/photos";
 export type { QueryResult };
 
-/** Storage bucket used for portfolio gallery images (must be public + allow authenticated uploads in Supabase). */
-export const PORTFOLIO_IMAGE_BUCKET = "portfolio-images";
-export const CONTENT_IMAGE_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
-export const CONTENT_IMAGE_MIME_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-  "image/avif",
-] as const;
+/** Storage bucket used for admin CMS photos (dashboard-created, public read). */
+export const PORTFOLIO_IMAGE_BUCKET = PHOTOS_BUCKET;
+export const CONTENT_IMAGE_MAX_BYTES = PHOTO_MAX_BYTES;
+export const CONTENT_IMAGE_MIME_TYPES = PHOTO_MIME_TYPES;
 
 export const PORTFOLIO_CATEGORY_SUGGESTIONS = [
   "Business",
@@ -69,19 +69,6 @@ export function isValidHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
-}
-
-export function isValidImageFile(file: File): string | null {
-  if (file.size === 0) {
-    return "Choose a non-empty image file.";
-  }
-  if (file.size > CONTENT_IMAGE_MAX_BYTES) {
-    return `Image must be smaller than ${Math.round(CONTENT_IMAGE_MAX_BYTES / 1024 / 1024)} MB.`;
-  }
-  if (!(CONTENT_IMAGE_MIME_TYPES as readonly string[]).includes(file.type)) {
-    return "Unsupported image type. Use PNG, JPEG, WebP, GIF or AVIF.";
-  }
-  return null;
 }
 
 export function buildPortfolioHref(filters: ContentListFilters): string {

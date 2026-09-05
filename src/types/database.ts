@@ -151,6 +151,7 @@ export type ServiceRow = {
   published: boolean;
   featured: boolean;
   sort_order: number;
+  image_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -254,6 +255,7 @@ export type ReviewRow = {
   status: ReviewStatus;
   submitted_at: string;
   published_at: string | null;
+  photo_url: string | null;
 };
 
 export type ProfileRow = {
@@ -1000,6 +1002,10 @@ export type Database = {
       };
       admin_set_client_email_verified: {
         Args: { p_client_id: string; p_email_verified: boolean };
+        Returns: undefined;
+      };
+      admin_set_client_avatar_url: {
+        Args: { p_client_id: string; p_avatar_url: string | null };
         Returns: undefined;
       };
       admin_update_referral_settings: {

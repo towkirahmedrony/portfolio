@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/require-admin";
+import { isValidHttpUrl } from "@/lib/admin-content-constants";
 import {
   applyModerationAction,
   isReviewModerationAction,
   type ReviewModerationAction,
 } from "@/lib/admin-review-constants";
+import { removeStorageObject } from "@/lib/photo-storage";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -60,6 +62,48 @@ export async function moderateReview(formData: FormData): Promise<ActionResult> 
 
   if (updateError) {
     return { ok: false, error: updateError.message };
+  }
+
+  revalidatePath("/admin/reviews");
+  return { ok: true };
+}
+
+export async function saveReviewPhoto(
+  reviewId: string,
+  photoUrl: string | null,
+): Promise<ActionResult> {
+  await requireAdmin();
+  if (!reviewId) {
+    return { ok: false, error: "Missing review." };
+  }
+  if (photoUrl && !isValidHttpUrl(photoUrl)) {
+    return { ok: false, error: "Review photo must be a valid http(s) URL." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data: review, error } = await supabase
+    .from("reviews")
+    .select("id, photo_url")
+    .eq("id", reviewId)
+    .maybeSingle();
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  if (!review) {
+    return { ok: false, error: "Review not found." };
+  }
+
+  const previous = (review as { photo_url?: string | null }).photo_url ?? null;
+  const { error: updateError } = await supabase
+    .from("reviews")
+    .update({ photo_url: photoUrl })
+    .eq("id", reviewId);
+  if (updateError) {
+    return { ok: false, error: updateError.message };
+  }
+
+  if (previous && previous !== photoUrl) {
+    await removeStorageObject(previous);
   }
 
   revalidatePath("/admin/reviews");

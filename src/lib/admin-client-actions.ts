@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/require-admin";
+import { isValidHttpUrl } from "@/lib/admin-content-constants";
+import { removeStorageObject } from "@/lib/photo-storage";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -79,6 +81,48 @@ export async function setClientEmailVerified(
 
   if (error) {
     return { ok: false, error: error.message };
+  }
+
+  revalidateClient(clientId);
+  return { ok: true };
+}
+
+export async function saveClientAvatar(
+  clientId: string,
+  avatarUrl: string | null,
+): Promise<ActionResult> {
+  await requireAdmin();
+  if (!clientId) {
+    return { ok: false, error: "Missing client." };
+  }
+  if (avatarUrl && !isValidHttpUrl(avatarUrl)) {
+    return { ok: false, error: "Avatar must be a valid http(s) URL." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data: existing, error: lookupError } = await supabase
+    .from("profiles")
+    .select("avatar_url")
+    .eq("id", clientId)
+    .maybeSingle();
+  if (lookupError) {
+    return { ok: false, error: lookupError.message };
+  }
+  if (!existing) {
+    return { ok: false, error: "Client not found." };
+  }
+
+  const previous = (existing as { avatar_url: string | null }).avatar_url;
+  const { error } = await supabase.rpc("admin_set_client_avatar_url", {
+    p_client_id: clientId,
+    p_avatar_url: avatarUrl,
+  });
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  if (previous && previous !== avatarUrl) {
+    await removeStorageObject(previous);
   }
 
   revalidateClient(clientId);
