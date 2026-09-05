@@ -131,7 +131,8 @@ export async function getCustomerProjectRequests(
 ): Promise<CustomerProjectRequestItem[]> {
   const supabase = await createServerSupabaseClient();
 
-  let requestResult = await supabase
+  // Added ': any' to prevent TS2322 mismatch between the two different select query outputs
+  let requestResult: any = await supabase
     .from("project_requests")
     .select(REQUEST_COLUMNS)
     .eq("client_id", userId)
