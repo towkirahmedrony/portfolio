@@ -129,7 +129,7 @@ export function PhotoUploadField({
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={url}
+            src={url.trim()}
             alt=""
             className="h-20 w-28 shrink-0 rounded-lg border border-card-border object-cover"
           />
