@@ -29,6 +29,26 @@ export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
   cancelled: "Cancelled",
 };
 
+export const CLIENT_REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
+  new: "New",
+  reviewing: "Under Review",
+  quoted: "Quote Ready",
+  approved: "Approved",
+  rejected: "Rejected",
+  converted: "Project Started",
+  cancelled: "Cancelled",
+};
+
+export const CLIENT_CANCELLABLE_REQUEST_STATUSES: RequestStatus[] = [
+  "new",
+  "reviewing",
+  "quoted",
+];
+
+export function canClientCancelRequest(status: RequestStatus): boolean {
+  return CLIENT_CANCELLABLE_REQUEST_STATUSES.includes(status);
+}
+
 export const REQUEST_STATUS_STYLES: Record<RequestStatus, string> = {
   new: "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:text-blue-400",
   reviewing: "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400",
@@ -69,6 +89,13 @@ export type AdminProjectRequestDetail = ProjectRequestRow & {
 
 export function isRequestStatus(value: string): value is RequestStatus {
   return REQUEST_STATUSES.includes(value as RequestStatus);
+}
+
+export function formatClientRequestStatusLabel(status: string): string {
+  if (isRequestStatus(status)) {
+    return CLIENT_REQUEST_STATUS_LABELS[status];
+  }
+  return status.replace(/_/g, " ");
 }
 
 export function formatRequestStatusLabel(status: string): string {

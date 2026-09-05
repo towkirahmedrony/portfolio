@@ -18,8 +18,10 @@ function revalidateRequest(requestId: string, projectId?: string) {
   revalidatePath("/admin/project-requests");
   revalidatePath(`/admin/project-requests/${requestId}`);
   revalidatePath("/admin/projects");
+  revalidatePath("/profile");
   if (projectId) {
     revalidatePath(`/admin/projects/${projectId}`);
+    revalidatePath(`/profile/projects/${projectId}`);
   }
 }
 

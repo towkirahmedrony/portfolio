@@ -1022,6 +1022,10 @@ export type Database = {
         Args: { p_request_id: string };
         Returns: string;
       };
+      cancel_own_project_request: {
+        Args: { p_request_id: string };
+        Returns: RequestStatus;
+      };
     };
     Enums: {
       profile_role: ProfileRole;
