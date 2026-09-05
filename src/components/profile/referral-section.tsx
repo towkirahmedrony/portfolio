@@ -64,7 +64,13 @@ export function ReferralSection({ referral }: { referral: CustomerReferral }) {
       >
         <div className="flex items-center gap-3">
           <h3 className="font-display text-xl tracking-tight">Referrals</h3>
-          <Badge>{referral.code ? "Your code" : "Unavailable"}</Badge>
+          <Badge>
+            {referral.code
+              ? referral.codeActive
+                ? "Your code"
+                : "Inactive"
+              : "Unavailable"}
+          </Badge>
         </div>
 
         <div className="flex items-center gap-2 text-sm text-muted">
@@ -90,8 +96,9 @@ export function ReferralSection({ referral }: { referral: CustomerReferral }) {
       {isOpen && (
         <div className="mt-4 border-t border-card-border pt-4 animate-in fade-in duration-200">
           <p className="max-w-2xl text-sm leading-6 text-muted">
-            Share your referral code with another client. Reward history is not
-            connected yet and will later come from the database.
+            Share your referral code with another client. When a referred
+            client starts their first project, the referral and any reward are
+            tracked here from your account data.
           </p>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -106,7 +113,7 @@ export function ReferralSection({ referral }: { referral: CustomerReferral }) {
                 variant="secondary"
                 className="mt-4"
                 onClick={() => handleCopy("code")}
-                disabled={!referral.code}
+                disabled={!referral.code || !referral.codeActive}
               >
                 {copied === "code" ? "Copied" : "Copy code"}
               </Button>
@@ -123,7 +130,7 @@ export function ReferralSection({ referral }: { referral: CustomerReferral }) {
                 variant="secondary"
                 className="mt-4"
                 onClick={() => handleCopy("link")}
-                disabled={!referral.link}
+                disabled={!referral.link || !referral.codeActive}
               >
                 {copied === "link" ? "Copied" : "Copy link"}
               </Button>
@@ -159,7 +166,13 @@ export function ReferralSection({ referral }: { referral: CustomerReferral }) {
                     className="flex flex-col gap-1 bg-background px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div>
-                      <p className="text-sm font-medium">{item.referredName}</p>
+                      {item.referredName ? (
+                        <p className="text-sm font-medium">{item.referredName}</p>
+                      ) : (
+                        <p className="text-sm font-medium text-muted">
+                          Referred client
+                        </p>
+                      )}
                       <p className="text-xs text-muted">{item.date}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -173,8 +186,8 @@ export function ReferralSection({ referral }: { referral: CustomerReferral }) {
               </ul>
             ) : (
               <p className="mt-4 rounded-xl border border-card-border bg-background px-4 py-4 text-sm text-muted">
-                Referral history will appear here once the referral system is
-                connected.
+                No referrals yet. Share your code with a new client to start
+                tracking.
               </p>
             )}
           </div>

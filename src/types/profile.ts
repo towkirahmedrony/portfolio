@@ -28,7 +28,8 @@ export type CustomerAccount = {
 
 export type ReferralHistoryItem = {
   id: string;
-  referredName: string;
+  /** Referred client display name. Only populated when the database exposes it. */
+  referredName: string | null;
   status: string;
   rewardPercent: number;
   date: string;
@@ -36,6 +37,8 @@ export type ReferralHistoryItem = {
 
 export type CustomerReferral = {
   code: string;
+  /** Whether the current referral code is active and can be shared. */
+  codeActive: boolean;
   link: string;
   totalReferrals: number;
   qualifiedReferrals: number;
