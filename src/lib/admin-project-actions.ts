@@ -10,6 +10,7 @@ import {
   isProjectStatus,
   PROJECT_FILE_BUCKET,
 } from "@/lib/admin-project-constants";
+import { buildPhotoObjectPath, isValidImageFile, PHOTOS_BUCKET } from "@/lib/photos";
 import type { FileCategory, MilestoneStatus, ProjectPriority, ProjectStatus } from "@/types/database";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -393,12 +394,15 @@ export async function uploadProjectFile(formData: FormData): Promise<ActionResul
   }
 
   const category = categoryRaw as FileCategory;
-  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
-  const storagePath = `${projectId}/${Date.now()}-${safeName}`;
+  const isImage = file.type.startsWith("image/") && isValidImageFile(file) == null;
+  const bucketName = isImage ? PHOTOS_BUCKET : PROJECT_FILE_BUCKET;
+  const storagePath = isImage
+    ? buildPhotoObjectPath("projects", file.name, projectId)
+    : `${projectId}/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_")}`;
   const supabase = await createServerSupabaseClient();
 
   const { error: uploadError } = await supabase.storage
-    .from(PROJECT_FILE_BUCKET)
+    .from(bucketName)
     .upload(storagePath, file, {
       contentType: file.type || undefined,
       upsert: false,
@@ -407,14 +411,14 @@ export async function uploadProjectFile(formData: FormData): Promise<ActionResul
   if (uploadError) {
     return {
       ok: false,
-      error: `Storage upload failed: ${uploadError.message}. Confirm the "${PROJECT_FILE_BUCKET}" bucket exists.`,
+      error: `Storage upload failed: ${uploadError.message}. Confirm the "${bucketName}" bucket exists.`,
     };
   }
 
   const { error } = await supabase.from("project_files").insert({
     project_id: projectId,
     uploaded_by: admin.id,
-    bucket_name: PROJECT_FILE_BUCKET,
+    bucket_name: bucketName,
     storage_path: storagePath,
     original_name: file.name,
     mime_type: file.type || null,

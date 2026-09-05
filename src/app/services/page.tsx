@@ -58,6 +58,16 @@ function ServiceCard({ service }: { service: Service }) {
   return (
     <Card className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
       <div>
+        {service.image ? (
+          <div className="relative mb-6 aspect-[16/9] overflow-hidden rounded-2xl bg-accent-soft">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={service.image}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          </div>
+        ) : null}
         <h2 className="font-display text-2xl tracking-tight">{service.title}</h2>
         {service.description || service.shortDescription ? (
           <p className="mt-4 text-sm leading-7 text-muted sm:text-base">

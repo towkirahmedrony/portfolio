@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { PhotoUploadField } from "@/components/admin/photo-upload-field";
 import { ActionForm, SubmitButton } from "@/components/admin/projects/action-form";
 import { ConfirmSubmitButton } from "@/components/admin/projects/confirm-button";
 import { StatusPill } from "@/components/admin/projects/query-state";
-import { moderateReview } from "@/lib/admin-review-actions";
+import { moderateReview, saveReviewPhoto } from "@/lib/admin-review-actions";
 import {
   allowedModerationActions,
   formatDate,
@@ -79,6 +80,16 @@ export function ReviewCard({ review }: { review: AdminReviewItem }) {
         <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-muted">
           {review.review}
         </p>
+        <div className="mt-4">
+          <PhotoUploadField
+            folder="reviews"
+            entityId={review.id}
+            currentUrl={review.photo_url}
+            label="Review photo"
+            hint="Optional photo shown with this review. Upload from your gallery or files."
+            persist={saveReviewPhoto.bind(null, review.id)}
+          />
+        </div>
       </div>
 
       <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-card-border/60 pt-3">

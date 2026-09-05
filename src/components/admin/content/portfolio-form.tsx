@@ -1,5 +1,6 @@
+import { PhotoUploadField } from "@/components/admin/photo-upload-field";
 import { ActionForm, SubmitButton } from "@/components/admin/projects/action-form";
-import { savePortfolioProject } from "@/lib/admin-content-actions";
+import { savePortfolioProject, savePortfolioThumbnail } from "@/lib/admin-content-actions";
 import { PORTFOLIO_CATEGORY_SUGGESTIONS } from "@/lib/admin-content-constants";
 import type { PortfolioProjectRow } from "@/types/database";
 
@@ -109,16 +110,15 @@ export function PortfolioProjectForm({
               className={fieldClass}
             />
           </label>
-          <label className={`${labelClass} sm:col-span-2`}>
-            <span className={inputLabel}>Thumbnail URL</span>
-            <input
-              name="thumbnail_url"
-              type="url"
-              defaultValue={project?.thumbnail_url ?? ""}
-              placeholder="https://…/thumbnail.png (or use a gallery image URL)"
-              className={fieldClass}
-            />
-          </label>
+          <PhotoUploadField
+            folder="portfolio"
+            entityId={project?.id}
+            name="thumbnail_url"
+            currentUrl={project?.thumbnail_url}
+            label="Thumbnail"
+            hint="Upload from your gallery or files. The URL is saved automatically."
+            persist={project ? savePortfolioThumbnail.bind(null, project.id) : undefined}
+          />
         </div>
 
         <div className="mt-5 grid gap-4 rounded-2xl border border-card-border bg-background p-4 sm:grid-cols-3">

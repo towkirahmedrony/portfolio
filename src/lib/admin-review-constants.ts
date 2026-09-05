@@ -149,6 +149,7 @@ export type AdminReviewItem = {
   status: ReviewStatus;
   submitted_at: string;
   published_at: string | null;
+  photo_url: string | null;
   clientName: string;
   clientCompany: string | null;
   projectNumber: string;

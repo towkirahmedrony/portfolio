@@ -1,5 +1,6 @@
+import { PhotoUploadField } from "@/components/admin/photo-upload-field";
 import { ActionForm, SubmitButton } from "@/components/admin/projects/action-form";
-import { saveService } from "@/lib/admin-content-actions";
+import { saveService, saveServiceImage } from "@/lib/admin-content-actions";
 import type { ServiceRow } from "@/types/database";
 
 const fieldClass =
@@ -98,6 +99,15 @@ export function ServiceForm({
               className={fieldClass}
             />
           </label>
+          <PhotoUploadField
+            folder="services"
+            entityId={service?.id}
+            name="image_url"
+            currentUrl={service?.image_url}
+            label="Service photo"
+            hint="Upload from your gallery or files. The URL is saved automatically."
+            persist={service ? saveServiceImage.bind(null, service.id) : undefined}
+          />
           <label className={labelClass}>
             <span className={inputLabel}>Estimated days (max)</span>
             <input

@@ -3,13 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/require-admin";
+import { removeStorageObject } from "@/lib/photo-storage";
+import {
+  buildPhotoObjectPath,
+  isValidImageFile,
+  PHOTOS_BUCKET,
+  photosPublicUrl,
+} from "@/lib/photos";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { supabaseUrl } from "@/lib/supabase/env";
 import {
   isValidHttpUrl,
-  isValidImageFile,
   isValidSlugFormat,
-  PORTFOLIO_IMAGE_BUCKET,
   slugify,
 } from "@/lib/admin-content-constants";
 
@@ -49,27 +53,6 @@ function parseStringList(value: string): string[] {
     .filter(Boolean);
 }
 
-function safeFileName(name: string): string {
-  return name.replace(/[^\w.\-]+/g, "_").slice(0, 120);
-}
-
-function storageObjectPath(imageUrl: string): { bucket: string; path: string } | null {
-  const prefix = `${supabaseUrl}/storage/v1/object/public/`;
-  if (!imageUrl.startsWith(prefix)) {
-    return null;
-  }
-  const rest = imageUrl.slice(prefix.length);
-  const slash = rest.indexOf("/");
-  if (slash <= 0) {
-    return null;
-  }
-  return { bucket: rest.slice(0, slash), path: rest.slice(slash + 1) };
-}
-
-function storagePublicUrl(bucket: string, path: string): string {
-  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
-}
-
 async function assertUniqueSlug(
   table: "portfolio_projects" | "services",
   slug: string,
@@ -98,6 +81,15 @@ function validateUrls(
     }
   }
   return null;
+}
+
+async function replaceManagedImage(
+  previousUrl: string | null,
+  nextUrl: string | null,
+): Promise<void> {
+  if (previousUrl && previousUrl !== nextUrl) {
+    await removeStorageObject(previousUrl);
+  }
 }
 
 // ── Portfolio ─────────────────────────────────────────────────────────────
@@ -139,6 +131,17 @@ export async function savePortfolioProject(formData: FormData): Promise<ActionRe
     return { ok: false, error: uniqueError };
   }
 
+  const supabase = await createServerSupabaseClient();
+  let previousThumbnail: string | null = null;
+  if (id) {
+    const { data: existing } = await supabase
+      .from("portfolio_projects")
+      .select("thumbnail_url")
+      .eq("id", id)
+      .maybeSingle();
+    previousThumbnail = (existing as { thumbnail_url: string | null } | null)?.thumbnail_url ?? null;
+  }
+
   const payload = {
     title,
     slug,
@@ -154,7 +157,6 @@ export async function savePortfolioProject(formData: FormData): Promise<ActionRe
     sort_order: sortOrder,
   };
 
-  const supabase = await createServerSupabaseClient();
   const { data: saved, error } = id
     ? await supabase
         .from("portfolio_projects")
@@ -175,8 +177,12 @@ export async function savePortfolioProject(formData: FormData): Promise<ActionRe
     return { ok: false, error: "Project not found." };
   }
 
+  await replaceManagedImage(previousThumbnail, thumbnailUrl);
+
   revalidatePath("/admin/portfolio");
   revalidatePath(`/admin/portfolio/${saved.id}`);
+  revalidatePath("/");
+  revalidatePath("/projects");
   if (!id) {
     redirect(`/admin/portfolio/${saved.id}`);
   }
@@ -270,6 +276,11 @@ export async function deletePortfolioProject(formData: FormData): Promise<Action
   }
 
   const supabase = await createServerSupabaseClient();
+  const { data: project } = await supabase
+    .from("portfolio_projects")
+    .select("thumbnail_url")
+    .eq("id", id)
+    .maybeSingle();
   const { data: images, error: imagesError } = await supabase
     .from("portfolio_project_images")
     .select("id, image_url")
@@ -279,11 +290,9 @@ export async function deletePortfolioProject(formData: FormData): Promise<Action
     return { ok: false, error: imagesError.message };
   }
 
+  await removeStorageObject((project as { thumbnail_url: string | null } | null)?.thumbnail_url);
   for (const image of (images ?? []) as Array<{ id: string; image_url: string }>) {
-    const object = storageObjectPath(image.image_url);
-    if (object && object.bucket === PORTFOLIO_IMAGE_BUCKET) {
-      await supabase.storage.from(object.bucket).remove([object.path]);
-    }
+    await removeStorageObject(image.image_url);
   }
 
   const { error } = await supabase.from("portfolio_projects").delete().eq("id", id);
@@ -316,9 +325,9 @@ export async function addPortfolioImage(formData: FormData): Promise<ActionResul
   }
 
   const supabase = await createServerSupabaseClient();
-  const storagePath = `${projectId}/${Date.now()}-${safeFileName(file.name)}`;
+  const storagePath = buildPhotoObjectPath("portfolio", file.name, projectId);
   const { error: uploadError } = await supabase.storage
-    .from(PORTFOLIO_IMAGE_BUCKET)
+    .from(PHOTOS_BUCKET)
     .upload(storagePath, file, {
       contentType: file.type || undefined,
       upsert: false,
@@ -327,7 +336,7 @@ export async function addPortfolioImage(formData: FormData): Promise<ActionResul
   if (uploadError) {
     return {
       ok: false,
-      error: `Storage upload failed: ${uploadError.message}. Make sure a public "${PORTFOLIO_IMAGE_BUCKET}" bucket exists and allows authenticated uploads.`,
+      error: `Storage upload failed: ${uploadError.message}. Make sure the public "${PHOTOS_BUCKET}" bucket exists and allows admin uploads.`,
     };
   }
 
@@ -338,17 +347,19 @@ export async function addPortfolioImage(formData: FormData): Promise<ActionResul
 
   const { error } = await supabase.from("portfolio_project_images").insert({
     portfolio_project_id: projectId,
-    image_url: storagePublicUrl(PORTFOLIO_IMAGE_BUCKET, storagePath),
+    image_url: photosPublicUrl(storagePath),
     alt_text: alt || null,
     sort_order: count ?? 0,
   });
 
   if (error) {
-    await supabase.storage.from(PORTFOLIO_IMAGE_BUCKET).remove([storagePath]);
+    await supabase.storage.from(PHOTOS_BUCKET).remove([storagePath]);
     return { ok: false, error: error.message };
   }
 
   revalidatePath(`/admin/portfolio/${projectId}`);
+  revalidatePath("/");
+  revalidatePath("/projects");
   return { ok: true };
 }
 
@@ -402,10 +413,7 @@ export async function removePortfolioImage(imageId: string): Promise<ActionResul
     return { ok: false, error: "Image not found." };
   }
 
-  const object = storageObjectPath(image.image_url);
-  if (object && object.bucket === PORTFOLIO_IMAGE_BUCKET) {
-    await supabase.storage.from(object.bucket).remove([object.path]);
-  }
+  await removeStorageObject(image.image_url);
 
   const { error } = await supabase.from("portfolio_project_images").delete().eq("id", imageId);
   if (error) {
@@ -413,6 +421,92 @@ export async function removePortfolioImage(imageId: string): Promise<ActionResul
   }
 
   revalidatePath(`/admin/portfolio/${image.portfolio_project_id}`);
+  revalidatePath("/");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+export async function savePortfolioThumbnail(
+  projectId: string,
+  thumbnailUrl: string | null,
+): Promise<ActionResult> {
+  await requireAdmin();
+  if (!projectId) {
+    return { ok: false, error: "Missing project." };
+  }
+  if (thumbnailUrl && !isValidHttpUrl(thumbnailUrl)) {
+    return { ok: false, error: "Thumbnail must be a valid http(s) URL." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data: existing, error: lookupError } = await supabase
+    .from("portfolio_projects")
+    .select("thumbnail_url")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (lookupError) {
+    return { ok: false, error: lookupError.message };
+  }
+  if (!existing) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  const previous = (existing as { thumbnail_url: string | null }).thumbnail_url;
+  const { error } = await supabase
+    .from("portfolio_projects")
+    .update({ thumbnail_url: thumbnailUrl })
+    .eq("id", projectId);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  await replaceManagedImage(previous, thumbnailUrl);
+  revalidatePath("/admin/portfolio");
+  revalidatePath(`/admin/portfolio/${projectId}`);
+  revalidatePath("/");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+export async function saveServiceImage(
+  serviceId: string,
+  imageUrl: string | null,
+): Promise<ActionResult> {
+  await requireAdmin();
+  if (!serviceId) {
+    return { ok: false, error: "Missing service." };
+  }
+  if (imageUrl && !isValidHttpUrl(imageUrl)) {
+    return { ok: false, error: "Service image must be a valid http(s) URL." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data: existing, error: lookupError } = await supabase
+    .from("services")
+    .select("image_url")
+    .eq("id", serviceId)
+    .maybeSingle();
+  if (lookupError) {
+    return { ok: false, error: lookupError.message };
+  }
+  if (!existing) {
+    return { ok: false, error: "Service not found." };
+  }
+
+  const previous = (existing as { image_url?: string | null }).image_url ?? null;
+  const { error } = await supabase
+    .from("services")
+    .update({ image_url: imageUrl })
+    .eq("id", serviceId);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  await replaceManagedImage(previous, imageUrl);
+  revalidatePath("/admin/services");
+  revalidatePath(`/admin/services/${serviceId}`);
+  revalidatePath("/");
+  revalidatePath("/services");
   return { ok: true };
 }
 
@@ -434,6 +528,7 @@ export async function saveService(formData: FormData): Promise<ActionResult> {
   const published = asCheckbox(formData.get("published"));
   const featured = asCheckbox(formData.get("featured"));
   const sortOrder = asOptionalInteger(formData.get("sort_order")) ?? 0;
+  const imageUrl = asOptionalString(formData.get("image_url"));
 
   if (!name) {
     return { ok: false, error: "Service name is required." };
@@ -466,6 +561,21 @@ export async function saveService(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: uniqueError };
   }
 
+  if (imageUrl && !isValidHttpUrl(imageUrl)) {
+    return { ok: false, error: "Service image must be a valid http(s) URL." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  let previousImage: string | null = null;
+  if (id) {
+    const { data: existing } = await supabase
+      .from("services")
+      .select("image_url")
+      .eq("id", id)
+      .maybeSingle();
+    previousImage = (existing as { image_url?: string | null } | null)?.image_url ?? null;
+  }
+
   const payload = {
     name,
     slug,
@@ -478,9 +588,9 @@ export async function saveService(formData: FormData): Promise<ActionResult> {
     published,
     featured,
     sort_order: sortOrder,
+    image_url: imageUrl,
   };
 
-  const supabase = await createServerSupabaseClient();
   const { data: saved, error } = id
     ? await supabase.from("services").update(payload).eq("id", id).select("id").maybeSingle()
     : await supabase.from("services").insert(payload).select("id").maybeSingle();
@@ -491,6 +601,8 @@ export async function saveService(formData: FormData): Promise<ActionResult> {
   if (!saved) {
     return { ok: false, error: "Service not found." };
   }
+
+  await replaceManagedImage(previousImage, imageUrl);
 
   revalidatePath("/admin/services");
   revalidatePath(`/admin/services/${saved.id}`);
@@ -587,6 +699,13 @@ export async function deleteService(formData: FormData): Promise<ActionResult> {
   }
 
   const supabase = await createServerSupabaseClient();
+  const { data: service } = await supabase
+    .from("services")
+    .select("image_url")
+    .eq("id", id)
+    .maybeSingle();
+  await removeStorageObject((service as { image_url?: string | null } | null)?.image_url);
+
   const { error } = await supabase.from("services").delete().eq("id", id);
   if (error) {
     return { ok: false, error: error.message };

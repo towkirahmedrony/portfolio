@@ -1,8 +1,13 @@
 import type { ReactNode } from "react";
+import { PhotoUploadField } from "@/components/admin/photo-upload-field";
 import { ActionForm } from "@/components/admin/projects/action-form";
 import { ConfirmSubmitButton } from "@/components/admin/projects/confirm-button";
 import { AdminPanel, StatusPill } from "@/components/admin/projects/query-state";
-import { setClientEmailVerified, setClientStatus } from "@/lib/admin-client-actions";
+import {
+  saveClientAvatar,
+  setClientEmailVerified,
+  setClientStatus,
+} from "@/lib/admin-client-actions";
 import {
   EMAIL_VERIFIED_STYLES,
   formatClientStatusLabel,
@@ -69,6 +74,16 @@ export function ClientAccountCard({ client }: { client: AdminClientDetail }) {
             {formatDateTime(client.last_seen_at)}
           </Field>
           <Field label="Last updated">{formatDateTime(client.updated_at)}</Field>
+          <div className="sm:col-span-2">
+            <PhotoUploadField
+              folder="clients"
+              entityId={client.id}
+              currentUrl={client.avatar_url}
+              label="Client photo"
+              hint="Upload from your gallery or files. Saved to this client immediately."
+              persist={saveClientAvatar.bind(null, client.id)}
+            />
+          </div>
         </dl>
       </AdminPanel>
 

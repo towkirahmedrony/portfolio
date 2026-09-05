@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
-import { getSafeNextPath } from "@/lib/auth";
+import { getSafeNextPath, isAdminPath } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const EMAIL_OTP_TYPES = new Set<EmailOtpType>([
@@ -61,6 +61,10 @@ export async function GET(request: Request) {
       await supabase.rpc("sync_customer_session");
     } catch {
       // Session is already established; profile sync retries on the next authenticated request.
+    }
+
+    if (isAdminPath(next)) {
+      return NextResponse.redirect(new URL("/profile", requestUrl.origin));
     }
   } catch {
     return redirectToLogin("oauth");

@@ -32,6 +32,7 @@ export type Service = {
   estimatedDaysMax: number | null;
   features: string[]; // service_features.feature, ordered by sort_order
   featured: boolean;
+  image: string | null;
 };
 
 export type SkillGroup = {

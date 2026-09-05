@@ -36,6 +36,16 @@ function HomeServiceCard({ service }: { service: Service }) {
 
   return (
     <Card>
+      {service.image ? (
+        <div className="relative mb-4 aspect-[16/9] overflow-hidden rounded-2xl bg-accent-soft">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={service.image}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        </div>
+      ) : null}
       <h3 className="font-display text-xl tracking-tight">{service.title}</h3>
       {blurb ? (
         <p className="mt-3 text-sm leading-6 text-muted">{blurb}</p>
