@@ -1,6 +1,7 @@
 "use client";
+
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,6 @@ type LoginErrors = {
 };
 
 function LoginFormFields() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -93,22 +93,18 @@ function LoginFormFields() {
         return;
       }
 
-      // ১. ডাটাবেজ ফাংশন দিয়ে আপডেট করার চেষ্টা
-      const { error: rpcError } = await supabase.rpc("sync_customer_session");
-      if (rpcError) {
-        console.error("RPC Error:", rpcError);
-      }
-      
-      // ২. সরাসরি আপডেট করার ফলব্যাক (যদি RPC কোনো কারণে কাজ না করে)
       if (authData?.user?.id) {
-        await supabase
-          .from("profiles")
-          .update({ last_seen_at: new Date().toISOString() })
-          .eq("id", authData.user.id);
+        try {
+          await supabase.rpc("sync_customer_session");
+        } catch {
+          await supabase
+            .from("profiles")
+            .update({ last_seen_at: new Date().toISOString() })
+            .eq("id", authData.user.id);
+        }
       }
 
-      router.push(destination);
-      router.refresh();
+      window.location.assign(destination);
     } catch (err) {
       console.error(err);
       setFormError("Could not log in. Please try again.");
