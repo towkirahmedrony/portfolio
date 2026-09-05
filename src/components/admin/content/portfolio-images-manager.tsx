@@ -92,7 +92,7 @@ export function PortfolioImagesManager({
             <li key={row.id} className="flex items-center gap-3 py-2.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={row.image_url}
+                src={row.image_url.trim()}
                 alt={row.alt_text ?? ""}
                 className="h-14 w-20 shrink-0 rounded-lg border border-card-border object-cover"
               />
