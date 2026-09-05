@@ -1,5 +1,7 @@
 import { supabaseUrl } from "@/lib/supabase/env";
 
+const cleanSupabaseUrl = (supabaseUrl || "").replace(/[\r\n\s]+/g, "");
+
 export const PHOTOS_BUCKET = "photos";
 export const LEGACY_PORTFOLIO_IMAGE_BUCKET = "portfolio-images";
 
@@ -55,25 +57,26 @@ export function buildPhotoObjectPath(
 }
 
 export function photosPublicUrl(path: string): string {
-  return `${supabaseUrl}/storage/v1/object/public/${PHOTOS_BUCKET}/${path}`;
+  const cleanPath = path.replace(/[\r\n\s]+/g, "");
+  return `${cleanSupabaseUrl}/storage/v1/object/public/${PHOTOS_BUCKET}/${cleanPath}`;
 }
 
 export function parseStorageObject(
   imageUrl: string | null | undefined,
 ): { bucket: string; path: string } | null {
-  if (!imageUrl || !supabaseUrl) {
+  if (!imageUrl || !cleanSupabaseUrl) {
     return null;
   }
 
-  const trimmed = imageUrl.trim();
+  const trimmed = imageUrl.replace(/[\r\n\s]+/g, "");
   if (!trimmed) {
     return null;
   }
 
   const prefixes = [
-    `${supabaseUrl}/storage/v1/object/public/`,
-    `${supabaseUrl}/storage/v1/object/sign/`,
-    `${supabaseUrl}/storage/v1/object/authenticated/`,
+    `${cleanSupabaseUrl}/storage/v1/object/public/`,
+    `${cleanSupabaseUrl}/storage/v1/object/sign/`,
+    `${cleanSupabaseUrl}/storage/v1/object/authenticated/`,
   ];
 
   for (const prefix of prefixes) {
@@ -110,7 +113,7 @@ export function resolvePublicImageUrl(value: string | null | undefined): string 
   if (!value) {
     return null;
   }
-  const trimmed = value.trim();
+  const trimmed = value.replace(/[\r\n\s]+/g, "");
   if (!trimmed) {
     return null;
   }
