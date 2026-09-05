@@ -24,6 +24,13 @@ export async function createServerSupabaseClient() {
         } catch {}
       },
     },
+    global: {
+      fetch: (url, options = {}) =>
+        fetch(url, {
+          ...options,
+          cache: "no-store",
+        }),
+    },
   });
 }
 

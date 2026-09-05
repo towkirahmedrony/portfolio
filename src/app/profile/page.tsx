@@ -4,11 +4,13 @@ import { CustomerProfile } from "@/components/profile/customer-profile";
 import { CustomerRequests } from "@/components/profile/customer-requests";
 import { ProjectTracking } from "@/components/profile/project-tracking";
 import { ReferralSection } from "@/components/profile/referral-section";
+import { getCustomerProjectRequests } from "@/lib/customer-project-requests";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { buildCustomerReferral, mapProfileRow } from "@/lib/profile";
 import type { ProfileRow } from "@/types/database";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Customer Profile",
@@ -77,13 +79,14 @@ export default async function ProfilePage() {
     referrals: referralRows,
     availableRewards: rewardRows,
   });
+  const requestItems = await getCustomerProjectRequests(user.id);
 
   return (
     <section className="py-12 sm:py-16 mt-8 sm:mt-12">
       <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
         <div className="grid gap-5">
           <CustomerProfile initialProfile={mapped.profile} initialAccount={mapped.account} />
-          <CustomerRequests />
+          <CustomerRequests items={requestItems} />
           <ProjectTracking />
           <ReferralSection referral={referral} />
         </div>

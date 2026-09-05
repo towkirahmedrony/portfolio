@@ -11,6 +11,23 @@ import type {
 const REQUEST_COLUMNS =
   "id, request_number, client_id, full_name, email, phone, company_name, project_type, website_status, page_count, description, required_features, has_design, figma_url, reference_urls, design_style, has_logo, has_brand_colors, brand_colors, budget_min, budget_max, budget_currency, deadline_type, deadline_date, referral_code_entered, referral_code_id, source, status, service_id, form_snapshot, submitted_at, updated_at";
 
+const REQUEST_COLUMNS_CORE =
+  "id, request_number, client_id, full_name, email, phone, company_name, project_type, website_status, page_count, description, required_features, has_design, figma_url, reference_urls, design_style, has_logo, has_brand_colors, brand_colors, budget_min, budget_max, budget_currency, deadline_type, deadline_date, referral_code_entered, referral_code_id, source, status, submitted_at, updated_at";
+
+function isMissingColumn(error: { message?: string; code?: string } | null): boolean {
+  if (!error) {
+    return false;
+  }
+  const message = (error.message ?? "").toLowerCase();
+  return (
+    error.code === "PGRST204" ||
+    error.code === "42703" ||
+    message.includes("does not exist") ||
+    message.includes("schema cache") ||
+    message.includes("could not find the")
+  );
+}
+
 type LinkedProjectRow = Pick<
   ProjectRow,
   | "id"
@@ -114,21 +131,40 @@ export async function getCustomerProjectRequests(
 ): Promise<CustomerProjectRequestItem[]> {
   const supabase = await createServerSupabaseClient();
 
-  const [{ data: requestRows }, { data: projectRows }] = await Promise.all([
-    supabase
-      .from("project_requests")
-      .select(REQUEST_COLUMNS)
-      .eq("client_id", userId)
-      .order("submitted_at", { ascending: false }),
-    supabase
-      .from("projects")
-      .select(
-        "id, project_number, request_id, client_id, title, status, agreed_price, estimated_budget, currency, due_date",
-      )
-      .eq("client_id", userId),
-  ]);
+  let requestResult = await supabase
+    .from("project_requests")
+    .select(REQUEST_COLUMNS)
+    .eq("client_id", userId)
+    .order("submitted_at", { ascending: false });
 
-  const requests = (requestRows ?? []) as ProjectRequestRow[];
+  if (requestResult.error && isMissingColumn(requestResult.error)) {
+    requestResult = await supabase
+      .from("project_requests")
+      .select(REQUEST_COLUMNS_CORE)
+      .eq("client_id", userId)
+      .order("submitted_at", { ascending: false });
+  }
+
+  if (requestResult.error) {
+    console.error(
+      "customer project_requests query failed:",
+      requestResult.error.message,
+    );
+    return [];
+  }
+
+  const { data: projectRows, error: projectError } = await supabase
+    .from("projects")
+    .select(
+      "id, project_number, request_id, client_id, title, status, agreed_price, estimated_budget, currency, due_date",
+    )
+    .eq("client_id", userId);
+
+  if (projectError) {
+    console.error("customer projects query failed:", projectError.message);
+  }
+
+  const requests = (requestResult.data ?? []) as ProjectRequestRow[];
   const projects = (projectRows ?? []) as LinkedProjectRow[];
   const projectsByRequestId = new Map<string, LinkedProjectRow>();
   for (const project of projects) {

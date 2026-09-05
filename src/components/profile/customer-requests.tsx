@@ -11,12 +11,8 @@ import {
   formatYesNo,
   getRequestStatusStyle,
 } from "@/lib/admin-project-request-constants";
-import {
-  getCustomerProjectRequests,
-  type CustomerProjectRequestItem,
-} from "@/lib/customer-project-requests";
+import type { CustomerProjectRequestItem } from "@/lib/customer-project-requests";
 import { formatMoney } from "@/lib/quote-money";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { ProjectRequestRow } from "@/types/database";
 
 function Detail({
@@ -166,16 +162,11 @@ function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
   );
 }
 
-export async function CustomerRequests() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return null;
-  }
-
-  const items = await getCustomerProjectRequests(user.id);
+export function CustomerRequests({
+  items,
+}: {
+  items: CustomerProjectRequestItem[];
+}) {
   const visible = items.filter((item) => !item.linkedProject);
   const emptyMessage =
     items.length === 0

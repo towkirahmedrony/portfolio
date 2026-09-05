@@ -1,5 +1,8 @@
-import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+"use server";
+
+import { revalidatePath } from "next/cache";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   generateRequestNumber,
   toProjectRequestInsert,
@@ -33,7 +36,7 @@ export async function submitProjectRequest(
     };
   }
 
-  const supabase = createBrowserSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const {
     data: { user },
     error: userError,
@@ -65,6 +68,7 @@ export async function submitProjectRequest(
       .insert(insertPayload);
 
     if (!error) {
+      revalidatePath("/profile");
       return {
         ok: true,
         requestNumber: insertPayload.request_number ?? generateRequestNumber(),
