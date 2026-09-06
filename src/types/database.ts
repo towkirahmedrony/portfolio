@@ -2254,3 +2254,139 @@ export const Constants = {
   },
 } as const
 
+
+// ---------------------------------------------------------------------------
+// Hand-maintained convenience aliases.
+// The Supabase CLI only generates `Database`, `Tables<>`, `TablesInsert<>`,
+// `TablesUpdate<>` and `Enums<>` above — it does NOT generate these named
+// aliases. They were used throughout the app (ProfileRow, InvoiceStatus,
+// etc.), so they're re-added here after each `supabase gen types` run.
+// If you add/rename/remove a table or enum in Supabase, update this block.
+// ---------------------------------------------------------------------------
+
+// Row aliases
+export type AuditLogRow = Tables<"audit_logs">
+export type ContactMessageRow = Tables<"contact_messages">
+export type InvoiceItemRow = Tables<"invoice_items">
+export type InvoiceRow = Tables<"invoices">
+export type NotificationPreferenceRow = Tables<"notification_preferences">
+export type NotificationRow = Tables<"notifications">
+export type OrderFormFieldRow = Tables<"order_form_fields">
+export type OrderFormOptionRow = Tables<"order_form_options">
+export type OrderFormStepRow = Tables<"order_form_steps">
+export type PaymentEventRow = Tables<"payment_events">
+export type PaymentScheduleRow = Tables<"payment_schedule">
+export type PaymentRow = Tables<"payments">
+export type PortfolioProjectImageRow = Tables<"portfolio_project_images">
+export type PortfolioProjectRow = Tables<"portfolio_projects">
+export type ProfileRow = Tables<"profiles">
+export type ProjectDiscountRow = Tables<"project_discounts">
+export type ProjectFileRow = Tables<"project_files">
+export type ProjectMessageRow = Tables<"project_messages">
+export type ProjectMilestoneRow = Tables<"project_milestones">
+export type ProjectNoteRow = Tables<"project_notes">
+export type ProjectRequestRow = Tables<"project_requests">
+export type ProjectRequirementRow = Tables<"project_requirements">
+export type ProjectStatusHistoryRow = Tables<"project_status_history">
+export type ProjectRow = Tables<"projects">
+export type QuoteItemRow = Tables<"quote_items">
+export type QuoteRow = Tables<"quotes">
+export type ReferralCodeRow = Tables<"referral_codes">
+export type ReferralRewardRow = Tables<"referral_rewards">
+export type ReferralSettingsRow = Tables<"referral_settings">
+export type ReferralRow = Tables<"referrals">
+export type RequestNoteRow = Tables<"request_notes">
+export type ReviewRow = Tables<"reviews">
+export type ServiceFeatureRow = Tables<"service_features">
+export type ServiceRow = Tables<"services">
+
+// Insert aliases
+export type AuditLogInsert = TablesInsert<"audit_logs">
+export type ContactMessageInsert = TablesInsert<"contact_messages">
+export type InvoiceItemInsert = TablesInsert<"invoice_items">
+export type InvoiceInsert = TablesInsert<"invoices">
+export type NotificationPreferenceInsert = TablesInsert<"notification_preferences">
+export type NotificationInsert = TablesInsert<"notifications">
+export type OrderFormFieldInsert = TablesInsert<"order_form_fields">
+export type OrderFormOptionInsert = TablesInsert<"order_form_options">
+export type OrderFormStepInsert = TablesInsert<"order_form_steps">
+export type PaymentEventInsert = TablesInsert<"payment_events">
+export type PaymentScheduleInsert = TablesInsert<"payment_schedule">
+export type PaymentInsert = TablesInsert<"payments">
+export type PortfolioProjectImageInsert = TablesInsert<"portfolio_project_images">
+export type PortfolioProjectInsert = TablesInsert<"portfolio_projects">
+export type ProfileInsert = TablesInsert<"profiles">
+export type ProjectDiscountInsert = TablesInsert<"project_discounts">
+export type ProjectFileInsert = TablesInsert<"project_files">
+export type ProjectMessageInsert = TablesInsert<"project_messages">
+export type ProjectMilestoneInsert = TablesInsert<"project_milestones">
+export type ProjectNoteInsert = TablesInsert<"project_notes">
+export type ProjectRequestInsert = TablesInsert<"project_requests">
+export type ProjectRequirementInsert = TablesInsert<"project_requirements">
+export type ProjectStatusHistoryInsert = TablesInsert<"project_status_history">
+export type ProjectInsert = TablesInsert<"projects">
+export type QuoteItemInsert = TablesInsert<"quote_items">
+export type QuoteInsert = TablesInsert<"quotes">
+export type ReferralCodeInsert = TablesInsert<"referral_codes">
+export type ReferralRewardInsert = TablesInsert<"referral_rewards">
+export type ReferralSettingsInsert = TablesInsert<"referral_settings">
+export type ReferralInsert = TablesInsert<"referrals">
+export type RequestNoteInsert = TablesInsert<"request_notes">
+export type ReviewInsert = TablesInsert<"reviews">
+export type ServiceFeatureInsert = TablesInsert<"service_features">
+export type ServiceInsert = TablesInsert<"services">
+
+// Update aliases
+export type AuditLogUpdate = TablesUpdate<"audit_logs">
+export type ContactMessageUpdate = TablesUpdate<"contact_messages">
+export type InvoiceItemUpdate = TablesUpdate<"invoice_items">
+export type InvoiceUpdate = TablesUpdate<"invoices">
+export type NotificationPreferenceUpdate = TablesUpdate<"notification_preferences">
+export type NotificationUpdate = TablesUpdate<"notifications">
+export type OrderFormFieldUpdate = TablesUpdate<"order_form_fields">
+export type OrderFormOptionUpdate = TablesUpdate<"order_form_options">
+export type OrderFormStepUpdate = TablesUpdate<"order_form_steps">
+export type PaymentEventUpdate = TablesUpdate<"payment_events">
+export type PaymentScheduleUpdate = TablesUpdate<"payment_schedule">
+export type PaymentUpdate = TablesUpdate<"payments">
+export type PortfolioProjectImageUpdate = TablesUpdate<"portfolio_project_images">
+export type PortfolioProjectUpdate = TablesUpdate<"portfolio_projects">
+export type ProfileUpdate = TablesUpdate<"profiles">
+export type ProjectDiscountUpdate = TablesUpdate<"project_discounts">
+export type ProjectFileUpdate = TablesUpdate<"project_files">
+export type ProjectMessageUpdate = TablesUpdate<"project_messages">
+export type ProjectMilestoneUpdate = TablesUpdate<"project_milestones">
+export type ProjectNoteUpdate = TablesUpdate<"project_notes">
+export type ProjectRequestUpdate = TablesUpdate<"project_requests">
+export type ProjectRequirementUpdate = TablesUpdate<"project_requirements">
+export type ProjectStatusHistoryUpdate = TablesUpdate<"project_status_history">
+export type ProjectUpdate = TablesUpdate<"projects">
+export type QuoteItemUpdate = TablesUpdate<"quote_items">
+export type QuoteUpdate = TablesUpdate<"quotes">
+export type ReferralCodeUpdate = TablesUpdate<"referral_codes">
+export type ReferralRewardUpdate = TablesUpdate<"referral_rewards">
+export type ReferralSettingsUpdate = TablesUpdate<"referral_settings">
+export type ReferralUpdate = TablesUpdate<"referrals">
+export type RequestNoteUpdate = TablesUpdate<"request_notes">
+export type ReviewUpdate = TablesUpdate<"reviews">
+export type ServiceFeatureUpdate = TablesUpdate<"service_features">
+export type ServiceUpdate = TablesUpdate<"services">
+
+// Enum aliases
+export type ContactStatus = Enums<"contact_status">
+export type DiscountSourceType = Enums<"discount_source_type">
+export type FileCategory = Enums<"file_category">
+export type InvoiceStatus = Enums<"invoice_status">
+export type MilestoneStatus = Enums<"milestone_status">
+export type PaymentScheduleStatus = Enums<"payment_schedule_status">
+export type PaymentStatus = Enums<"payment_status">
+export type PaymentType = Enums<"payment_type">
+export type ProfileRole = Enums<"profile_role">
+export type ProfileStatus = Enums<"profile_status">
+export type ProjectPriority = Enums<"project_priority">
+export type ProjectStatus = Enums<"project_status">
+export type QuoteStatus = Enums<"quote_status">
+export type ReferralStatus = Enums<"referral_status">
+export type RequestStatus = Enums<"request_status">
+export type ReviewStatus = Enums<"review_status">
+export type RewardStatus = Enums<"reward_status">

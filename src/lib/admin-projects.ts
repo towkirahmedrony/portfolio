@@ -259,7 +259,9 @@ export async function getProjectNotes(
   }
 
   const rows = (data ?? []) as ProjectNoteRow[];
-  const authorIds = [...new Set(rows.map((row) => row.author_id))];
+  const authorIds = [
+    ...new Set(rows.map((row) => row.author_id).filter((id): id is string => Boolean(id))),
+  ];
   const authors = new Map<string, ProjectClient>();
 
   if (authorIds.length > 0) {
@@ -275,7 +277,7 @@ export async function getProjectNotes(
 
   const items = rows.map((row) => ({
     ...row,
-    author: authors.get(row.author_id) ?? null,
+    author: row.author_id ? authors.get(row.author_id) ?? null : null,
   }));
 
   return toQueryResult(items, null, "project_notes", items.length === 0);
@@ -296,7 +298,9 @@ export async function getProjectMessages(
   }
 
   const rows = (data ?? []) as ProjectMessageRow[];
-  const senderIds = [...new Set(rows.map((row) => row.sender_id))];
+  const senderIds = [
+    ...new Set(rows.map((row) => row.sender_id).filter((id): id is string => Boolean(id))),
+  ];
   const senders = new Map<string, ProjectClient>();
 
   if (senderIds.length > 0) {
@@ -312,7 +316,7 @@ export async function getProjectMessages(
 
   const items = rows.map((row) => ({
     ...row,
-    sender: senders.get(row.sender_id) ?? null,
+    sender: row.sender_id ? senders.get(row.sender_id) ?? null : null,
   }));
 
   return toQueryResult(items, null, "project_messages", items.length === 0);

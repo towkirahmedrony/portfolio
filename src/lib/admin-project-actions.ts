@@ -38,7 +38,7 @@ function asOptionalInteger(value: FormDataEntryValue | null): number | null {
   return parsed == null ? null : Math.trunc(parsed);
 }
 
-function parseStringList(value: string): unknown[] {
+function parseStringList(value: string): string[] {
   return value
     .split(/\n|,/)
     .map((item) => item.trim())

@@ -24,7 +24,7 @@ import {
   toPostgresNumeric,
   type QuoteLineInput,
 } from "@/lib/quote-money";
-import type { InvoiceRow, InvoiceStatus, PaymentRow } from "@/types/database";
+import type { InvoiceRow, InvoiceStatus, Json, PaymentRow } from "@/types/database";
 
 type ActionResult = { ok: true; invoiceId?: string } | { ok: false; error: string };
 
@@ -105,8 +105,8 @@ async function writeAuditLog(input: {
       action: input.action,
       entity_type: input.entityType ?? "invoice",
       entity_id: input.entityId,
-      old_data: input.oldData ?? null,
-      new_data: input.newData ?? null,
+      old_data: (input.oldData ?? null) as Json,
+      new_data: (input.newData ?? null) as Json,
     });
   } catch {
     // Audit logging is best-effort and must not block invoice workflows.
@@ -141,7 +141,7 @@ export async function createInvoiceFromQuote(formData: FormData): Promise<Action
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc("admin_create_invoice_from_quote", {
     p_quote_id: quoteId,
-    p_due_date: dueDate,
+    p_due_date: dueDate ?? undefined,
   });
 
   if (error || !data) {
@@ -506,10 +506,10 @@ export async function recordManualPayment(formData: FormData): Promise<ActionRes
     p_invoice_id: invoiceId,
     p_amount: toPostgresNumeric(roundedAmount),
     p_payment_type: paymentTypeRaw,
-    p_payment_method: paymentMethod,
+    p_payment_method: paymentMethod ?? undefined,
     p_provider: provider,
-    p_transaction_reference: transactionReference,
-    p_paid_at: paidAt,
+    p_transaction_reference: transactionReference ?? undefined,
+    p_paid_at: paidAt ?? undefined,
   });
 
   if (error) {

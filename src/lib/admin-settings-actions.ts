@@ -21,7 +21,9 @@ export async function saveNotificationPreferences(
 ): Promise<ActionResult> {
   const session = await requireAdmin();
 
-  const payload: Partial<NotificationPreferenceRow> = {
+  const payload: Partial<Omit<NotificationPreferenceRow, "user_id">> & {
+    user_id: string;
+  } = {
     user_id: session.id,
     updated_at: new Date().toISOString(),
   };

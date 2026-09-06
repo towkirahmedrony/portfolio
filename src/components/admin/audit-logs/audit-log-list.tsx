@@ -81,7 +81,7 @@ export function AuditLogList({ logs }: { logs: AdminAuditLogItem[] }) {
               {log.ip_address ? (
                 <div className="rounded-xl border border-card-border/60 bg-background px-3 py-2 text-xs">
                   <span className="text-muted">IP:</span>{" "}
-                  <span className="font-mono text-foreground">{log.ip_address}</span>
+                  <span className="font-mono text-foreground">{String(log.ip_address)}</span>
                 </div>
               ) : null}
               {log.user_agent ? (

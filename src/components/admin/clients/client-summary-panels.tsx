@@ -28,6 +28,7 @@ import type {
 import type { RequestStatus, RewardStatus } from "@/types/database";
 
 const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
+  draft: "Draft",
   new: "New",
   reviewing: "Reviewing",
   quoted: "Quoted",
@@ -38,6 +39,7 @@ const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
 };
 
 const REQUEST_STATUS_STYLES: Record<RequestStatus, string> = {
+  draft: "bg-slate-500/10 text-slate-700 border-slate-500/20 dark:text-slate-400",
   new: "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:text-blue-400",
   reviewing: "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400",
   quoted: "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:text-purple-400",

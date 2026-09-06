@@ -10,6 +10,7 @@ export { formatDate, formatDateTime } from "@/lib/admin-project-constants";
 export type { QueryResult, ProjectClient };
 
 export const REQUEST_STATUSES: RequestStatus[] = [
+  "draft",
   "new",
   "reviewing",
   "quoted",
@@ -20,6 +21,7 @@ export const REQUEST_STATUSES: RequestStatus[] = [
 ];
 
 export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
+  draft: "Draft",
   new: "New",
   reviewing: "Reviewing",
   quoted: "Quoted",
@@ -30,6 +32,7 @@ export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
 };
 
 export const CLIENT_REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
+  draft: "Draft",
   new: "New",
   reviewing: "Under Review",
   quoted: "Quote Ready",
@@ -40,6 +43,7 @@ export const CLIENT_REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
 };
 
 export const CLIENT_CANCELLABLE_REQUEST_STATUSES: RequestStatus[] = [
+  "draft",
   "new",
   "reviewing",
   "quoted",
@@ -50,6 +54,7 @@ export function canClientCancelRequest(status: RequestStatus): boolean {
 }
 
 export const REQUEST_STATUS_STYLES: Record<RequestStatus, string> = {
+  draft: "bg-slate-500/10 text-slate-700 border-slate-500/20 dark:text-slate-400",
   new: "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:text-blue-400",
   reviewing: "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400",
   quoted: "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:text-purple-400",

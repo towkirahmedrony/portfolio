@@ -18,7 +18,7 @@ import {
   toPostgresNumeric,
   type QuoteLineInput,
 } from "@/lib/quote-money";
-import type { QuoteItemRow, QuoteRow, QuoteStatus } from "@/types/database";
+import type { Json, QuoteItemRow, QuoteRow, QuoteStatus } from "@/types/database";
 
 type ActionResult = { ok: true; quoteId?: string } | { ok: false; error: string };
 
@@ -111,8 +111,8 @@ async function writeAuditLog(input: {
       action: input.action,
       entity_type: "quote",
       entity_id: input.entityId,
-      old_data: input.oldData ?? null,
-      new_data: input.newData ?? null,
+      old_data: (input.oldData ?? null) as Json,
+      new_data: (input.newData ?? null) as Json,
     });
   } catch {
     // Audit logging is best-effort and must not block quote workflows.
@@ -225,7 +225,7 @@ export async function saveQuoteDraft(formData: FormData): Promise<ActionResult> 
         notes,
         terms,
         valid_until: validUntil,
-        currency: existing.currency || currencyFromProject(project.currency, existing.currency),
+        currency: existing.currency || currencyFromProject(project.currency, existing.currency ?? ""),
         ...totals,
         status: "draft",
       })

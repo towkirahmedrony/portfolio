@@ -64,8 +64,8 @@ export async function updateReferralSettings(
   const { error } = await supabase.rpc("admin_update_referral_settings", {
     p_client_discount_percent: clientDiscount,
     p_referrer_reward_percent: referrerReward,
-    p_minimum_project_amount: minimumAmount,
-    p_reward_validity_days: validityDays,
+    p_minimum_project_amount: minimumAmount ?? undefined,
+    p_reward_validity_days: validityDays ?? undefined,
     p_is_active: isActive,
   });
 
