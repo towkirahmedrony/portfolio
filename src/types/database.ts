@@ -1748,6 +1748,7 @@ export type Database = {
         Row: {
           client_id: string
           id: string
+          photo_url: string | null
           project_id: string
           published_at: string | null
           rating: number
@@ -1759,6 +1760,7 @@ export type Database = {
         Insert: {
           client_id: string
           id?: string
+          photo_url?: string | null
           project_id: string
           published_at?: string | null
           rating: number
@@ -1770,6 +1772,7 @@ export type Database = {
         Update: {
           client_id?: string
           id?: string
+          photo_url?: string | null
           project_id?: string
           published_at?: string | null
           rating?: number
@@ -1833,6 +1836,7 @@ export type Database = {
           estimated_days_min: number | null
           featured: boolean
           id: string
+          image_url: string | null
           name: string
           published: boolean
           short_description: string | null
@@ -1849,6 +1853,7 @@ export type Database = {
           estimated_days_min?: number | null
           featured?: boolean
           id?: string
+          image_url?: string | null
           name: string
           published?: boolean
           short_description?: string | null
@@ -1865,6 +1870,7 @@ export type Database = {
           estimated_days_min?: number | null
           featured?: boolean
           id?: string
+          image_url?: string | null
           name?: string
           published?: boolean
           short_description?: string | null
