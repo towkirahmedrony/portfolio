@@ -4,6 +4,7 @@ import {
   getSafeAdminNextPath,
   getSafeNextPath,
   isAdminLoginPath,
+  isAdminPath,
   isProtectedAdminPath,
 } from "@/lib/auth";
 import type { Database } from "@/types/database";
@@ -49,6 +50,7 @@ export async function proxy(request: NextRequest) {
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, options);
         });
+        response.headers.set("Cache-Control", "private, no-store, max-age=0");
       },
     },
   });
@@ -78,10 +80,12 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user) {
-    try {
-      await supabase.rpc("sync_customer_session");
-    } catch {
-      // Session refresh should not fail the request if activity sync is unavailable.
+    if (pathname.startsWith("/profile") || isAdminPath(pathname)) {
+      try {
+        await supabase.rpc("sync_customer_session");
+      } catch {
+        // Session refresh should not fail the request if activity sync is unavailable.
+      }
     }
 
     if (isProtectedAdminPath(pathname)) {
@@ -111,5 +115,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin", "/admin/:path*", "/profile", "/profile/:path*"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map)$).*)",
+  ],
 };

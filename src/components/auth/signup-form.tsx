@@ -10,9 +10,11 @@ import {
   getAuthPageHref,
   getEmailRedirectTo,
   getPathnameFromNext,
-  getSafeNextPath,
   isPlaceOrderAuthReason,
   isValidEmail,
+  persistAuthReturnTo,
+  PLACE_ORDER_AUTH_REASON,
+  resolvePostAuthRedirect,
 } from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -55,7 +57,10 @@ export function SignupPanel({
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const destination = getSafeNextPath(nextPath);
+  const destination = resolvePostAuthRedirect({
+    next: nextPath,
+    reason: placeOrder ? PLACE_ORDER_AUTH_REASON : null,
+  });
   const fullNameId = `${idPrefix}fullName`;
   const emailId = `${idPrefix}email`;
   const passwordId = `${idPrefix}password`;
@@ -117,6 +122,7 @@ export function SignupPanel({
           emailRedirectTo: getEmailRedirectTo(
             window.location.origin,
             destination,
+            placeOrder ? PLACE_ORDER_AUTH_REASON : null,
           ),
           data: {
             full_name: trimmedName,
@@ -146,6 +152,10 @@ export function SignupPanel({
           onSuccess();
           return;
         }
+        persistAuthReturnTo(
+          destination,
+          placeOrder ? PLACE_ORDER_AUTH_REASON : null,
+        );
         router.push(destination);
         router.refresh();
         return;
@@ -294,6 +304,7 @@ export function SignupPanel({
 
       <OAuthButtons
         nextPath={destination}
+        reason={placeOrder ? PLACE_ORDER_AUTH_REASON : null}
         disabled={submitting}
         onBeforeStart={onBeforeOAuth}
       />
@@ -327,7 +338,10 @@ export function SignupPanel({
 
 function SignupFormFields() {
   const searchParams = useSearchParams();
-  const destination = getSafeNextPath(searchParams.get("next"));
+  const destination = resolvePostAuthRedirect({
+    next: searchParams.get("next"),
+    reason: searchParams.get("reason"),
+  });
   const placeOrder =
     isPlaceOrderAuthReason(searchParams.get("reason")) ||
     getPathnameFromNext(destination) === "/start-project";

@@ -4,22 +4,27 @@ import { useState } from "react";
 import { LoginPanel } from "@/components/auth/login-form";
 import { SignupPanel } from "@/components/auth/signup-form";
 import { Modal } from "@/components/ui/modal";
-import { PLACE_ORDER_NEXT_PATH } from "@/lib/auth";
+import { getPlaceOrderReturnPath } from "@/lib/auth";
 
 type Mode = "login" | "signup";
 
 type Props = {
+  nextPath?: string;
   onClose: () => void;
   onAuthenticated: () => void;
   onBeforeOAuth: () => void;
 };
 
 export function PlaceOrderAuthModal({
+  nextPath,
   onClose,
   onAuthenticated,
   onBeforeOAuth,
 }: Props) {
   const [mode, setMode] = useState<Mode>("login");
+  const destination = getPlaceOrderReturnPath(
+    nextPath ?? (typeof window === "undefined" ? null : window.location.href),
+  );
 
   return (
     <Modal
@@ -29,7 +34,7 @@ export function PlaceOrderAuthModal({
     >
       {mode === "login" ? (
         <LoginPanel
-          nextPath={PLACE_ORDER_NEXT_PATH}
+          nextPath={destination}
           placeOrder
           embedded
           idPrefix="place-order-login-"
@@ -39,7 +44,7 @@ export function PlaceOrderAuthModal({
         />
       ) : (
         <SignupPanel
-          nextPath={PLACE_ORDER_NEXT_PATH}
+          nextPath={destination}
           placeOrder
           embedded
           idPrefix="place-order-signup-"

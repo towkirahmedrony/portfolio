@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { getSafeNextPath } from "@/lib/auth";
+import {
+  getAuthCallbackUrl,
+  persistAuthReturnTo,
+  resolvePostAuthRedirect,
+} from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
@@ -10,16 +14,18 @@ type OAuthProvider = "google" | "github";
 
 export function OAuthButtons({
   nextPath,
+  reason,
   disabled,
   onBeforeStart,
 }: {
   nextPath: string;
+  reason?: string | null;
   disabled?: boolean;
   onBeforeStart?: () => void;
 }) {
   const [provider, setProvider] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const destination = getSafeNextPath(nextPath);
+  const destination = resolvePostAuthRedirect({ next: nextPath, reason });
 
   async function startOAuth(nextProvider: OAuthProvider) {
     setError(null);
@@ -30,11 +36,16 @@ export function OAuthButtons({
     }
 
     setProvider(nextProvider);
+    persistAuthReturnTo(destination, reason);
     onBeforeStart?.();
 
     try {
       const supabase = createBrowserSupabaseClient();
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(destination)}`;
+      const redirectTo = getAuthCallbackUrl(
+        window.location.origin,
+        destination,
+        reason,
+      );
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: nextProvider,
         options: {

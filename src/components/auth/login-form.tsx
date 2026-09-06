@@ -9,10 +9,12 @@ import { Field, TextInput } from "@/components/ui/form-field";
 import {
   getAuthPageHref,
   getPathnameFromNext,
-  getSafeNextPath,
   isEmailNotConfirmedError,
   isPlaceOrderAuthReason,
   isValidEmail,
+  persistAuthReturnTo,
+  PLACE_ORDER_AUTH_REASON,
+  resolvePostAuthRedirect,
 } from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -52,7 +54,10 @@ export function LoginPanel({
   const [formError, setFormError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(initialNotice);
   const [submitting, setSubmitting] = useState(false);
-  const destination = getSafeNextPath(nextPath);
+  const destination = resolvePostAuthRedirect({
+    next: nextPath,
+    reason: placeOrder ? PLACE_ORDER_AUTH_REASON : null,
+  });
   const emailId = `${idPrefix}email`;
   const passwordId = `${idPrefix}password`;
 
@@ -123,6 +128,10 @@ export function LoginPanel({
         return;
       }
 
+      persistAuthReturnTo(
+        destination,
+        placeOrder ? PLACE_ORDER_AUTH_REASON : null,
+      );
       window.location.assign(destination);
     } catch (err) {
       console.error(err);
@@ -194,6 +203,7 @@ export function LoginPanel({
 
       <OAuthButtons
         nextPath={destination}
+        reason={placeOrder ? PLACE_ORDER_AUTH_REASON : null}
         disabled={submitting}
         onBeforeStart={onBeforeOAuth}
       />
@@ -227,7 +237,10 @@ export function LoginPanel({
 
 function LoginFormFields() {
   const searchParams = useSearchParams();
-  const destination = getSafeNextPath(searchParams.get("next"));
+  const destination = resolvePostAuthRedirect({
+    next: searchParams.get("next"),
+    reason: searchParams.get("reason"),
+  });
   const placeOrder =
     isPlaceOrderAuthReason(searchParams.get("reason")) ||
     getPathnameFromNext(destination) === "/start-project";

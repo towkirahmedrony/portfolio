@@ -10,6 +10,7 @@ import {
   useSyncExternalStore,
   type FormEvent,
 } from "react";
+import { useRouter } from "next/navigation";
 import { PlaceOrderAuthModal } from "@/components/auth/place-order-auth-modal";
 import { Button } from "@/components/ui/button";
 import { FormProgress } from "@/components/project-request/progress";
@@ -20,7 +21,13 @@ import {
   ContentStateMessage,
   OrderFormSkeleton,
 } from "@/components/public/content-states";
-import { ORDER_SUBMIT_SECTION_HASH, ORDER_SUBMIT_SECTION_ID } from "@/lib/auth";
+import {
+  ORDER_SUBMIT_SECTION_HASH,
+  ORDER_SUBMIT_SECTION_ID,
+  PLACE_ORDER_AUTH_REASON,
+  getPlaceOrderReturnPath,
+  persistAuthReturnTo,
+} from "@/lib/auth";
 import { emptyProjectRequest } from "@/lib/order-form";
 import {
   firstInvalidStep,
@@ -90,6 +97,7 @@ function ProjectRequestFormInner({
   serviceId,
   initialReferralCode = "",
 }: Props) {
+  const router = useRouter();
   const formId = useId();
   const totalSteps = config.steps.length;
   const hasSteps = totalSteps > 0;
@@ -296,6 +304,8 @@ function ProjectRequestFormInner({
 
   function openAuthModal(normalized: ProjectRequest) {
     persistReviewDraft(normalized);
+    persistAuthReturnTo(getPlaceOrderReturnPath(window.location.href), PLACE_ORDER_AUTH_REASON);
+    markProjectRequestFocusSubmit();
     setAuthOpen(true);
   }
 
@@ -308,12 +318,13 @@ function ProjectRequestFormInner({
     setAuthNotice(
       "You're signed in. Your order is ready to submit — click Submit Project Request to place it.",
     );
+    router.refresh();
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         focusSubmitSection();
       });
     });
-  }, [focusSubmitSection]);
+  }, [focusSubmitSection, router]);
 
   const handleBeforeOAuth = useCallback(() => {
     saveProjectRequestDraft({
@@ -321,6 +332,10 @@ function ProjectRequestFormInner({
       step: totalSteps,
       serviceId: persistRef.current.serviceId,
     });
+    persistAuthReturnTo(
+      getPlaceOrderReturnPath(window.location.href),
+      PLACE_ORDER_AUTH_REASON,
+    );
     markProjectRequestFocusSubmit();
   }, [totalSteps]);
 
@@ -502,6 +517,9 @@ function ProjectRequestFormInner({
 
       {authOpen ? (
         <PlaceOrderAuthModal
+          nextPath={getPlaceOrderReturnPath(
+            typeof window === "undefined" ? null : window.location.href,
+          )}
           onClose={closeAuthModal}
           onAuthenticated={handleAuthenticated}
           onBeforeOAuth={handleBeforeOAuth}
