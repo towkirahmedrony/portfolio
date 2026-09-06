@@ -1886,9 +1886,63 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_auth_emails: {
+        Args: { p_ids: string[] }
+        Returns: {
+          email: string
+          profile_id: string
+        }[]
+      }
+      admin_convert_project_request: {
+        Args: { p_request_id: string }
+        Returns: string
+      }
+      admin_create_invoice_from_quote: {
+        Args: { p_due_date?: string; p_quote_id: string }
+        Returns: string
+      }
+      admin_record_manual_payment: {
+        Args: {
+          p_amount: number
+          p_invoice_id: string
+          p_paid_at?: string
+          p_payment_method?: string
+          p_payment_type: string
+          p_provider?: string
+          p_transaction_reference?: string
+        }
+        Returns: string
+      }
+      admin_set_client_avatar_url: {
+        Args: { p_avatar_url: string; p_client_id: string }
+        Returns: undefined
+      }
+      admin_set_client_email_verified: {
+        Args: { p_client_id: string; p_email_verified: boolean }
+        Returns: undefined
+      }
+      admin_set_client_status: {
+        Args: { p_client_id: string; p_status: string }
+        Returns: undefined
+      }
+      admin_update_referral_settings: {
+        Args: {
+          p_client_discount_percent: number
+          p_is_active?: boolean
+          p_minimum_project_amount?: number
+          p_referrer_reward_percent: number
+          p_reward_validity_days?: number
+        }
+        Returns: undefined
+      }
+      cancel_own_project_request: {
+        Args: { p_request_id: string }
+        Returns: Database["public"]["Enums"]["request_status"]
+      }
       ensure_referral_code: { Args: { profile_id: string }; Returns: undefined }
       generate_referral_code: { Args: never; Returns: string }
       generate_request_number: { Args: never; Returns: string }
+      is_active_admin: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       sync_customer_session: { Args: never; Returns: undefined }
     }
