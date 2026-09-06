@@ -57,7 +57,7 @@ export function ProjectRequestsListTable({
                 {formatRequestBudget(
                   request.budget_min,
                   request.budget_max,
-                  request.budget_currency,
+                  request.budget_currency || "BDT",
                 )}
               </td>
               <td className="px-4 py-3 text-muted">

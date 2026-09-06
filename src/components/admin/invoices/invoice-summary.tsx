@@ -75,15 +75,15 @@ export function InvoiceSummary({
         </div>
         <div className="flex items-center justify-between gap-4">
           <dt className="text-muted">Total</dt>
-          <dd className="font-medium text-foreground">{formatMoney(Number(invoice.total), invoice.currency)}</dd>
+          <dd className="font-medium text-foreground">{formatMoney(Number(invoice.total), invoice.currency || "BDT")}</dd>
         </div>
         <div className="flex items-center justify-between gap-4">
           <dt className="text-muted">Amount paid</dt>
-          <dd className="text-foreground">{formatMoney(Number(invoice.amount_paid), invoice.currency)}</dd>
+          <dd className="text-foreground">{formatMoney(Number(invoice.amount_paid), invoice.currency || "BDT")}</dd>
         </div>
         <div className="flex items-center justify-between gap-4">
           <dt className="text-muted">Amount due</dt>
-          <dd className="font-medium text-foreground">{formatMoney(Number(invoice.amount_due), invoice.currency)}</dd>
+          <dd className="font-medium text-foreground">{formatMoney(Number(invoice.amount_due), invoice.currency || "BDT")}</dd>
         </div>
         {quote ? (
           <div className="flex items-center justify-between gap-4">

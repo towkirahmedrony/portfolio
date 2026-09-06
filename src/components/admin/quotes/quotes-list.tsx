@@ -63,16 +63,16 @@ export function QuotesListTable({ quotes }: { quotes: AdminQuoteListItem[] }) {
               </td>
               <td className="px-4 py-3 text-foreground">v{quote.version}</td>
               <td className="px-4 py-3 text-muted">
-                {formatMoney(Number(quote.subtotal), quote.currency)}
+                {formatMoney(Number(quote.subtotal), quote.currency || "BDT")}
               </td>
               <td className="px-4 py-3 text-muted">
-                {formatMoney(Number(quote.discount_total), quote.currency)}
+                {formatMoney(Number(quote.discount_total), quote.currency || "BDT")}
               </td>
               <td className="px-4 py-3 text-muted">
-                {formatMoney(Number(quote.tax_total), quote.currency)}
+                {formatMoney(Number(quote.tax_total), quote.currency || "BDT")}
               </td>
               <td className="px-4 py-3 font-medium text-foreground">
-                {formatMoney(Number(quote.total), quote.currency)}
+                {formatMoney(Number(quote.total), quote.currency || "BDT")}
               </td>
               <td className="px-4 py-3">
                 <StatusPill

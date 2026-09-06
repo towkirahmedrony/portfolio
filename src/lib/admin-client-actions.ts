@@ -115,7 +115,7 @@ export async function saveClientAvatar(
   const previous = (existing as { avatar_url: string | null }).avatar_url;
   const { error } = await supabase.rpc("admin_set_client_avatar_url", {
     p_client_id: clientId,
-    p_avatar_url: avatarUrl,
+    p_avatar_url: avatarUrl ?? "",
   });
   if (error) {
     return { ok: false, error: error.message };

@@ -47,7 +47,7 @@ export function QuoteVersionHistory({
                     />
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-                    <span>{formatMoney(Number(version.total), version.currency)}</span>
+                    <span>{formatMoney(Number(version.total), version.currency || "BDT")}</span>
                     <span>Created {formatDateTime(version.created_at)}</span>
                     {version.sent_at ? <span>Sent {formatDateTime(version.sent_at)}</span> : null}
                   </div>

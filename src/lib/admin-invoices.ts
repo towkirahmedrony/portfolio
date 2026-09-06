@@ -261,7 +261,7 @@ export async function getAcceptedQuoteOptions(): Promise<QueryResult<AcceptedQuo
       id: quote.id,
       version: quote.version,
       total: quote.total,
-      currency: quote.currency,
+      currency: quote.currency || "BDT",
       project,
       client: project ? clients.get(project.client_id) ?? null : null,
     };

@@ -95,7 +95,7 @@ function toLinkedProject(row: LinkedProjectRow): CustomerLinkedProject {
     status: row.status,
     agreed_price: row.agreed_price,
     estimated_budget: row.estimated_budget,
-    currency: row.currency,
+    currency: row.currency || "BDT",
     due_date: row.due_date,
   };
 }
@@ -119,7 +119,7 @@ function pickLatestQuote(quotes: LinkedQuoteRow[]): CustomerRequestQuote | null 
   return {
     id: latest.id,
     version: latest.version,
-    currency: latest.currency,
+    currency: latest.currency || "BDT",
     total: latest.total,
     status: latest.status,
     valid_until: latest.valid_until,

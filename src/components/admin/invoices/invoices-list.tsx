@@ -61,13 +61,13 @@ export function InvoicesListTable({ invoices }: { invoices: AdminInvoiceListItem
                 ) : null}
               </td>
               <td className="px-4 py-3 font-medium text-foreground">
-                {formatMoney(Number(invoice.total), invoice.currency)}
+                {formatMoney(Number(invoice.total), invoice.currency || "BDT")}
               </td>
               <td className="px-4 py-3 text-muted">
-                {formatMoney(Number(invoice.amount_paid), invoice.currency)}
+                {formatMoney(Number(invoice.amount_paid), invoice.currency || "BDT")}
               </td>
               <td className="px-4 py-3 text-muted">
-                {formatMoney(Number(invoice.amount_due), invoice.currency)}
+                {formatMoney(Number(invoice.amount_due), invoice.currency || "BDT")}
               </td>
               <td className="px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">

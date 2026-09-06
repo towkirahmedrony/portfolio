@@ -94,7 +94,7 @@ export default async function AdminInvoiceDetailPage({
             client={client}
             readOnly={!editable}
           />
-          <InvoicePaymentHistory payments={payments} currency={invoice.currency} />
+          <InvoicePaymentHistory payments={payments} currency={invoice.currency || "BDT"} />
         </div>
         <div className="grid gap-6 self-start">
           <InvoiceSummary

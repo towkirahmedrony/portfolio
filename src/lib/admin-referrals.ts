@@ -166,6 +166,8 @@ async function enrichReferralRows(
     return {
       ...row,
       status: row.status as ReferralStatus,
+      client_discount_percent: row.client_discount_percent ?? 0,
+      referrer_reward_percent: row.referrer_reward_percent ?? 0,
       referrer: profiles.get(row.referrer_id) ?? null,
       referredClient: row.referred_client_id
         ? profiles.get(row.referred_client_id) ?? null

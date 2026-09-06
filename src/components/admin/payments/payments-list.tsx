@@ -63,7 +63,7 @@ export function PaymentsListTable({ payments }: { payments: AdminPaymentListItem
                 )}
               </td>
               <td className="px-4 py-3 font-medium text-foreground">
-                {formatMoney(Number(payment.amount), payment.currency)}
+                {formatMoney(Number(payment.amount), payment.currency || "BDT")}
               </td>
               <td className="px-4 py-3 text-muted">{payment.currency}</td>
               <td className="px-4 py-3 text-foreground">

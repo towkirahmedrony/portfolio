@@ -57,16 +57,16 @@ export function ProjectFinancialTab({
                       />
                     </td>
                     <td className="px-2 py-2 text-foreground">
-                      {formatMoney(Number(row.subtotal), row.currency)}
+                      {formatMoney(Number(row.subtotal), row.currency || "BDT")}
                     </td>
                     <td className="px-2 py-2 text-foreground">
-                      {formatMoney(Number(row.discount_total), row.currency)}
+                      {formatMoney(Number(row.discount_total), row.currency || "BDT")}
                     </td>
                     <td className="px-2 py-2 text-foreground">
-                      {formatMoney(Number(row.tax_total), row.currency)}
+                      {formatMoney(Number(row.tax_total), row.currency || "BDT")}
                     </td>
                     <td className="px-2 py-2 text-foreground">
-                      {formatMoney(Number(row.total), row.currency)}
+                      {formatMoney(Number(row.total), row.currency || "BDT")}
                     </td>
                     <td className="px-2 py-2 text-foreground">{formatDateTime(row.valid_until)}</td>
                   </tr>
@@ -87,7 +87,7 @@ export function ProjectFinancialTab({
             rows={rows.map((row) => [
               row.label || row.code || "Discount",
               formatStatusLabel(row.source_type),
-              formatMoney(Number(row.discount_amount), row.currency),
+              formatMoney(Number(row.discount_amount), row.currency || "BDT"),
               formatDateTime(row.created_at),
             ])}
           />
@@ -125,13 +125,13 @@ export function ProjectFinancialTab({
                       />
                     </td>
                     <td className="px-2 py-2 text-foreground">
-                      {formatMoney(Number(row.total), row.currency)}
+                      {formatMoney(Number(row.total), row.currency || "BDT")}
                     </td>
                     <td className="px-2 py-2 text-foreground">
-                      {formatMoney(Number(row.amount_paid), row.currency)}
+                      {formatMoney(Number(row.amount_paid), row.currency || "BDT")}
                     </td>
                     <td className="px-2 py-2 text-foreground">
-                      {formatMoney(Number(row.amount_due), row.currency)}
+                      {formatMoney(Number(row.amount_due), row.currency || "BDT")}
                     </td>
                     <td className="px-2 py-2 text-foreground">{formatDate(row.issue_date)}</td>
                   </tr>
@@ -150,7 +150,7 @@ export function ProjectFinancialTab({
           <Table
             headers={["Amount", "Type", "Status", "Method", "Paid at"]}
             rows={rows.map((row) => [
-              formatMoney(Number(row.amount), row.currency),
+              formatMoney(Number(row.amount), row.currency || "BDT"),
               formatStatusLabel(row.payment_type),
               formatStatusLabel(row.status),
               row.payment_method || row.provider || "—",

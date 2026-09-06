@@ -105,7 +105,7 @@ export function ProjectRequestDetail({
             <p className="text-sm text-muted">Required features</p>
             {features.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2">
-                {features.map((feature) => (
+                {features.map((feature: string) => (
                   <span
                     key={feature}
                     className="rounded-full border border-card-border px-2.5 py-1 text-xs text-muted"
@@ -149,7 +149,7 @@ export function ProjectRequestDetail({
             <p className="text-sm text-muted">Reference URLs</p>
             {references.length > 0 ? (
               <ul className="mt-2 space-y-1 text-sm">
-                {references.map((url) => (
+                {references.map((url: string) => (
                   <li key={url}>
                     <a
                       href={url}
@@ -210,7 +210,7 @@ export function ProjectRequestDetail({
             {formatRequestBudget(
               request.budget_min,
               request.budget_max,
-              request.budget_currency,
+              request.budget_currency || "BDT",
             )}
           </p>
           <p className="mt-2 text-xs text-muted">Currency: {request.budget_currency}</p>

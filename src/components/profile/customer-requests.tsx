@@ -41,7 +41,7 @@ function requestTitle(request: ProjectRequestRow): string {
 
 function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
   const { request, linkedProject, quote, canCancel } = item;
-  const features = request.required_features ?? [];
+  const features = (request.required_features as string[] | null) ?? [];
   const designBits = [
     request.has_design != null ? `Design: ${formatYesNo(request.has_design)}` : null,
     request.design_style ? displaySlug(request.design_style) : null,
@@ -90,7 +90,7 @@ function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
           value={formatRequestBudget(
             request.budget_min,
             request.budget_max,
-            request.budget_currency,
+            request.budget_currency || "BDT",
           )}
         />
         <Detail
