@@ -95,11 +95,13 @@ function parseLineItems(formData: FormData): QuoteLineInput[] {
 function revalidateQuotes(quoteId?: string, projectId?: string) {
   revalidatePath("/admin");
   revalidatePath("/admin/quotes");
+  revalidatePath("/profile", "layout");
   if (quoteId) {
     revalidatePath(`/admin/quotes/${quoteId}`);
   }
   if (projectId) {
     revalidatePath(`/admin/projects/${projectId}`);
+    revalidatePath(`/profile/projects/${projectId}`);
   }
 }
 

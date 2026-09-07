@@ -3,11 +3,18 @@ import {
   canClientEditRequest,
   isClientResubmitStatus,
 } from "@/lib/admin-project-request-constants";
+import {
+  canClientAcceptQuote,
+  canClientRejectQuote,
+  canClientRequestQuoteChanges,
+} from "@/lib/admin-quote-constants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
+  InvoiceRow,
   ProjectRequestRow,
   ProjectRow,
   ProjectStatus,
+  QuoteItemRow,
   QuoteRow,
   QuoteStatus,
   RequestStatus,
@@ -45,6 +52,7 @@ type LinkedProjectRow = Pick<
   | "estimated_budget"
   | "currency"
   | "due_date"
+  | "updated_at"
 >;
 
 type LinkedQuoteRow = Pick<
@@ -53,11 +61,26 @@ type LinkedQuoteRow = Pick<
   | "project_id"
   | "version"
   | "currency"
+  | "subtotal"
+  | "discount_total"
+  | "tax_total"
   | "total"
   | "status"
+  | "notes"
+  | "terms"
   | "valid_until"
+  | "sent_at"
+  | "accepted_at"
+  | "rejected_at"
   | "created_at"
+  | "updated_at"
 >;
+
+const QUOTE_COLUMNS =
+  "id, project_id, version, currency, subtotal, discount_total, tax_total, total, status, notes, terms, valid_until, sent_at, accepted_at, rejected_at, created_at, updated_at";
+
+const PROJECT_COLUMNS =
+  "id, project_number, request_id, client_id, title, status, agreed_price, estimated_budget, currency, due_date, updated_at";
 
 export type CustomerLinkedProject = {
   id: string;
@@ -68,15 +91,34 @@ export type CustomerLinkedProject = {
   estimated_budget: number | null;
   currency: string;
   due_date: string | null;
+  updated_at: string;
 };
+
+export type CustomerInvoiceSummary = Pick<
+  InvoiceRow,
+  "id" | "invoice_number" | "status" | "total" | "amount_paid" | "amount_due" | "currency" | "quote_id"
+>;
 
 export type CustomerRequestQuote = {
   id: string;
   version: number;
   currency: string;
+  subtotal: number;
+  discount_total: number;
+  tax_total: number;
   total: number;
   status: QuoteStatus;
+  notes: string | null;
+  terms: string | null;
   valid_until: string | null;
+  sent_at: string | null;
+  accepted_at: string | null;
+  rejected_at: string | null;
+  created_at: string;
+  updated_at: string;
+  canAccept: boolean;
+  canReject: boolean;
+  canRequestChanges: boolean;
 };
 
 export type CustomerRequestFile = {
@@ -102,12 +144,16 @@ export type CustomerProjectRequestItem = {
 export type CustomerProjectRequestDetail = CustomerProjectRequestItem & {
   serviceName: string | null;
   files: CustomerRequestFile[];
+  quoteItems: QuoteItemRow[];
+  invoices: CustomerInvoiceSummary[];
 };
 
 const CLIENT_VISIBLE_QUOTE_STATUSES: QuoteStatus[] = [
   "sent",
   "viewed",
   "accepted",
+  "rejected",
+  "expired",
 ];
 
 function toLinkedProject(row: LinkedProjectRow): CustomerLinkedProject {
@@ -120,6 +166,31 @@ function toLinkedProject(row: LinkedProjectRow): CustomerLinkedProject {
     estimated_budget: row.estimated_budget,
     currency: row.currency || "BDT",
     due_date: row.due_date,
+    updated_at: row.updated_at,
+  };
+}
+
+function toCustomerQuote(quote: LinkedQuoteRow): CustomerRequestQuote {
+  return {
+    id: quote.id,
+    version: quote.version,
+    currency: quote.currency || "BDT",
+    subtotal: Number(quote.subtotal ?? 0),
+    discount_total: Number(quote.discount_total ?? 0),
+    tax_total: Number(quote.tax_total ?? 0),
+    total: Number(quote.total ?? 0),
+    status: quote.status,
+    notes: quote.notes,
+    terms: quote.terms,
+    valid_until: quote.valid_until,
+    sent_at: quote.sent_at,
+    accepted_at: quote.accepted_at,
+    rejected_at: quote.rejected_at,
+    created_at: quote.created_at,
+    updated_at: quote.updated_at,
+    canAccept: canClientAcceptQuote(quote.status, quote.valid_until),
+    canReject: canClientRejectQuote(quote.status),
+    canRequestChanges: canClientRequestQuoteChanges(quote.status),
   };
 }
 
@@ -127,26 +198,18 @@ function pickLatestQuote(quotes: LinkedQuoteRow[]): CustomerRequestQuote | null 
   const visible = quotes.filter((quote) =>
     CLIENT_VISIBLE_QUOTE_STATUSES.includes(quote.status),
   );
-  const source = visible.length > 0 ? visible : quotes;
-  if (source.length === 0) {
+  if (visible.length === 0) {
     return null;
   }
 
-  const latest = [...source].sort((a, b) => {
+  const latest = [...visible].sort((a, b) => {
     if (b.version !== a.version) {
       return b.version - a.version;
     }
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
   })[0];
 
-  return {
-    id: latest.id,
-    version: latest.version,
-    currency: latest.currency || "BDT",
-    total: latest.total,
-    status: latest.status,
-    valid_until: latest.valid_until,
-  };
+  return toCustomerQuote(latest);
 }
 
 export async function getCustomerProjectRequests(
@@ -184,9 +247,7 @@ export async function getCustomerProjectRequests(
 
   const { data: projectRows, error: projectError } = await supabase
     .from("projects")
-    .select(
-      "id, project_number, request_id, client_id, title, status, agreed_price, estimated_budget, currency, due_date",
-    )
+    .select(PROJECT_COLUMNS)
     .eq("client_id", userId);
 
   if (projectError) {
@@ -207,7 +268,7 @@ export async function getCustomerProjectRequests(
   if (projectIds.length > 0) {
     const { data: quoteRows, error: quoteError } = await supabase
       .from("quotes")
-      .select("id, project_id, version, currency, total, status, valid_until, created_at")
+      .select(QUOTE_COLUMNS)
       .in("project_id", projectIds)
       .order("version", { ascending: false });
 
@@ -284,9 +345,7 @@ export async function getCustomerProjectRequest(
 
   const { data: projectRow } = await supabase
     .from("projects")
-    .select(
-      "id, project_number, request_id, client_id, title, status, agreed_price, estimated_budget, currency, due_date",
-    )
+    .select(PROJECT_COLUMNS)
     .eq("request_id", request.id)
     .eq("client_id", userId)
     .maybeSingle();
@@ -294,16 +353,38 @@ export async function getCustomerProjectRequest(
   const linked = (projectRow ?? null) as LinkedProjectRow | null;
   const projectsByRequestId = new Map<string, LinkedProjectRow>();
   const quotesByProjectId = new Map<string, LinkedQuoteRow[]>();
+  let quoteItems: QuoteItemRow[] = [];
+  let invoices: CustomerInvoiceSummary[] = [];
 
   if (linked) {
     projectsByRequestId.set(request.id, linked);
     const { data: quoteRows } = await supabase
       .from("quotes")
-      .select("id, project_id, version, currency, total, status, valid_until, created_at")
+      .select(QUOTE_COLUMNS)
       .eq("project_id", linked.id)
       .order("version", { ascending: false });
 
     quotesByProjectId.set(linked.id, (quoteRows ?? []) as LinkedQuoteRow[]);
+
+    const latestQuote = pickLatestQuote((quoteRows ?? []) as LinkedQuoteRow[]);
+    if (latestQuote) {
+      const { data: itemRows, error: itemError } = await supabase
+        .from("quote_items")
+        .select("*")
+        .eq("quote_id", latestQuote.id)
+        .order("sort_order", { ascending: true });
+      if (!itemError) {
+        quoteItems = (itemRows ?? []) as QuoteItemRow[];
+      }
+    }
+
+    const { data: invoiceRows } = await supabase
+      .from("invoices")
+      .select("id, invoice_number, status, total, amount_paid, amount_due, currency, quote_id")
+      .eq("project_id", linked.id)
+      .eq("client_id", userId)
+      .order("created_at", { ascending: false });
+    invoices = (invoiceRows ?? []) as CustomerInvoiceSummary[];
   }
 
   let serviceName: string | null = null;
@@ -364,5 +445,93 @@ export async function getCustomerProjectRequest(
     ...toCustomerItem(request, projectsByRequestId, quotesByProjectId),
     serviceName,
     files,
+    quoteItems,
+    invoices,
+  };
+}
+
+export type CustomerProjectDetail = {
+  project: ProjectRow;
+  request: ProjectRequestRow | null;
+  quote: CustomerRequestQuote | null;
+  quoteItems: QuoteItemRow[];
+  invoices: CustomerInvoiceSummary[];
+};
+
+export async function getCustomerProjectDetail(
+  userId: string,
+  projectId: string,
+): Promise<CustomerProjectDetail | null> {
+  const supabase = await createServerSupabaseClient();
+  const { data: project, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", projectId)
+    .eq("client_id", userId)
+    .maybeSingle();
+
+  if (error || !project || project.client_id !== userId) {
+    return null;
+  }
+
+  let request: ProjectRequestRow | null = null;
+  if (project.request_id) {
+    let requestResult = (await supabase
+      .from("project_requests")
+      .select(REQUEST_COLUMNS)
+      .eq("id", project.request_id)
+      .eq("client_id", userId)
+      .maybeSingle()) as {
+      data: ProjectRequestRow | null;
+      error: { message?: string; code?: string } | null;
+    };
+
+    if (requestResult.error && isMissingColumn(requestResult.error)) {
+      requestResult = (await supabase
+        .from("project_requests")
+        .select(REQUEST_COLUMNS_CORE)
+        .eq("id", project.request_id)
+        .eq("client_id", userId)
+        .maybeSingle()) as {
+        data: ProjectRequestRow | null;
+        error: { message?: string; code?: string } | null;
+      };
+    }
+
+    request = requestResult.data;
+  }
+
+  const { data: quoteRows } = await supabase
+    .from("quotes")
+    .select(QUOTE_COLUMNS)
+    .eq("project_id", project.id)
+    .order("version", { ascending: false });
+
+  const quote = pickLatestQuote((quoteRows ?? []) as LinkedQuoteRow[]);
+  let quoteItems: QuoteItemRow[] = [];
+  if (quote) {
+    const { data: itemRows, error: itemError } = await supabase
+      .from("quote_items")
+      .select("*")
+      .eq("quote_id", quote.id)
+      .order("sort_order", { ascending: true });
+    if (!itemError) {
+      quoteItems = (itemRows ?? []) as QuoteItemRow[];
+    }
+  }
+
+  const { data: invoiceRows } = await supabase
+    .from("invoices")
+    .select("id, invoice_number, status, total, amount_paid, amount_due, currency, quote_id")
+    .eq("project_id", project.id)
+    .eq("client_id", userId)
+    .order("created_at", { ascending: false });
+
+  return {
+    project: project as ProjectRow,
+    request,
+    quote,
+    quoteItems,
+    invoices: (invoiceRows ?? []) as CustomerInvoiceSummary[],
   };
 }

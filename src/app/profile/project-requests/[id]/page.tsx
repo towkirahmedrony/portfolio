@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { ProjectRequestDetails } from "@/components/profile/project-request-details";
 import { getCustomerProjectRequest } from "@/lib/customer-project-requests";
+import { markOwnQuoteViewed } from "@/lib/customer-quote-actions";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,14 @@ export default async function ProjectRequestDetailsPage({
   const detail = await getCustomerProjectRequest(user.id, id);
   if (!detail) {
     notFound();
+  }
+
+  if (detail.quote?.status === "sent") {
+    await markOwnQuoteViewed(detail.quote.id);
+    const refreshed = await getCustomerProjectRequest(user.id, id);
+    if (refreshed) {
+      return <ProjectRequestDetails detail={refreshed} />;
+    }
   }
 
   return <ProjectRequestDetails detail={detail} />;

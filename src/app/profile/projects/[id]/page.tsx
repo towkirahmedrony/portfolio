@@ -1,9 +1,26 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { ClientQuoteSection } from "@/components/profile/client-quote-section";
 import { FileDownloader } from "@/components/profile/file-downloader";
+import {
+  formatClientProjectStatusLabel,
+  getStatusStyle,
+} from "@/lib/admin-project-constants";
+import {
+  formatClientRequestStatusLabel,
+  formatRequestBudget,
+  getRequestStatusStyle,
+} from "@/lib/admin-project-request-constants";
+import {
+  formatQuoteStatusLabel,
+  getQuoteStatusStyle,
+} from "@/lib/admin-quote-constants";
+import { getCustomerProjectDetail } from "@/lib/customer-project-requests";
+import { markOwnQuoteViewed } from "@/lib/customer-quote-actions";
+import { formatMoney } from "@/lib/quote-money";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type MilestoneRow = { id: string; title: string; description: string | null; status: string; due_date: string | null; };
 type InvoiceRow = { id: string; total: number; amount_paid: number; amount_due: number; status: string; currency: string; };
@@ -21,17 +38,24 @@ function formatBytes(bytes: number) {
 }
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function ProjectDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = await params;
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) return notFound();
+  if (!user) redirect("/login");
 
-  const { data: project } = await supabase.from("projects").select("*").eq("id", projectId).eq("client_id", user.id).single();
-  if (!project) return notFound();
+  let detail = await getCustomerProjectDetail(user.id, projectId);
+  if (!detail) return notFound();
 
+  if (detail.quote?.status === "sent") {
+    await markOwnQuoteViewed(detail.quote.id);
+    detail = (await getCustomerProjectDetail(user.id, projectId)) ?? detail;
+  }
+
+  const project = detail.project;
   const [ { data: milestones }, { data: invoices }, { data: reqData }, { data: files }, { data: history }, { data: discounts } ] = await Promise.all([
     supabase.from("project_milestones").select("*").eq("project_id", projectId).order("sort_order"),
     supabase.from("invoices").select("*").eq("project_id", projectId),
@@ -43,7 +67,17 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
 
   const totalPaid = (invoices as InvoiceRow[])?.reduce((sum, inv) => sum + Number(inv.amount_paid || 0), 0) || 0;
   const totalDue = (invoices as InvoiceRow[])?.reduce((sum, inv) => sum + Number(inv.amount_due || 0), 0) || 0;
-  const baseBudget = project.agreed_price || project.estimated_budget || 0;
+  const submittedBudget = detail.request
+    ? formatRequestBudget(
+        detail.request.budget_min,
+        detail.request.budget_max,
+        detail.request.budget_currency || project.currency || "BDT",
+      )
+    : null;
+  const quotedAmount = detail.quote
+    ? formatMoney(detail.quote.total, detail.quote.currency)
+    : "No admin quote yet";
+  const invoiceAmount = (invoices as InvoiceRow[])?.reduce((sum, inv) => sum + Number(inv.total || 0), 0) || 0;
   const requirements = reqData && reqData.length > 0 ? (reqData[0] as RequirementRow) : null;
 
   return (
@@ -54,7 +88,19 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-semibold tracking-wider text-accent uppercase">{project.project_number}</span>
-            <Badge>{project.status.replace("_", " ")}</Badge>
+            {detail.request ? (
+              <Badge className={getRequestStatusStyle(detail.request.status)}>
+                {`Request: ${formatClientRequestStatusLabel(detail.request.status)}`}
+              </Badge>
+            ) : null}
+            <Badge className={getStatusStyle(project.status)}>
+              {`Project: ${formatClientProjectStatusLabel(project.status)}`}
+            </Badge>
+            {detail.quote ? (
+              <Badge className={getQuoteStatusStyle(detail.quote.status)}>
+                {`Quote: ${formatQuoteStatusLabel(detail.quote.status)}`}
+              </Badge>
+            ) : null}
             {project.priority && <Badge className="border-accent/20">{`Priority: ${project.priority}`}</Badge>}
           </div>
           <h1 className="font-display mt-2 text-3xl tracking-tight sm:text-4xl">{project.title}</h1>
@@ -67,7 +113,11 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
           <div>
             <p className="text-xs font-medium tracking-[0.16em] text-muted uppercase">Financial Overview</p>
             <div className="mt-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-muted">Total Budget:</span><span className="font-medium">{`${baseBudget} ${project.currency}`}</span></div>
+              {submittedBudget ? (
+                <div className="flex justify-between gap-3"><span className="text-muted">Your submitted budget:</span><span className="font-medium text-right">{submittedBudget}</span></div>
+              ) : null}
+              <div className="flex justify-between gap-3"><span className="text-muted">Quoted amount:</span><span className="font-medium text-right">{quotedAmount}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-muted">Invoice amount:</span><span className="font-medium text-right">{formatMoney(invoiceAmount, project.currency || "BDT")}</span></div>
               {(discounts as DiscountRow[])?.map(d => (
                 <div key={d.id} className="flex justify-between text-emerald-500"><span>{`Discount (${d.label}):`}</span><span className="font-medium">{`-${d.discount_amount} ${d.currency}`}</span></div>
               ))}
@@ -112,6 +162,15 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
             </div>
           ) : <p className="mt-4 text-sm text-muted">Scope details not finalized yet.</p>}
         </Card>
+      </div>
+
+      <div className="mt-10">
+        <ClientQuoteSection
+          quote={detail.quote}
+          items={detail.quoteItems}
+          invoices={detail.invoices}
+          submittedBudget={submittedBudget}
+        />
       </div>
 
       <div className="mt-12 grid gap-8 lg:grid-cols-3">

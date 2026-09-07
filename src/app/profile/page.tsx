@@ -87,7 +87,7 @@ export default async function ProfilePage() {
         <div className="grid gap-5">
           <CustomerProfile initialProfile={mapped.profile} initialAccount={mapped.account} />
           <CustomerRequests items={requestItems} />
-          <ProjectTracking />
+          <ProjectTracking items={requestItems} />
           <ReferralSection referral={referral} />
         </div>
       </div>

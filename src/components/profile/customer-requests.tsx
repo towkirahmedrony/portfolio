@@ -2,14 +2,23 @@ import { CancelRequestButton } from "@/components/profile/cancel-request-button"
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { formatDate } from "@/lib/admin-project-constants";
+import {
+  formatClientProjectStatusLabel,
+  formatDate,
+  getStatusStyle,
+} from "@/lib/admin-project-constants";
 import {
   displaySlug,
   formatRequestBudget,
   formatClientRequestStatusLabel,
   getRequestStatusStyle,
 } from "@/lib/admin-project-request-constants";
+import {
+  formatQuoteStatusLabel,
+  getQuoteStatusStyle,
+} from "@/lib/admin-quote-constants";
 import type { CustomerProjectRequestItem } from "@/lib/customer-project-requests";
+import { formatMoney } from "@/lib/quote-money";
 import type { ProjectRequestRow } from "@/types/database";
 
 function Detail({
@@ -47,10 +56,25 @@ function shortSummary(request: ProjectRequestRow): string | null {
   return `${text.slice(0, 157).trimEnd()}…`;
 }
 
+function latestTimestamp(item: CustomerProjectRequestItem): string {
+  const values = [
+    item.request.updated_at,
+    item.request.last_activity_at,
+    item.request.submitted_at,
+    item.linkedProject?.updated_at,
+    item.quote?.updated_at,
+  ].filter((value): value is string => Boolean(value));
+  return values.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? item.request.submitted_at;
+}
+
 function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
-  const { request, canCancel, canResubmit } = item;
+  const { request, linkedProject, quote, canCancel, canResubmit } = item;
   const summary = shortSummary(request);
-  const lastUpdated = request.updated_at || request.submitted_at;
+  const submittedBudget = formatRequestBudget(
+    request.budget_min,
+    request.budget_max,
+    request.budget_currency || "BDT",
+  );
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-card-border bg-background p-5">
@@ -61,8 +85,18 @@ function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
               {request.request_number}
             </span>
             <Badge className={getRequestStatusStyle(request.status)}>
-              {formatClientRequestStatusLabel(request.status)}
+              {`Request: ${formatClientRequestStatusLabel(request.status)}`}
             </Badge>
+            {linkedProject ? (
+              <Badge className={getStatusStyle(linkedProject.status)}>
+                {`Project: ${formatClientProjectStatusLabel(linkedProject.status)}`}
+              </Badge>
+            ) : null}
+            {quote ? (
+              <Badge className={getQuoteStatusStyle(quote.status)}>
+                {`Quote: ${formatQuoteStatusLabel(quote.status)}`}
+              </Badge>
+            ) : null}
           </div>
           <h4 className="font-display text-lg tracking-tight font-medium">
             {requestTitle(request)}
@@ -99,15 +133,16 @@ function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Detail label="Submitted" value={formatDate(request.submitted_at)} />
-        <Detail
-          label="Budget"
-          value={formatRequestBudget(
-            request.budget_min,
-            request.budget_max,
-            request.budget_currency || "BDT",
-          )}
-        />
-        <Detail label="Last updated" value={formatDate(lastUpdated)} />
+        <Detail label="Your submitted budget" value={submittedBudget} />
+        {quote ? (
+          <Detail
+            label="Quoted amount"
+            value={formatMoney(quote.total, quote.currency)}
+          />
+        ) : (
+          <Detail label="Quoted amount" value="No admin quote yet" />
+        )}
+        <Detail label="Last updated" value={formatDate(latestTimestamp(item))} />
       </div>
     </div>
   );
@@ -118,34 +153,28 @@ export function CustomerRequests({
 }: {
   items: CustomerProjectRequestItem[];
 }) {
-  const visible = items.filter((item) => !item.linkedProject);
-  const emptyMessage =
-    items.length === 0
-      ? "You have not submitted a project request yet."
-      : "Your converted requests now appear under Active Projects.";
-
   return (
     <Card className="hover:translate-y-0">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="font-display text-xl tracking-tight">Project Requests</h3>
           <p className="mt-1 text-sm text-muted">
-            Orders you submitted from the start-project form.
+            Live request, project, and quote status from your submitted orders.
           </p>
         </div>
         <Badge>
-          {`${visible.length} ${visible.length === 1 ? "Request" : "Requests"}`}
+          {`${items.length} ${items.length === 1 ? "Request" : "Requests"}`}
         </Badge>
       </div>
 
       <div className="mt-6">
-        {visible.length === 0 ? (
+        {items.length === 0 ? (
           <div className="rounded-xl border border-dashed border-card-border p-6 text-center">
-            <p className="text-sm text-muted">{emptyMessage}</p>
+            <p className="text-sm text-muted">You have not submitted a project request yet.</p>
           </div>
         ) : (
           <div className="grid gap-4">
-            {visible.map((item) => (
+            {items.map((item) => (
               <RequestCard key={item.request.id} item={item} />
             ))}
           </div>

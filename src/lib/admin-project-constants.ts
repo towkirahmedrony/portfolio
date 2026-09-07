@@ -107,6 +107,17 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
   cancelled: "Cancelled",
 };
 
+export const CLIENT_PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+  pending: "Pending Start",
+  approved: "Approved",
+  in_progress: "In progress",
+  on_hold: "On hold",
+  in_review: "In review",
+  revision: "Revision",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
 const PRIORITY_LABELS: Record<ProjectPriority, string> = {
   low: "Low",
   normal: "Normal",
@@ -159,6 +170,13 @@ export function isProjectDetailTab(value: string): value is ProjectDetailTab {
 export function formatStatusLabel(status: string): string {
   if (isProjectStatus(status)) {
     return STATUS_LABELS[status];
+  }
+  return status.replace(/_/g, " ");
+}
+
+export function formatClientProjectStatusLabel(status: string): string {
+  if (isProjectStatus(status)) {
+    return CLIENT_PROJECT_STATUS_LABELS[status];
   }
   return status.replace(/_/g, " ");
 }

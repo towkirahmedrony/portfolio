@@ -1,10 +1,17 @@
 import Link from "next/link";
 import { CancelRequestButton } from "@/components/profile/cancel-request-button";
+import { ClientQuoteSection } from "@/components/profile/client-quote-section";
 import { FileDownloader } from "@/components/profile/file-downloader";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { formatBytes, formatDate, formatDateTime, formatStatusLabel, getStatusStyle } from "@/lib/admin-project-constants";
+import {
+  formatBytes,
+  formatClientProjectStatusLabel,
+  formatDate,
+  formatDateTime,
+  getStatusStyle,
+} from "@/lib/admin-project-constants";
 import {
   displaySlug,
   formatClientRequestStatusLabel,
@@ -13,8 +20,11 @@ import {
   formatYesNo,
   getRequestStatusStyle,
 } from "@/lib/admin-project-request-constants";
+import {
+  formatQuoteStatusLabel,
+  getQuoteStatusStyle,
+} from "@/lib/admin-quote-constants";
 import type { CustomerProjectRequestDetail } from "@/lib/customer-project-requests";
-import { formatMoney } from "@/lib/quote-money";
 import type { Json } from "@/types/database";
 
 function DetailItem({
@@ -132,15 +142,36 @@ export function ProjectRequestDetails({
 }: {
   detail: CustomerProjectRequestDetail;
 }) {
-  const { request, linkedProject, quote, canCancel, canEdit, canResubmit, serviceName, files } = detail;
+  const {
+    request,
+    linkedProject,
+    quote,
+    canCancel,
+    canEdit,
+    canResubmit,
+    serviceName,
+    files,
+    quoteItems,
+    invoices,
+  } = detail;
   const features = (request.required_features as string[] | null) ?? [];
   const references = (request.reference_urls as string[] | null) ?? [];
   const customFields = snapshotCustomFields(request.form_snapshot);
-  const lastUpdated = request.updated_at || request.last_activity_at || request.submitted_at;
+  const lastUpdated =
+    quote?.updated_at ||
+    linkedProject?.updated_at ||
+    request.updated_at ||
+    request.last_activity_at ||
+    request.submitted_at;
   const editHref = `/profile/project-requests/${request.id}/edit`;
   const title = request.project_type?.trim()
     ? displaySlug(request.project_type)
     : "Project request";
+  const submittedBudget = formatRequestBudget(
+    request.budget_min,
+    request.budget_max,
+    request.budget_currency || "BDT",
+  );
 
   return (
     <div className="mx-auto max-w-4xl pt-28 pb-12 sm:pt-32 px-5 sm:px-8">
@@ -155,8 +186,18 @@ export function ProjectRequestDetails({
               {request.request_number}
             </span>
             <Badge className={getRequestStatusStyle(request.status)}>
-              {formatClientRequestStatusLabel(request.status)}
+              {`Request: ${formatClientRequestStatusLabel(request.status)}`}
             </Badge>
+            {linkedProject ? (
+              <Badge className={getStatusStyle(linkedProject.status)}>
+                {`Project: ${formatClientProjectStatusLabel(linkedProject.status)}`}
+              </Badge>
+            ) : null}
+            {quote ? (
+              <Badge className={getQuoteStatusStyle(quote.status)}>
+                {`Quote: ${formatQuoteStatusLabel(quote.status)}`}
+              </Badge>
+            ) : null}
           </div>
           <h1 className="font-display mt-2 text-3xl tracking-tight sm:text-4xl">{title}</h1>
           {serviceName ? (
@@ -193,15 +234,17 @@ export function ProjectRequestDetails({
           <h2 className="font-display text-xl tracking-tight">Overview</h2>
           <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <DetailItem label="Service / project type" value={displaySlug(request.project_type)} />
-            <DetailItem label="Status" value={formatClientRequestStatusLabel(request.status)} />
-            <DetailItem
-              label="Budget"
-              value={formatRequestBudget(
-                request.budget_min,
-                request.budget_max,
-                request.budget_currency || "BDT",
-              )}
-            />
+            <DetailItem label="Request status" value={formatClientRequestStatusLabel(request.status)} />
+            {linkedProject ? (
+              <DetailItem
+                label="Project status"
+                value={formatClientProjectStatusLabel(linkedProject.status)}
+              />
+            ) : null}
+            {quote ? (
+              <DetailItem label="Quote status" value={formatQuoteStatusLabel(quote.status)} />
+            ) : null}
+            <DetailItem label="Your submitted budget" value={submittedBudget} />
             <DetailItem
               label="Timeline"
               value={formatRequestDeadline(request.deadline_date, request.deadline_type)}
@@ -351,17 +394,12 @@ export function ProjectRequestDetails({
           )}
         </Card>
 
-        {quote ? (
-          <Card className="hover:translate-y-0">
-            <h2 className="font-display text-xl tracking-tight">Quote</h2>
-            <p className="mt-4 text-sm font-medium">
-              {formatMoney(Number(quote.total), quote.currency)}
-              <span className="ml-2 text-xs font-normal text-muted">
-                Version {quote.version} · {quote.status.replace(/_/g, " ")}
-              </span>
-            </p>
-          </Card>
-        ) : null}
+        <ClientQuoteSection
+          quote={quote}
+          items={quoteItems}
+          invoices={invoices}
+          submittedBudget={submittedBudget}
+        />
 
         {linkedProject ? (
           <Card className="hover:translate-y-0">
@@ -371,7 +409,7 @@ export function ProjectRequestDetails({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{linkedProject.project_number}</span>
                   <Badge className={getStatusStyle(linkedProject.status)}>
-                    {formatStatusLabel(linkedProject.status)}
+                    {`Project: ${formatClientProjectStatusLabel(linkedProject.status)}`}
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted">{linkedProject.title}</p>

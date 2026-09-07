@@ -170,6 +170,27 @@ export function canCreateQuoteVersion(status: QuoteStatus): boolean {
   return status !== "cancelled";
 }
 
+export function canClientAcceptQuote(status: QuoteStatus, validUntil?: string | null): boolean {
+  if (status !== "sent" && status !== "viewed") {
+    return false;
+  }
+  if (validUntil) {
+    const expires = new Date(validUntil);
+    if (!Number.isNaN(expires.getTime()) && expires.getTime() < Date.now()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function canClientRejectQuote(status: QuoteStatus): boolean {
+  return status === "sent" || status === "viewed";
+}
+
+export function canClientRequestQuoteChanges(status: QuoteStatus): boolean {
+  return status === "sent" || status === "viewed" || status === "rejected" || status === "expired";
+}
+
 export function buildQuotesHref(filters: QuoteListFilters): string {
   const params = new URLSearchParams();
   if (filters.status && filters.status !== "all") {

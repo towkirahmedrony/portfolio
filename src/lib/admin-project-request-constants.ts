@@ -39,7 +39,7 @@ export const CLIENT_REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
   quoted: "Quote Ready",
   approved: "Approved",
   rejected: "Rejected",
-  converted: "Project Started",
+  converted: "Converted",
   cancelled: "Cancelled",
 };
 

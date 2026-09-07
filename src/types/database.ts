@@ -1949,6 +1949,14 @@ export type Database = {
         Args: { p_request_id: string }
         Returns: Database["public"]["Enums"]["request_status"]
       }
+      client_mark_quote_viewed: {
+        Args: { p_quote_id: string }
+        Returns: Database["public"]["Enums"]["quote_status"]
+      }
+      client_respond_to_quote: {
+        Args: { p_action: string; p_message?: string; p_quote_id: string }
+        Returns: Database["public"]["Enums"]["quote_status"]
+      }
       update_own_project_request: {
         Args: { p_payload: Json; p_request_id: string }
         Returns: Database["public"]["Enums"]["request_status"]
