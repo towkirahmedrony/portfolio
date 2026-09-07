@@ -7,10 +7,52 @@ import {
   AUTH_RETURN_COOKIE,
   isAdminPath,
   PLACE_ORDER_AUTH_REASON,
+  readAuthReturnFromCookieHeader,
   resolveCallbackReturn,
 } from "@/lib/auth";
 import { supabaseAnonKey, supabaseUrl } from "@/lib/supabase/env";
 import type { Database } from "@/types/database";
+
+// TEMP-DIAG (remove after tracing): short-lived cookie recording exactly what
+// this callback received and resolved, so the real OAuth round trip can be
+// inspected without touching logs or changing behavior.
+const DIAG_COOKIE = "diag_auth_resolve";
+const DIAG_MAX_AGE = 180;
+
+function attachDiag(
+  response: NextResponse,
+  requestUrl: URL,
+  cookieHeader: string | null,
+  diag: {
+    oauthError: string | null;
+    code: string | null;
+    tokenHash: string | null;
+    type: string | null;
+    next: string;
+    placeOrder: boolean;
+  },
+) {
+  const cookieReturn = readAuthReturnFromCookieHeader(cookieHeader);
+  const payload = [
+    `path=${requestUrl.pathname}`,
+    `qNext=${encodeURIComponent(requestUrl.searchParams.get("next") ?? "")}`,
+    `qReason=${encodeURIComponent(requestUrl.searchParams.get("reason") ?? "")}`,
+    `err=${encodeURIComponent(diag.oauthError ?? "")}`,
+    `hasCode=${diag.code ? 1 : 0}`,
+    `hasToken=${diag.tokenHash ? 1 : 0}`,
+    `type=${encodeURIComponent(diag.type ?? "")}`,
+    `ckNext=${encodeURIComponent(cookieReturn.next ?? "")}`,
+    `ckReason=${encodeURIComponent(cookieReturn.reason ?? "")}`,
+    `resolved=${encodeURIComponent(diag.next)}`,
+    `placeOrder=${diag.placeOrder ? 1 : 0}`,
+  ].join("|");
+  response.cookies.set(DIAG_COOKIE, payload, {
+    path: "/",
+    maxAge: DIAG_MAX_AGE,
+    sameSite: "lax",
+  });
+  return response;
+}
 
 const EMAIL_OTP_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -66,7 +108,12 @@ export async function GET(request: Request) {
     if (placeOrder) {
       loginUrl.searchParams.set("reason", PLACE_ORDER_AUTH_REASON);
     }
-    return clearAuthReturnCookies(NextResponse.redirect(loginUrl));
+    return attachDiag(
+      clearAuthReturnCookies(NextResponse.redirect(loginUrl)),
+      requestUrl,
+      request.headers.get("cookie"),
+      { oauthError, code, tokenHash, type, next, placeOrder },
+    );
   }
 
   if (oauthError) {
@@ -127,11 +174,16 @@ export async function GET(request: Request) {
     }
 
     const destination = isAdminPath(next) ? "/profile" : next;
-    const redirect = clearAuthReturnCookies(
-      applyCookies(
-        NextResponse.redirect(new URL(destination, requestUrl.origin)),
-        pendingCookies,
+    const redirect = attachDiag(
+      clearAuthReturnCookies(
+        applyCookies(
+          NextResponse.redirect(new URL(destination, requestUrl.origin)),
+          pendingCookies,
+        ),
       ),
+      requestUrl,
+      request.headers.get("cookie"),
+      { oauthError: null, code, tokenHash, type, next, placeOrder },
     );
     return redirect;
   } catch {
