@@ -251,13 +251,13 @@ function QuoteRows({
   return (
     <>
       {rows.map((row) => {
-        const project = projectsById.get(row.project_id);
+        const project = row.project_id ? projectsById.get(row.project_id) : undefined;
         return (
           <RowItem
             key={row.id}
             href={`/admin/quotes/${row.id}`}
             title={`Quote v${row.version}`}
-            subtitle={project ? `${project.project_number} · ${project.title}` : "Project"}
+            subtitle={project ? `${project.project_number} · ${project.title}` : "Awaiting acceptance"}
             trailing={
               <div className="flex items-center gap-3">
                 <span className="text-xs text-muted">{formatDate(row.created_at)}</span>

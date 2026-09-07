@@ -867,9 +867,6 @@ export async function updateQuoteStatus(formData: FormData): Promise<ActionResul
   if (nextStatus === "sent" && !quote.sent_at) {
     patch.sent_at = now;
   }
-  if (nextStatus === "accepted") {
-    patch.accepted_at = now;
-  }
   if (nextStatus === "rejected") {
     patch.rejected_at = now;
   }

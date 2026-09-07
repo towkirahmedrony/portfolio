@@ -31,6 +31,7 @@ const quoteActions = read("src/lib/admin-quote-actions.ts");
 const projectRequestActions = read("src/lib/admin-project-request-actions.ts");
 const customerQuoteActions = read("src/lib/customer-quote-actions.ts");
 const acceptSql = read("supabase/migrations/20260907300000_request_quote_accept_creates_project.sql");
+const hardenSql = read("supabase/migrations/20260907310000_harden_request_quote_accept_project.sql");
 const quoteConstants = read("src/lib/admin-quote-constants.ts");
 const quoteFromRequestPanel = read("src/components/admin/quotes/quote-from-request-panel.tsx");
 const requestDetail = read("src/components/admin/project-requests/project-request-detail.tsx");
@@ -123,6 +124,26 @@ assert(
 assert(
   /raise exception 'Projects are created when the client accepts a quote/.test(acceptSql),
   "admin_convert_project_request must not create a project",
+);
+
+assert(
+  /A project is created when the client accepts a quote\. Invoices/.test(hardenSql),
+  "invoices require the project created by quote acceptance",
+);
+
+assert(
+  /if v_quote.status <> 'accepted' then/.test(hardenSql),
+  "repeated accept still attaches or reuses the single project",
+);
+
+assert(
+  quoteConstants.includes('sent: ["viewed", "rejected", "expired", "cancelled"]'),
+  "admin cannot mark a sent quote accepted",
+);
+
+assert(
+  quoteConstants.includes('viewed: ["rejected", "expired", "cancelled"]'),
+  "admin cannot mark a viewed quote accepted",
 );
 
 assert(

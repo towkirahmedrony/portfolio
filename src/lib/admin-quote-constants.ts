@@ -49,8 +49,8 @@ export const QUOTE_STATUS_STYLES: Record<QuoteStatus, string> = {
 
 export const QUOTE_STATUS_TRANSITIONS: Record<QuoteStatus, QuoteStatus[]> = {
   draft: ["sent", "cancelled"],
-  sent: ["viewed", "accepted", "rejected", "expired", "cancelled"],
-  viewed: ["accepted", "rejected", "expired", "cancelled"],
+  sent: ["viewed", "rejected", "expired", "cancelled"],
+  viewed: ["rejected", "expired", "cancelled"],
   accepted: [],
   rejected: [],
   expired: [],

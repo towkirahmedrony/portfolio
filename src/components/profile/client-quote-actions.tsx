@@ -80,7 +80,7 @@ export function ClientQuoteActions({
           onClose={() => { if (!pending) setMode(null); }}
         >
           <p className="text-sm leading-6 text-muted">
-            Accepting confirms the admin quoted price. This quote stays on record for invoicing.
+            Accepting confirms the quoted price and creates the project. Your submitted budget is only an estimate; this quote total becomes the agreed price.
           </p>
           {error ? <p className="mt-4 text-sm text-red-600" role="alert">{error}</p> : null}
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

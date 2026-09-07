@@ -526,7 +526,7 @@ begin
           v_title,
           v_request.description,
           'pending',
-          coalesce(v_request.priority, 'normal'::public.project_priority),
+          'normal'::public.project_priority,
           coalesce(nullif(v_quote.currency, ''), nullif(v_request.budget_currency, ''), 'BDT'),
           coalesce(v_request.budget_max, v_request.budget_min),
           v_quote.total,

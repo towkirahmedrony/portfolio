@@ -13,15 +13,16 @@ auth.users
           │               └── referral_rewards
           │
           ├── project_requests
-          │       └── projects
+          │       ├── quotes (project_request_id; project_id is null until accept)
+          │       │     └── quote_items
+          │       └── projects  (created only when the client accepts a quote)
           │              ├── project_requirements
           │              ├── project_status_history
           │              ├── project_milestones
           │              ├── project_notes
           │              ├── project_files
           │              ├── project_messages
-          │              ├── quotes
-          │              │     └── quote_items
+          │              ├── quotes.project_id (nullable, set on accept)
           │              ├── project_discounts
           │              ├── payment_schedule
           │              └── invoices
@@ -262,7 +263,7 @@ The confirmed project, created once a request converts.
 |---|---|---|
 | id | uuid PK | |
 | project_number | text | unique |
-| request_id | uuid FK → project_requests.id | unique |
+| request_id | uuid FK → project_requests.id | unique when not null; one project per request |
 | client_id | uuid FK → profiles.id | on delete restrict |
 | title | text | not null |
 | description | text | |
@@ -380,13 +381,14 @@ Metadata only — actual objects live in Supabase Storage.
 ## Sales — quotes, invoices, payments
 
 ### `quotes`
-A project can have multiple quote versions.
+Quotes attach to a project request and may exist before any project. Multiple versions can exist on the same request. A project is created only when the client accepts a quote (`status = pending`, `agreed_price = quote.total`). `project_id` stays null until then.
 
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| project_id | uuid FK → projects.id | |
-| version | integer | default 1, unique with project_id |
+| project_request_id | uuid FK → project_requests.id | required for request-origin quotes; unique with version |
+| project_id | uuid FK → projects.id | nullable until the client accepts |
+| version | integer | default 1, unique with project_request_id |
 | currency | text | default `BDT` |
 | subtotal / discount_total / tax_total / total | numeric | default 0 |
 | notes / terms | text | |

@@ -22,6 +22,7 @@ function isClientQuoteAction(value: string): value is ClientQuoteAction {
 
 function revalidateClientQuote(quoteId: string, projectId?: string | null, requestId?: string | null) {
   revalidatePath("/profile", "layout");
+  revalidatePath("/admin/projects");
   if (projectId) {
     revalidatePath(`/profile/projects/${projectId}`);
     revalidatePath(`/admin/projects/${projectId}`);
@@ -68,7 +69,7 @@ async function loadOwnedQuoteContext(
   }
 
   let requestId = quote.project_request_id;
-  let projectId = quote.project_id;
+  const projectId = quote.project_id;
   let owns = false;
 
   if (requestId) {
@@ -154,7 +155,17 @@ export async function respondToOwnQuote(
     };
   }
 
-  revalidateClientQuote(quoteId, context.projectId, context.requestId);
+  let projectId = context.projectId;
+  if (actionRaw === "accept" && !projectId && context.requestId) {
+    const { data: createdProject } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("request_id", context.requestId)
+      .maybeSingle();
+    projectId = createdProject?.id ?? projectId;
+  }
+
+  revalidateClientQuote(quoteId, projectId, context.requestId);
   return { ok: true, status: data as QuoteStatus };
 }
 
