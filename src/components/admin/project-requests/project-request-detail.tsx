@@ -6,6 +6,7 @@ import {
   convertProjectRequest,
   updateProjectRequestStatus,
 } from "@/lib/admin-project-request-actions";
+import { createQuoteDraftFromRequest } from "@/lib/admin-quote-actions";
 import {
   convertBlockedReason,
   displaySlug,
@@ -17,8 +18,15 @@ import {
   getRequestStatusStyle,
   REQUEST_STATUSES,
   type AdminProjectRequestDetail,
+  type ProjectRequestQuoteSummary,
 } from "@/lib/admin-project-requests";
+import {
+  formatQuoteStatusLabel,
+  getQuoteStatusStyle,
+  quoteFromRequestBlockedReason,
+} from "@/lib/admin-quote-constants";
 import { clientDisplayName } from "@/lib/admin-project-constants";
+import { formatMoney } from "@/lib/admin-dashboard";
 
 const fieldClass =
   "w-full rounded-xl border border-card-border bg-background px-3 py-2 text-sm text-foreground";
@@ -40,11 +48,18 @@ function DetailItem({
 
 export function ProjectRequestDetail({
   request,
+  quotes = [],
 }: {
   request: AdminProjectRequestDetail;
+  quotes?: ProjectRequestQuoteSummary[];
 }) {
   const alreadyConverted = Boolean(request.linkedProject);
   const blocked = convertBlockedReason(
+    request.status,
+    Boolean(request.client_id),
+    alreadyConverted,
+  );
+  const quoteBlocked = quoteFromRequestBlockedReason(
     request.status,
     Boolean(request.client_id),
     alreadyConverted,
@@ -247,6 +262,80 @@ export function ProjectRequestDetail({
                 className="rounded-xl bg-foreground px-3 py-2 text-sm font-medium text-background"
               >
                 Convert to project
+              </ConfirmSubmitButton>
+            </ActionForm>
+          )}
+        </AdminPanel>
+
+        <AdminPanel
+          title="Quotes"
+          description="Turn this order into a quote draft without creating duplicate projects."
+        >
+          {request.linkedProject ? (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted">
+                This request is already linked to{" "}
+                <Link
+                  href={`/admin/projects/${request.linkedProject.id}`}
+                  className="text-foreground underline"
+                >
+                  {request.linkedProject.project_number}
+                </Link>
+                . Quotes live on the project.
+              </p>
+              {quotes.length > 0 ? (
+                <ul className="space-y-2">
+                  {quotes.map((quote) => (
+                    <li key={quote.id}>
+                      <Link
+                        href={`/admin/quotes/${quote.id}`}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-card-border bg-background px-3 py-2 hover:border-foreground/30"
+                      >
+                        <span className="font-medium text-foreground">v{quote.version}</span>
+                        <StatusPill
+                          label={formatQuoteStatusLabel(quote.status)}
+                          className={getQuoteStatusStyle(quote.status)}
+                        />
+                        <span className="text-muted">
+                          {formatMoney(Number(quote.total), quote.currency || "BDT")}
+                        </span>
+                        <span className="text-xs text-muted">
+                          {formatDateTime(quote.created_at)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted">No quotes yet on this project.</p>
+              )}
+              <Link
+                href={`/admin/quotes/new?projectId=${request.linkedProject.id}`}
+                className="inline-flex rounded-xl bg-foreground px-3 py-2 text-sm font-medium text-background"
+              >
+                New quote for project
+              </Link>
+            </div>
+          ) : quoteBlocked ? (
+            <p className="text-sm text-muted">{quoteBlocked}</p>
+          ) : (
+            <ActionForm
+              action={createQuoteDraftFromRequest}
+              className="grid gap-3"
+              successMessage="Quote draft created."
+            >
+              <input type="hidden" name="requestId" value={request.id} />
+              <p className="text-sm text-muted">
+                Approves this request, converts it into a single project record
+                (request_id stays unique), and opens a prefilled draft. The
+                submitted budget is used as a suggested starting amount — nothing is
+                final until you save and send.
+              </p>
+              <ConfirmSubmitButton
+                message="Approve and convert this request into a project, then open a prefilled quote draft?"
+                className="rounded-xl bg-foreground px-3 py-2 text-sm font-medium text-background"
+              >
+                Create quote draft
               </ConfirmSubmitButton>
             </ActionForm>
           )}

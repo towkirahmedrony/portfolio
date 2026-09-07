@@ -63,13 +63,17 @@ export function QuoteEditor({
   items = [],
   projects,
   readOnly = false,
+  preselectedProjectId,
 }: {
   quote?: QuoteRow;
   items?: QuoteItemRow[];
   projects: QuoteProjectOption[];
   readOnly?: boolean;
+  preselectedProjectId?: string;
 }) {
-  const [projectId, setProjectId] = useState(quote?.project_id ?? "");
+  const [projectId, setProjectId] = useState(
+    quote?.project_id ?? preselectedProjectId ?? "",
+  );
   const [lines, setLines] = useState<EditorLine[]>(() => fromQuoteItems(items));
   const [discount, setDiscount] = useState(String(quote?.discount_total ?? 0));
   const [tax, setTax] = useState(String(quote?.tax_total ?? 0));

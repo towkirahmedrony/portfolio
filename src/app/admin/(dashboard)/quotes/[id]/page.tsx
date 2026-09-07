@@ -43,7 +43,7 @@ export default async function AdminQuoteDetailPage({
     );
   }
 
-  const { quote, items, project, client, versions } = quoteResult.data;
+  const { quote, items, project, client, versions, invoice } = quoteResult.data;
   const editable = canEditQuote(quote.status);
   const projectOptions =
     projectsResult.status === "ok" || projectsResult.status === "empty"
@@ -100,7 +100,7 @@ export default async function AdminQuoteDetailPage({
           readOnly={!editable}
         />
         <div className="grid gap-6 self-start">
-          <QuoteActions quote={quote} />
+          <QuoteActions quote={quote} invoice={invoice} />
           <QuoteVersionHistory versions={versions} currentId={quote.id} />
         </div>
       </div>

@@ -1,29 +1,44 @@
 import { Suspense } from "react";
 import { AdminPage } from "@/components/admin/admin-page";
 import { QueryStateNotice } from "@/components/admin/projects/query-state";
+import { QuoteFromRequestPanel } from "@/components/admin/quotes/quote-from-request-panel";
 import { QuotesListTable } from "@/components/admin/quotes/quotes-list";
 import { QuotesListSkeleton } from "@/components/admin/quotes/quotes-skeleton";
 import { QuotesToolbar } from "@/components/admin/quotes/quotes-toolbar";
-import { getAdminQuotes, type QuoteListFilters } from "@/lib/admin-quotes";
+import {
+  getAdminQuotes,
+  getQuoteEligibleProjectRequests,
+  type QuoteListFilters,
+} from "@/lib/admin-quotes";
 import { requireAdmin } from "@/lib/require-admin";
 
 async function QuotesContent({ filters }: { filters: QuoteListFilters }) {
-  const result = await getAdminQuotes(filters);
+  const [quotesResult, eligibleResult] = await Promise.all([
+    getAdminQuotes(filters),
+    getQuoteEligibleProjectRequests(),
+  ]);
 
-  if (result.status === "error" || result.status === "unavailable") {
-    return <QueryStateNotice result={result} />;
-  }
+  const showEligible =
+    eligibleResult.status === "ok" || eligibleResult.status === "empty";
 
-  if (result.status === "empty") {
-    return (
-      <QueryStateNotice
-        result={result}
-        emptyMessage="No quotes match the current filter."
-      />
-    );
-  }
+  return (
+    <div className="grid gap-8">
+      {showEligible ? (
+        <QuoteFromRequestPanel requests={eligibleResult.data} />
+      ) : null}
 
-  return <QuotesListTable quotes={result.data} />;
+      {quotesResult.status === "error" || quotesResult.status === "unavailable" ? (
+        <QueryStateNotice result={quotesResult} />
+      ) : quotesResult.status === "empty" ? (
+        <QueryStateNotice
+          result={quotesResult}
+          emptyMessage="No quotes match the current filter."
+        />
+      ) : (
+        <QuotesListTable quotes={quotesResult.data} />
+      )}
+    </div>
+  );
 }
 
 export default async function AdminQuotesPage({
@@ -37,7 +52,7 @@ export default async function AdminQuotesPage({
   return (
     <AdminPage
       title="Quotes"
-      description="Create, version, and send project quotes. Totals are calculated from quote_items."
+      description="Review project requests, create prefilled quote drafts, version and send them, then invoice accepted quotes. Totals are calculated from quote_items."
       className="mx-auto w-full max-w-6xl"
     >
       <QuotesToolbar filters={filters} />

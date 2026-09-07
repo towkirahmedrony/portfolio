@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/admin/projects/action-form";
 import { AdminPanel } from "@/components/admin/projects/query-state";
 import {
@@ -5,6 +6,7 @@ import {
   canSendQuote,
   formatQuoteStatusLabel,
   getAllowedQuoteTransitions,
+  type QuoteInvoiceLink,
 } from "@/lib/admin-quote-constants";
 import {
   createQuoteVersion,
@@ -15,7 +17,13 @@ import { createInvoiceFromQuote } from "@/lib/admin-invoice-actions";
 import { isQuotePdfExportSupported } from "@/lib/quote-pdf";
 import type { QuoteRow } from "@/types/database";
 
-export function QuoteActions({ quote }: { quote: QuoteRow }) {
+export function QuoteActions({
+  quote,
+  invoice,
+}: {
+  quote: QuoteRow;
+  invoice?: QuoteInvoiceLink | null;
+}) {
   const transitions = getAllowedQuoteTransitions(quote.status);
   const pdfReady = isQuotePdfExportSupported();
 
@@ -37,13 +45,21 @@ export function QuoteActions({ quote }: { quote: QuoteRow }) {
               </SubmitButton>
             </ActionForm>
           ) : null}
-          {quote.status === "accepted" ? (
+          {quote.status === "accepted" && !invoice ? (
             <ActionForm action={createInvoiceFromQuote}>
               <input type="hidden" name="quoteId" value={quote.id} />
               <SubmitButton variant="secondary" pendingLabel="Creating invoice…">
                 Create invoice
               </SubmitButton>
             </ActionForm>
+          ) : null}
+          {quote.status === "accepted" && invoice ? (
+            <Link
+              href={`/admin/invoices/${invoice.id}`}
+              className="inline-flex items-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-400"
+            >
+              Invoice {invoice.invoice_number}
+            </Link>
           ) : null}
         </div>
       </AdminPanel>

@@ -5,8 +5,13 @@ import { QuoteEditor } from "@/components/admin/quotes/quote-editor";
 import { getQuoteProjectOptions } from "@/lib/admin-quotes";
 import { requireAdmin } from "@/lib/require-admin";
 
-export default async function AdminNewQuotePage() {
+export default async function AdminNewQuotePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ projectId?: string }>;
+}) {
   await requireAdmin();
+  const { projectId } = await searchParams;
   const projects = await getQuoteProjectOptions();
 
   return (
@@ -29,7 +34,7 @@ export default async function AdminNewQuotePage() {
           emptyMessage="Create a project before drafting a quote."
         />
       ) : (
-        <QuoteEditor projects={projects.data} />
+        <QuoteEditor projects={projects.data} preselectedProjectId={projectId} />
       )}
     </AdminPage>
   );

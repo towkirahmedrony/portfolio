@@ -3,6 +3,7 @@ import type { ProjectClient, QueryResult } from "@/lib/admin-project-constants";
 import type {
   ProjectRequestRow,
   ProjectRow,
+  QuoteRow,
   RequestStatus,
 } from "@/types/database";
 
@@ -106,6 +107,11 @@ export type RequestReferralCode = {
 };
 
 export type AdminProjectRequestListItem = ProjectRequestRow;
+
+export type ProjectRequestQuoteSummary = Pick<
+  QuoteRow,
+  "id" | "version" | "status" | "total" | "currency" | "created_at" | "updated_at"
+>;
 
 export type AdminProjectRequestDetail = ProjectRequestRow & {
   client: ProjectClient | null;

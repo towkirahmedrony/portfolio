@@ -9,7 +9,9 @@ import {
   getAdminProjectRequest,
   getRequestStatusStyle,
 } from "@/lib/admin-project-requests";
+import type { ProjectRequestQuoteSummary } from "@/lib/admin-project-request-constants";
 import { requireAdmin } from "@/lib/require-admin";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function AdminProjectRequestDetailPage({
   params,
@@ -38,6 +40,17 @@ export default async function AdminProjectRequestDetailPage({
 
   const request = result.data;
 
+  let quotes: ProjectRequestQuoteSummary[] = [];
+  if (request.linkedProject) {
+    const supabase = await createServerSupabaseClient();
+    const { data } = await supabase
+      .from("quotes")
+      .select("id, version, status, total, currency, created_at, updated_at")
+      .eq("project_id", request.linkedProject.id)
+      .order("version", { ascending: false });
+    quotes = (data ?? []) as ProjectRequestQuoteSummary[];
+  }
+
   return (
     <AdminPage
       title={request.request_number}
@@ -56,7 +69,7 @@ export default async function AdminProjectRequestDetailPage({
           className={getRequestStatusStyle(request.status)}
         />
       </div>
-      <ProjectRequestDetail request={request} />
+      <ProjectRequestDetail request={request} quotes={quotes} />
     </AdminPage>
   );
 }

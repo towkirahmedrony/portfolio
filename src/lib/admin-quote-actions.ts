@@ -10,15 +10,25 @@ import {
   canSendQuote,
   getAllowedQuoteTransitions,
   isQuoteStatus,
+  QUOTABLE_REQUEST_STATUSES,
 } from "@/lib/admin-quote-constants";
 import {
   assertMatchingTotals,
   calculateQuoteFinancials,
   parseNumeric,
+  roundMoney,
   toPostgresNumeric,
   type QuoteLineInput,
 } from "@/lib/quote-money";
-import type { Json, QuoteItemRow, QuoteRow, QuoteStatus } from "@/types/database";
+import { formatRequestBudget, formatRequestDeadline } from "@/lib/admin-project-request-constants";
+import type {
+  Json,
+  ProjectRequestRow,
+  QuoteItemRow,
+  QuoteRow,
+  QuoteStatus,
+  RequestStatus,
+} from "@/types/database";
 
 type ActionResult = { ok: true; quoteId?: string } | { ok: false; error: string };
 
@@ -506,6 +516,318 @@ export async function sendQuoteToClient(formData: FormData): Promise<ActionResul
 
   revalidateQuotes(quoteId, quote.project_id);
   return { ok: true, quoteId };
+}
+
+function slugText(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.replace(/_/g, " ") : null;
+}
+
+/**
+ * Assembles an editable notes block for a quote draft created from a project
+ * request. Everything here is advisory copy — the admin edits notes before the
+ * quote is sent, exactly like any other quote field.
+ */
+function buildQuoteDraftNotes(
+  request: ProjectRequestRow,
+  serviceName: string | null,
+): string | null {
+  const lines: string[] = [];
+  lines.push(`Request: ${request.request_number}`);
+
+  const service = serviceName?.trim();
+  if (service) {
+    lines.push(`Service: ${service}`);
+  }
+
+  const projectType = slugText(request.project_type);
+  if (projectType) {
+    lines.push(`Project type: ${projectType}`);
+  }
+
+  const budget = formatRequestBudget(
+    request.budget_min,
+    request.budget_max,
+    request.budget_currency || "BDT",
+  );
+  lines.push(`Submitted budget: ${budget}`);
+
+  const deadline = formatRequestDeadline(request.deadline_date, request.deadline_type);
+  if (deadline && deadline !== "—") {
+    lines.push(`Requested deadline: ${deadline}`);
+  }
+
+  if (request.page_count != null) {
+    lines.push(`Page count: ${request.page_count}`);
+  }
+  const websiteStatus = slugText(request.website_status);
+  if (websiteStatus) {
+    lines.push(`Website status: ${websiteStatus}`);
+  }
+  if (request.company_name?.trim()) {
+    lines.push(`Company: ${request.company_name.trim()}`);
+  }
+  if (request.phone?.trim()) {
+    lines.push(`Phone: ${request.phone.trim()}`);
+  }
+
+  const features = (request.required_features ?? [])
+    .map((feature) => slugText(feature))
+    .filter((feature): feature is string => Boolean(feature));
+  if (features.length > 0) {
+    lines.push(`Requirements: ${features.join(", ")}`);
+  }
+
+  const design: string[] = [];
+  if (request.has_design) {
+    design.push("client has an existing design");
+  }
+  const designStyle = slugText(request.design_style);
+  if (designStyle) {
+    design.push(`style: ${designStyle}`);
+  }
+  if (request.has_logo) {
+    design.push("logo available");
+  }
+  if (request.brand_colors?.trim()) {
+    design.push(`brand colors: ${request.brand_colors.trim()}`);
+  }
+  if (design.length > 0) {
+    lines.push(`Design: ${design.join(" · ")}`);
+  }
+  if (request.figma_url?.trim()) {
+    lines.push(`Figma: ${request.figma_url.trim()}`);
+  }
+
+  const references = (request.reference_urls ?? []).filter((url) => url.trim());
+  if (references.length > 0) {
+    lines.push(`References: ${references.join(", ")}`);
+  }
+
+  const description = request.description?.trim();
+  if (description) {
+    lines.push("", "Description:", description);
+  }
+
+  const notes = lines.join("\n").trim();
+  return notes || null;
+}
+
+/**
+ * Creates a quote DRAFT from an eligible project request.
+ *
+ * Pipeline: request (new / reviewing / quoted / approved) -> single projects
+ * row (reusing the existing admin_convert_project_request RPC when the request
+ * has not been converted yet) -> prefilled, editable draft quote.
+ *
+ * The client's submitted budget becomes the suggested unit price of a single
+ * line item — never a locked/final price. The admin adjusts amounts, line
+ * items, discount, tax, notes, terms and validity in the quote editor, saves
+ * the draft and sends it later.
+ */
+export async function createQuoteDraftFromRequest(
+  formData: FormData,
+): Promise<ActionResult> {
+  const admin = await requireAdmin();
+  const requestId = asString(formData.get("requestId"));
+
+  if (!requestId) {
+    return { ok: false, error: "Missing project request." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data: request, error: requestError } = await supabase
+    .from("project_requests")
+    .select("*")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (requestError) {
+    return { ok: false, error: requestError.message };
+  }
+  if (!request) {
+    return { ok: false, error: "Project request not found." };
+  }
+
+  const requestRow = request as ProjectRequestRow;
+  const status = requestRow.status as RequestStatus;
+
+  // Reuse the single linked project when conversion already happened — never
+  // create a duplicate projects row for the same request.
+  const { data: linkedProject, error: linkedError } = await supabase
+    .from("projects")
+    .select("id, title, currency, client_id")
+    .eq("request_id", requestId)
+    .maybeSingle();
+
+  if (linkedError) {
+    return { ok: false, error: linkedError.message };
+  }
+
+  let projectId: string;
+  if (linkedProject?.id) {
+    projectId = linkedProject.id;
+  } else {
+    if (!QUOTABLE_REQUEST_STATUSES.includes(status)) {
+      return {
+        ok: false,
+        error:
+          "Only open requests (new, reviewing, quoted, approved) can be turned into quotes.",
+      };
+    }
+
+    if (!requestRow.client_id) {
+      return {
+        ok: false,
+        error:
+          "This request has no linked client profile, so it cannot be converted and quoted.",
+      };
+    }
+
+    if (status !== "approved") {
+      const { error: approveError } = await supabase
+        .from("project_requests")
+        .update({ status: "approved" })
+        .eq("id", requestId)
+        .in("status", ["new", "reviewing", "quoted", "approved"]);
+
+      if (approveError) {
+        return { ok: false, error: approveError.message };
+      }
+    }
+
+    const { data: convertedId, error: convertError } = await supabase.rpc(
+      "admin_convert_project_request",
+      { p_request_id: requestId },
+    );
+
+    if (convertError || !convertedId) {
+      return {
+        ok: false,
+        error: convertError?.message ?? "Could not convert the request to a project.",
+      };
+    }
+    projectId = String(convertedId);
+  }
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, title, currency, client_id")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (!project) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  let serviceName: string | null = null;
+  if (requestRow.service_id) {
+    const { data: service } = await supabase
+      .from("services")
+      .select("name")
+      .eq("id", requestRow.service_id)
+      .maybeSingle();
+    serviceName = service?.name ?? null;
+  }
+
+  const suggestedAmount = roundMoney(
+    Number(requestRow.budget_max ?? requestRow.budget_min ?? 0) || 0,
+  );
+  const currency =
+    requestRow.budget_currency?.trim() || project.currency?.trim() || "BDT";
+  const title = project.title?.trim() || serviceName?.trim() || `Project ${requestRow.request_number}`;
+
+  const lineItems: QuoteLineInput[] = [
+    {
+      description: title,
+      quantity: 1,
+      unit_price: suggestedAmount,
+    },
+  ];
+  const calculated = calculateQuoteFinancials(lineItems, 0, 0);
+  if (!calculated.ok) {
+    return { ok: false, error: calculated.error };
+  }
+
+  const totals = {
+    subtotal: toPostgresNumeric(calculated.totals.subtotal),
+    discount_total: toPostgresNumeric(calculated.totals.discount_total),
+    tax_total: toPostgresNumeric(calculated.totals.tax_total),
+    total: toPostgresNumeric(calculated.totals.total),
+  };
+
+  const notes = buildQuoteDraftNotes(requestRow, serviceName);
+
+  const { data: latest, error: latestError } = await supabase
+    .from("quotes")
+    .select("version")
+    .eq("project_id", projectId)
+    .order("version", { ascending: false })
+    .limit(1);
+
+  if (latestError) {
+    return { ok: false, error: latestError.message };
+  }
+  const version = latest && latest.length > 0 ? Number(latest[0].version ?? 0) + 1 : 1;
+
+  const { data: created, error: insertError } = await supabase
+    .from("quotes")
+    .insert({
+      project_id: projectId,
+      version,
+      currency,
+      notes,
+      terms: null,
+      valid_until: null,
+      status: "draft",
+      ...totals,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !created) {
+    return { ok: false, error: insertError?.message ?? "Could not create the quote draft." };
+  }
+
+  const { error: itemsError } = await supabase.from("quote_items").insert(
+    calculated.items.map((item, index) => ({
+      quote_id: created.id,
+      description: item.description,
+      quantity: toPostgresNumeric(item.quantity),
+      unit_price: toPostgresNumeric(item.unit_price),
+      amount: toPostgresNumeric(item.amount),
+      sort_order: index,
+    })),
+  );
+
+  if (itemsError) {
+    return { ok: false, error: itemsError.message };
+  }
+
+  await writeAuditLog({
+    actorId: admin.id,
+    action: "quote.created_from_request",
+    entityId: created.id,
+    oldData: {
+      request_id: requestId,
+      request_status: requestRow.status,
+      requested_budget_max: requestRow.budget_max,
+      requested_budget_min: requestRow.budget_min,
+    },
+    newData: { version, project_id: projectId, ...totals },
+  });
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/quotes");
+  revalidatePath(`/admin/quotes/${created.id}`);
+  revalidatePath("/admin/project-requests");
+  revalidatePath(`/admin/project-requests/${requestId}`);
+  revalidatePath("/admin/projects");
+  revalidatePath(`/admin/projects/${projectId}`);
+  revalidatePath("/profile");
+
+  redirectToQuote(created.id);
+  return { ok: true, quoteId: created.id };
 }
 
 export async function updateQuoteStatus(formData: FormData): Promise<ActionResult> {
