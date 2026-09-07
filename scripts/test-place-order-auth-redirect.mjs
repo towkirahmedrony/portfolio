@@ -113,4 +113,48 @@ assert(
   assert(placeOrder === true, "place-order context is reported for error retries");
 }
 
+// 8. Query stripped + ONLY the reason cookie survives (next cookie lost) ->
+//    still returns to the submit page (existing-account OAuth login path).
+assert(
+  resolve({
+    queryNext: null,
+    queryReason: null,
+    cookie: "auth-return-reason=place-order",
+  }) === START_PROJECT,
+  "surviving place-order reason cookie alone returns to the submit page",
+);
+
+// 9. Query stripped + ONLY the start-project next cookie survives (reason
+//    cookie lost) -> still returns to the submit page.
+assert(
+  resolve({
+    queryNext: null,
+    queryReason: null,
+    cookie: `auth-return-to=${encodeURIComponent(START_PROJECT)}`,
+  }) === START_PROJECT,
+  "surviving start-project next cookie alone returns to the submit page",
+);
+
+// 10. Query stripped + reason cookie with a mismatched /profile next (aborted
+//     place-order attempt leftovers) -> place-order intent wins over /profile.
+assert(
+  resolve({
+    queryNext: null,
+    queryReason: null,
+    cookie: `auth-return-to=${encodeURIComponent("/profile")}; auth-return-reason=place-order`,
+  }) === START_PROJECT,
+  "place-order reason cookie prevents a /profile fallback",
+);
+
+// 11. Query stripped + normal cookie pair (plain next, no reason) keeps the
+//     normal destination and is never treated as place-order.
+assert(
+  resolve({
+    queryNext: null,
+    queryReason: null,
+    cookie: `auth-return-to=${encodeURIComponent("/profile/projects/abc")}`,
+  }) === "/profile/projects/abc",
+  "normal cookie-only callback keeps its normal destination",
+);
+
 console.log("place-order auth redirect tests passed");

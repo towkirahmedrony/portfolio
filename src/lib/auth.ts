@@ -292,11 +292,12 @@ export function readAuthReturnFromCookieHeader(
  *
  * The query `next` (written by our own login/OAuth start code) is
  * authoritative whenever it is present, so a stale return-to cookie can never
- * reroute an unrelated login. The cookie pair is only consulted when the
- * provider or email client strips the query, and only when both halves agree
- * (place-order reason + start-project next, or plain next without a
- * place-order reason) — a place-order login can never degrade to the default
- * "/profile", and a normal login can never be rerouted to the submit page.
+ * reroute an unrelated login. When the provider or email client strips the
+ * query, ANY surviving place-order signal in the cookies (the reason flag, or
+ * a next that points at the /start-project submit page) is enough to keep the
+ * flow on the submit page — a place-order login can never degrade to the
+ * default "/profile", just like the signup flow whose destination is baked
+ * into the verification link. Normal flows keep their own /profile default.
  */
 export function resolveCallbackReturn(input: {
   queryNext: string | null;
@@ -324,24 +325,24 @@ export function resolveCallbackReturn(input: {
     return { next: "/profile", placeOrder: false };
   }
 
-  // Query stripped: fall back to the cookie pair, but only when both halves
-  // agree on which flow they belong to.
+  // Query stripped: fall back to the cookies. Any surviving place-order
+  // signal wins; a plain normal next is honored otherwise.
   const cookieReturn = readAuthReturnFromCookieHeader(input.cookieHeader);
   const cookieReasonPlace = cookieReturn.reason === PLACE_ORDER_AUTH_REASON;
   const cookieNextPlace =
     cookieReturn.next !== null && isPlaceOrderNextPath(cookieReturn.next);
 
-  if (cookieReasonPlace && cookieNextPlace) {
+  if (cookieReasonPlace || cookieNextPlace) {
     return {
       next: resolvePostAuthRedirect({
-        next: cookieReturn.next,
+        next: cookieReturn.next ?? PLACE_ORDER_NEXT_PATH,
         reason: PLACE_ORDER_AUTH_REASON,
       }),
       placeOrder: true,
     };
   }
 
-  if (cookieReturn.next !== null && !cookieReasonPlace && !cookieNextPlace) {
+  if (cookieReturn.next !== null) {
     return {
       next: getSafeNextPath(cookieReturn.next),
       placeOrder: false,
