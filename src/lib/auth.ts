@@ -234,9 +234,21 @@ export function persistAuthReturnTo(
   const attrs = cookieAttributeString();
   document.cookie = `${AUTH_RETURN_COOKIE}=${encodeURIComponent(destination)}; ${attrs}`;
 
-  if (isPlaceOrderAuthReason(reason) || isPlaceOrderNextPath(destination)) {
+  const isPlaceOrder =
+    isPlaceOrderAuthReason(reason) || isPlaceOrderNextPath(destination);
+  if (isPlaceOrder) {
     document.cookie = `${AUTH_REASON_COOKIE}=${PLACE_ORDER_AUTH_REASON}; ${attrs}`;
+    return;
   }
+
+  // A normal (non-place-order) login must not inherit a stale place-order
+  // reason from an earlier, abandoned order-submit login attempt. Clear it so
+  // the next auth callback resolves to the normal destination (/profile).
+  document.cookie = `${AUTH_REASON_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${
+    typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "; Secure"
+      : ""
+  }`;
 }
 
 export function readCookieValue(
@@ -272,4 +284,69 @@ export function readAuthReturnFromCookieHeader(
     next: readCookieValue(cookieHeader, AUTH_RETURN_COOKIE),
     reason: readCookieValue(cookieHeader, AUTH_REASON_COOKIE),
   };
+}
+
+/**
+ * Resolve where an auth callback (OAuth redirect, email-verification link)
+ * should send the freshly authenticated user.
+ *
+ * The query `next` (written by our own login/OAuth start code) is
+ * authoritative whenever it is present, so a stale return-to cookie can never
+ * reroute an unrelated login. The cookie pair is only consulted when the
+ * provider or email client strips the query, and only when both halves agree
+ * (place-order reason + start-project next, or plain next without a
+ * place-order reason) — a place-order login can never degrade to the default
+ * "/profile", and a normal login can never be rerouted to the submit page.
+ */
+export function resolveCallbackReturn(input: {
+  queryNext: string | null;
+  queryReason: string | null;
+  cookieHeader: string | null | undefined;
+}): { next: string; placeOrder: boolean } {
+  const queryNext = input.queryNext;
+  const queryPlaceOrder =
+    input.queryReason === PLACE_ORDER_AUTH_REASON ||
+    isPlaceOrderNextPath(queryNext);
+
+  if (queryNext && queryNext !== "/profile") {
+    return {
+      next: resolvePostAuthRedirect({
+        next: queryNext,
+        reason: queryPlaceOrder ? PLACE_ORDER_AUTH_REASON : null,
+      }),
+      placeOrder: queryPlaceOrder,
+    };
+  }
+
+  // An explicit default (/profile) next was generated for a normal login
+  // flow — honor it regardless of any leftover place-order cookies.
+  if (queryNext === "/profile") {
+    return { next: "/profile", placeOrder: false };
+  }
+
+  // Query stripped: fall back to the cookie pair, but only when both halves
+  // agree on which flow they belong to.
+  const cookieReturn = readAuthReturnFromCookieHeader(input.cookieHeader);
+  const cookieReasonPlace = cookieReturn.reason === PLACE_ORDER_AUTH_REASON;
+  const cookieNextPlace =
+    cookieReturn.next !== null && isPlaceOrderNextPath(cookieReturn.next);
+
+  if (cookieReasonPlace && cookieNextPlace) {
+    return {
+      next: resolvePostAuthRedirect({
+        next: cookieReturn.next,
+        reason: PLACE_ORDER_AUTH_REASON,
+      }),
+      placeOrder: true,
+    };
+  }
+
+  if (cookieReturn.next !== null && !cookieReasonPlace && !cookieNextPlace) {
+    return {
+      next: getSafeNextPath(cookieReturn.next),
+      placeOrder: false,
+    };
+  }
+
+  return { next: "/profile", placeOrder: false };
 }

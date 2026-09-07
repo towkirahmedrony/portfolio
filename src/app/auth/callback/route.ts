@@ -7,8 +7,7 @@ import {
   AUTH_RETURN_COOKIE,
   isAdminPath,
   PLACE_ORDER_AUTH_REASON,
-  readAuthReturnFromCookieHeader,
-  resolvePostAuthRedirect,
+  resolveCallbackReturn,
 } from "@/lib/auth";
 import { supabaseAnonKey, supabaseUrl } from "@/lib/supabase/env";
 import type { Database } from "@/types/database";
@@ -51,18 +50,10 @@ export async function GET(request: Request) {
   const code = requestUrl.searchParams.get("code");
   const tokenHash = requestUrl.searchParams.get("token_hash");
   const type = requestUrl.searchParams.get("type");
-  const cookieReturn = readAuthReturnFromCookieHeader(
-    request.headers.get("cookie"),
-  );
-  const nextFromQuery = requestUrl.searchParams.get("next");
-  const reasonFromQuery = requestUrl.searchParams.get("reason");
-  const queryIsDefault = !nextFromQuery || nextFromQuery === "/profile";
-  const next = resolvePostAuthRedirect({
-    next:
-      cookieReturn.next && queryIsDefault
-        ? cookieReturn.next
-        : nextFromQuery || cookieReturn.next,
-    reason: reasonFromQuery || cookieReturn.reason,
+  const { next, placeOrder } = resolveCallbackReturn({
+    queryNext: requestUrl.searchParams.get("next"),
+    queryReason: requestUrl.searchParams.get("reason"),
+    cookieHeader: request.headers.get("cookie"),
   });
   const oauthError =
     requestUrl.searchParams.get("error_description") ??
@@ -72,7 +63,7 @@ export async function GET(request: Request) {
     const loginUrl = new URL("/login", requestUrl.origin);
     loginUrl.searchParams.set("error", error);
     loginUrl.searchParams.set("next", next);
-    if (reasonFromQuery === PLACE_ORDER_AUTH_REASON || cookieReturn.reason === PLACE_ORDER_AUTH_REASON) {
+    if (placeOrder) {
       loginUrl.searchParams.set("reason", PLACE_ORDER_AUTH_REASON);
     }
     return clearAuthReturnCookies(NextResponse.redirect(loginUrl));
