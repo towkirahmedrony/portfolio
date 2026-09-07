@@ -1,4 +1,8 @@
-import { canClientCancelRequest } from "@/lib/admin-project-request-constants";
+import {
+  canClientCancelRequest,
+  canClientEditRequest,
+  isClientResubmitStatus,
+} from "@/lib/admin-project-request-constants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
   ProjectRequestRow,
@@ -6,10 +10,11 @@ import type {
   ProjectStatus,
   QuoteRow,
   QuoteStatus,
+  RequestStatus,
 } from "@/types/database";
 
 const REQUEST_COLUMNS =
-  "id, request_number, client_id, full_name, email, phone, company_name, project_type, website_status, page_count, description, required_features, has_design, figma_url, reference_urls, design_style, has_logo, has_brand_colors, brand_colors, budget_min, budget_max, budget_currency, deadline_type, deadline_date, referral_code_entered, referral_code_id, source, status, service_id, form_snapshot, submitted_at, updated_at";
+  "id, request_number, client_id, full_name, email, phone, company_name, project_type, website_status, page_count, description, required_features, has_design, figma_url, reference_urls, design_style, has_logo, has_brand_colors, brand_colors, budget_min, budget_max, budget_currency, deadline_type, deadline_date, referral_code_entered, referral_code_id, source, status, service_id, form_snapshot, submitted_at, updated_at, last_activity_at";
 
 const REQUEST_COLUMNS_CORE =
   "id, request_number, client_id, full_name, email, phone, company_name, project_type, website_status, page_count, description, required_features, has_design, figma_url, reference_urls, design_style, has_logo, has_brand_colors, brand_colors, budget_min, budget_max, budget_currency, deadline_type, deadline_date, referral_code_entered, referral_code_id, source, status, submitted_at, updated_at";
@@ -74,11 +79,28 @@ export type CustomerRequestQuote = {
   valid_until: string | null;
 };
 
+export type CustomerRequestFile = {
+  id: string;
+  original_name: string;
+  category: string;
+  file_size_bytes: number | null;
+  created_at: string;
+  bucket_name: string;
+  storage_path: string;
+};
+
 export type CustomerProjectRequestItem = {
   request: ProjectRequestRow;
   linkedProject: CustomerLinkedProject | null;
   quote: CustomerRequestQuote | null;
   canCancel: boolean;
+  canEdit: boolean;
+  canResubmit: boolean;
+};
+
+export type CustomerProjectRequestDetail = CustomerProjectRequestItem & {
+  serviceName: string | null;
+  files: CustomerRequestFile[];
 };
 
 const CLIENT_VISIBLE_QUOTE_STATUSES: QuoteStatus[] = [
@@ -131,19 +153,24 @@ export async function getCustomerProjectRequests(
 ): Promise<CustomerProjectRequestItem[]> {
   const supabase = await createServerSupabaseClient();
 
-  // Added ': any' to prevent TS2322 mismatch between the two different select query outputs
-  let requestResult: any = await supabase
+  let requestResult = (await supabase
     .from("project_requests")
     .select(REQUEST_COLUMNS)
     .eq("client_id", userId)
-    .order("submitted_at", { ascending: false });
+    .order("submitted_at", { ascending: false })) as {
+    data: ProjectRequestRow[] | null;
+    error: { message?: string; code?: string } | null;
+  };
 
   if (requestResult.error && isMissingColumn(requestResult.error)) {
-    requestResult = await supabase
+    requestResult = (await supabase
       .from("project_requests")
       .select(REQUEST_COLUMNS_CORE)
       .eq("client_id", userId)
-      .order("submitted_at", { ascending: false });
+      .order("submitted_at", { ascending: false })) as {
+      data: ProjectRequestRow[] | null;
+      error: { message?: string; code?: string } | null;
+    };
   }
 
   if (requestResult.error) {
@@ -192,14 +219,127 @@ export async function getCustomerProjectRequests(
     }
   }
 
-  return requests.map((request) => {
-    const linked = projectsByRequestId.get(request.id) ?? null;
-    const quote = linked ? pickLatestQuote(quotesByProjectId.get(linked.id) ?? []) : null;
-    return {
-      request,
-      linkedProject: linked ? toLinkedProject(linked) : null,
-      quote,
-      canCancel: canClientCancelRequest(request.status) && !linked,
+  return requests.map((request) => toCustomerItem(request, projectsByRequestId, quotesByProjectId));
+}
+
+function toCustomerItem(
+  request: ProjectRequestRow,
+  projectsByRequestId: Map<string, LinkedProjectRow>,
+  quotesByProjectId: Map<string, LinkedQuoteRow[]>,
+): CustomerProjectRequestItem {
+  const linked = projectsByRequestId.get(request.id) ?? null;
+  const quote = linked ? pickLatestQuote(quotesByProjectId.get(linked.id) ?? []) : null;
+  const locked = Boolean(linked);
+  return {
+    request,
+    linkedProject: linked ? toLinkedProject(linked) : null,
+    quote,
+    canCancel: canClientCancelRequest(request.status as RequestStatus) && !locked,
+    canEdit: canClientEditRequest(request.status as RequestStatus) && !locked,
+    canResubmit: isClientResubmitStatus(request.status as RequestStatus) && !locked,
+  };
+}
+
+export async function getCustomerProjectRequest(
+  userId: string,
+  requestId: string,
+): Promise<CustomerProjectRequestDetail | null> {
+  const supabase = await createServerSupabaseClient();
+
+  let requestResult = (await supabase
+    .from("project_requests")
+    .select(REQUEST_COLUMNS)
+    .eq("id", requestId)
+    .eq("client_id", userId)
+    .maybeSingle()) as {
+    data: ProjectRequestRow | null;
+    error: { message?: string; code?: string } | null;
+  };
+
+  if (requestResult.error && isMissingColumn(requestResult.error)) {
+    requestResult = (await supabase
+      .from("project_requests")
+      .select(REQUEST_COLUMNS_CORE)
+      .eq("id", requestId)
+      .eq("client_id", userId)
+      .maybeSingle()) as {
+      data: ProjectRequestRow | null;
+      error: { message?: string; code?: string } | null;
     };
-  });
+  }
+
+  if (requestResult.error) {
+    console.error(
+      "customer project_request detail query failed:",
+      requestResult.error.message,
+    );
+    return null;
+  }
+
+  const request = requestResult.data as ProjectRequestRow | null;
+  if (!request || request.client_id !== userId) {
+    return null;
+  }
+
+  const { data: projectRow } = await supabase
+    .from("projects")
+    .select(
+      "id, project_number, request_id, client_id, title, status, agreed_price, estimated_budget, currency, due_date",
+    )
+    .eq("request_id", request.id)
+    .eq("client_id", userId)
+    .maybeSingle();
+
+  const linked = (projectRow ?? null) as LinkedProjectRow | null;
+  const projectsByRequestId = new Map<string, LinkedProjectRow>();
+  const quotesByProjectId = new Map<string, LinkedQuoteRow[]>();
+
+  if (linked) {
+    projectsByRequestId.set(request.id, linked);
+    const { data: quoteRows } = await supabase
+      .from("quotes")
+      .select("id, project_id, version, currency, total, status, valid_until, created_at")
+      .eq("project_id", linked.id)
+      .order("version", { ascending: false });
+
+    quotesByProjectId.set(linked.id, (quoteRows ?? []) as LinkedQuoteRow[]);
+  }
+
+  let serviceName: string | null = null;
+  if (request.service_id) {
+    const { data: service } = await supabase
+      .from("services")
+      .select("id, name")
+      .eq("id", request.service_id)
+      .maybeSingle();
+    serviceName = service?.name ?? null;
+  }
+
+  const files: CustomerRequestFile[] = [];
+  if (linked) {
+    const { data: fileRows } = await supabase
+      .from("project_files")
+      .select("id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path")
+      .eq("project_id", linked.id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+
+    for (const file of fileRows ?? []) {
+      files.push({
+        id: file.id,
+        original_name: file.original_name,
+        category: file.category,
+        file_size_bytes: file.file_size_bytes,
+        created_at: file.created_at,
+        bucket_name: file.bucket_name,
+        storage_path: file.storage_path,
+      });
+    }
+  }
+
+  return {
+    ...toCustomerItem(request, projectsByRequestId, quotesByProjectId),
+    serviceName,
+    files,
+  };
 }

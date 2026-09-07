@@ -45,6 +45,7 @@ import {
   mergeProjectRequestDraft,
   saveProjectRequestDraft,
 } from "@/lib/project-request-draft";
+import { updateOwnProjectRequest } from "@/lib/customer-project-request-actions";
 import { submitProjectRequest } from "@/lib/submit-project-request";
 import { cn } from "@/lib/utils";
 import type {
@@ -58,6 +59,11 @@ type Props = {
   config: OrderFormConfig;
   serviceId: string | null;
   initialReferralCode?: string;
+  mode?: "create" | "edit";
+  requestId?: string;
+  initialData?: ProjectRequest;
+  requestNumber?: string | null;
+  resubmit?: boolean;
 };
 
 function subscribeNever() {
@@ -96,13 +102,30 @@ function ProjectRequestFormInner({
   config,
   serviceId,
   initialReferralCode = "",
+  mode = "create",
+  requestId,
+  initialData,
+  requestNumber: existingRequestNumber,
+  resubmit = false,
 }: Props) {
   const router = useRouter();
   const formId = useId();
   const totalSteps = config.steps.length;
   const hasSteps = totalSteps > 0;
+  const isEdit = mode === "edit" && Boolean(requestId);
   const initial = useMemo(() => {
     const values = emptyValues(config, initialReferralCode);
+    if (isEdit) {
+      return {
+        data: initialData ? mergeProjectRequestDraft(values, initialData) : values,
+        step: 1 as ProjectRequestStep,
+        serviceId,
+        notice: resubmit
+          ? "Update the brief and resubmit. The same request number is kept."
+          : "Your existing answers are loaded. Change only what you need.",
+      };
+    }
+
     const draft = loadProjectRequestDraft();
     if (
       !draft ||
@@ -126,7 +149,7 @@ function ProjectRequestFormInner({
           ? "Your previous answers were restored. Review them, then submit to place the order."
           : null,
     };
-  }, [config, hasSteps, initialReferralCode, serviceId, totalSteps]);
+  }, [config, hasSteps, initialData, initialReferralCode, isEdit, resubmit, serviceId, totalSteps]);
 
   const [step, setStep] = useState<ProjectRequestStep>(initial.step);
   const [data, setData] = useState<ProjectRequest>(initial.data);
@@ -160,7 +183,7 @@ function ProjectRequestFormInner({
   }, [data, resolvedServiceId, step]);
 
   useEffect(() => {
-    if (!hasSteps || submitted) {
+    if (!hasSteps || submitted || isEdit) {
       return;
     }
 
@@ -192,7 +215,7 @@ function ProjectRequestFormInner({
       window.removeEventListener("beforeunload", persistDraft);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [hasSteps, submitted]);
+  }, [hasSteps, isEdit, submitted]);
 
   const focusSubmitSection = useCallback(() => {
     const node = submitSectionRef.current;
@@ -375,13 +398,24 @@ function ProjectRequestFormInner({
     setData(normalized);
 
     try {
-      const result = await submitProjectRequest(
-        normalized,
-        config,
-        resolvedServiceId,
-      );
+      const result = isEdit && requestId
+        ? await updateOwnProjectRequest(
+            requestId,
+            normalized,
+            config,
+            resolvedServiceId,
+          )
+        : await submitProjectRequest(
+            normalized,
+            config,
+            resolvedServiceId,
+          );
       if (!result.ok) {
         if (result.unauthenticated) {
+          if (isEdit) {
+            setFormError(result.error);
+            return;
+          }
           openAuthModal(normalized);
           return;
         }
@@ -390,7 +424,9 @@ function ProjectRequestFormInner({
       }
 
       skipPersistRef.current = true;
-      clearProjectRequestDraft();
+      if (!isEdit) {
+        clearProjectRequestDraft();
+      }
       const referralField = config.fields.find((field) =>
         isReferralFieldKey(field.fieldKey),
       );
@@ -401,8 +437,15 @@ function ProjectRequestFormInner({
       );
       setRequestNumber(result.requestNumber);
       setSubmitted(true);
+      if (isEdit && requestId) {
+        router.refresh();
+      }
     } catch {
-      setFormError("Could not submit your project request. Please try again.");
+      setFormError(
+        isEdit
+          ? "Could not update your project request. Please try again."
+          : "Could not submit your project request. Please try again.",
+      );
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -430,6 +473,17 @@ function ProjectRequestFormInner({
   }
 
   if (submitted) {
+    if (isEdit && requestId) {
+      return (
+        <ProjectRequestSuccess
+          onReset={handleReset}
+          requestNumber={requestNumber ?? existingRequestNumber}
+          referralCode={submittedReferralCode}
+          mode={resubmit ? "resubmit" : "update"}
+          detailsHref={`/profile/project-requests/${requestId}`}
+        />
+      );
+    }
     return (
       <ProjectRequestSuccess
         onReset={handleReset}
@@ -508,7 +562,17 @@ function ProjectRequestFormInner({
               </Button>
             ) : (
               <Button type="submit" disabled={submitting}>
-                {submitting ? "Submitting…" : "Submit Project Request"}
+                {submitting
+                  ? isEdit
+                    ? resubmit
+                      ? "Resubmitting…"
+                      : "Saving…"
+                    : "Submitting…"
+                  : isEdit
+                    ? resubmit
+                      ? "Resubmit request"
+                      : "Save changes"
+                    : "Submit Project Request"}
               </Button>
             )}
           </div>

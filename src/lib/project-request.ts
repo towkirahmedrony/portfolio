@@ -1,4 +1,4 @@
-import type { Json, ProjectRequestInsert } from "@/types/database";
+import type { Json, ProjectRequestInsert, ProjectRequestRow } from "@/types/database";
 import {
   REFERRAL_CLIENT_DISCOUNT_PERCENT,
   REFERRAL_REFERRER_REWARD_PERCENT,
@@ -14,6 +14,7 @@ import type {
   ProjectRequestStep,
 } from "@/types/project-request";
 import {
+  emptyProjectRequest,
   fieldNeedsDateInput,
   fieldNeedsOtherInput,
   findOption,
@@ -23,6 +24,7 @@ import {
   otherValueKey,
   selectedOption,
 } from "@/lib/order-form";
+import { mergeProjectRequestDraft } from "@/lib/project-request-draft";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -692,4 +694,182 @@ export function toProjectRequestInsert(
   }
 
   return payload;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function snapshotAnswers(snapshot: unknown): ProjectRequest | null {
+  const root = asRecord(snapshot);
+  if (!root) {
+    return null;
+  }
+
+  const answers = asRecord(root.answers);
+  if (!answers) {
+    return null;
+  }
+
+  const data: ProjectRequest = {};
+  for (const [key, value] of Object.entries(answers)) {
+    if (typeof value === "string") {
+      data[key] = value;
+      continue;
+    }
+    if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+      data[key] = value;
+    }
+  }
+
+  return Object.keys(data).length > 0 ? data : null;
+}
+
+function booleanToYesNo(value: boolean | null | undefined): string {
+  if (value === true) {
+    return "yes";
+  }
+  if (value === false) {
+    return "no";
+  }
+  return "";
+}
+
+function matchOptionByMeta(
+  options: OrderFormOption[],
+  min: number | null,
+  max: number | null,
+): OrderFormOption | undefined {
+  return options.find((option) => {
+    const fromOption = budgetFromOption(option);
+    return fromOption.min === min && fromOption.max === max;
+  });
+}
+
+function matchPageOption(
+  options: OrderFormOption[],
+  pageCount: number | null,
+): OrderFormOption | undefined {
+  if (pageCount == null) {
+    return undefined;
+  }
+  return options.find((option) => mapPageCount(option.slug, option) === pageCount);
+}
+
+export function projectRequestToFormData(
+  request: ProjectRequestRow,
+  config: OrderFormConfig,
+): ProjectRequest {
+  const values = emptyProjectRequest(config);
+  const snapshotData = snapshotAnswers(request.form_snapshot);
+  const merged = snapshotData
+    ? mergeProjectRequestDraft(values, snapshotData)
+    : values;
+
+  const setIfEmpty = (key: string, value: string | string[]) => {
+    const current = merged[key];
+    if (Array.isArray(current) && current.length > 0) {
+      return;
+    }
+    if (typeof current === "string" && current.trim().length > 0) {
+      return;
+    }
+    merged[key] = value;
+  };
+
+  const assignAliases = (keys: string[], value: string | string[]) => {
+    for (const key of keys) {
+      if (key in merged || config.fields.some((field) => field.fieldKey === key)) {
+        setIfEmpty(key, value);
+      }
+    }
+  };
+
+  assignAliases(COLUMN_ALIASES.full_name, request.full_name ?? "");
+  assignAliases(COLUMN_ALIASES.email, request.email ?? "");
+  assignAliases(COLUMN_ALIASES.phone, request.phone ?? "");
+  assignAliases(COLUMN_ALIASES.company_name, request.company_name ?? "");
+  assignAliases(
+    COLUMN_ALIASES.referral_code_entered,
+    request.referral_code_entered ?? "",
+  );
+  assignAliases(COLUMN_ALIASES.project_type, request.project_type ?? "");
+  assignAliases(COLUMN_ALIASES.website_status, request.website_status ?? "");
+  assignAliases(COLUMN_ALIASES.description, request.description ?? "");
+  assignAliases(
+    COLUMN_ALIASES.required_features,
+    (request.required_features as string[] | null) ?? [],
+  );
+  assignAliases(COLUMN_ALIASES.has_design, booleanToYesNo(request.has_design));
+  assignAliases(COLUMN_ALIASES.figma_url, request.figma_url ?? "");
+  assignAliases(
+    COLUMN_ALIASES.reference_urls,
+    ((request.reference_urls as string[] | null) ?? []).join("\n"),
+  );
+  assignAliases(COLUMN_ALIASES.design_style, request.design_style ?? "");
+  assignAliases(COLUMN_ALIASES.has_logo, booleanToYesNo(request.has_logo));
+  assignAliases(
+    COLUMN_ALIASES.has_brand_colors,
+    booleanToYesNo(request.has_brand_colors),
+  );
+  assignAliases(COLUMN_ALIASES.brand_colors, request.brand_colors ?? "");
+  assignAliases(COLUMN_ALIASES.deadline_type, request.deadline_type ?? "");
+  assignAliases(COLUMN_ALIASES.deadline_date, request.deadline_date ?? "");
+
+  const pageField = fieldByKeys(config, COLUMN_ALIASES.page_count);
+  if (pageField) {
+    const pageOption = matchPageOption(pageField.options, request.page_count);
+    setIfEmpty(pageField.fieldKey, pageOption?.slug ?? (request.page_count != null ? String(request.page_count) : ""));
+  }
+
+  const budgetField = fieldByKeys(config, COLUMN_ALIASES.budget);
+  if (budgetField) {
+    const budgetOption = matchOptionByMeta(
+      budgetField.options,
+      request.budget_min,
+      request.budget_max,
+    );
+    if (budgetOption) {
+      setIfEmpty(budgetField.fieldKey, budgetOption.slug);
+    }
+  }
+
+  return merged;
+}
+
+export function toClientProjectRequestPayload(
+  data: ProjectRequest,
+  config: OrderFormConfig,
+  serviceId: string | null,
+): Record<string, unknown> {
+  const insert = toProjectRequestInsert(data, "PENDING", config, serviceId);
+  return {
+    full_name: insert.full_name,
+    email: insert.email,
+    phone: insert.phone ?? null,
+    company_name: insert.company_name ?? null,
+    project_type: insert.project_type ?? null,
+    website_status: insert.website_status ?? null,
+    page_count: insert.page_count ?? null,
+    description: insert.description ?? null,
+    required_features: insert.required_features ?? [],
+    has_design: insert.has_design ?? null,
+    figma_url: insert.figma_url ?? null,
+    reference_urls: insert.reference_urls ?? [],
+    design_style: insert.design_style ?? null,
+    has_logo: insert.has_logo ?? null,
+    has_brand_colors: insert.has_brand_colors ?? null,
+    brand_colors: insert.brand_colors ?? null,
+    budget_min: insert.budget_min ?? null,
+    budget_max: insert.budget_max ?? null,
+    budget_currency: insert.budget_currency ?? "BDT",
+    deadline_type: insert.deadline_type ?? null,
+    deadline_date: insert.deadline_date ?? null,
+    referral_code_entered: insert.referral_code_entered ?? null,
+    service_id: insert.service_id ?? null,
+    form_snapshot: insert.form_snapshot,
+  };
 }

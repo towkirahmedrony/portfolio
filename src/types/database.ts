@@ -1939,6 +1939,10 @@ export type Database = {
         Args: { p_request_id: string }
         Returns: Database["public"]["Enums"]["request_status"]
       }
+      update_own_project_request: {
+        Args: { p_payload: Json; p_request_id: string }
+        Returns: Database["public"]["Enums"]["request_status"]
+      }
       ensure_referral_code: { Args: { profile_id: string }; Returns: undefined }
       generate_referral_code: { Args: never; Returns: string }
       generate_request_number: { Args: never; Returns: string }

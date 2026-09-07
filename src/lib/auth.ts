@@ -45,7 +45,11 @@ function isAllowedNextPathname(pathname: string): boolean {
     return true;
   }
 
-  return /^\/profile\/projects\/[A-Za-z0-9_-]+$/.test(pathname);
+  return (
+    /^\/profile\/projects\/[A-Za-z0-9_-]+$/.test(pathname) ||
+    /^\/profile\/project-requests\/[A-Za-z0-9_-]+$/.test(pathname) ||
+    /^\/profile\/project-requests\/[A-Za-z0-9_-]+\/edit$/.test(pathname)
+  );
 }
 
 export function getSafeNextPath(value: string | null | undefined): string {

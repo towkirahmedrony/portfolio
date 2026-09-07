@@ -49,8 +49,30 @@ export const CLIENT_CANCELLABLE_REQUEST_STATUSES: RequestStatus[] = [
   "quoted",
 ];
 
+export const CLIENT_EDITABLE_REQUEST_STATUSES: RequestStatus[] = [
+  "draft",
+  "new",
+  "reviewing",
+  "quoted",
+  "rejected",
+];
+
+export const CLIENT_LOCKED_REQUEST_STATUSES: RequestStatus[] = [
+  "approved",
+  "converted",
+  "cancelled",
+];
+
 export function canClientCancelRequest(status: RequestStatus): boolean {
   return CLIENT_CANCELLABLE_REQUEST_STATUSES.includes(status);
+}
+
+export function canClientEditRequest(status: RequestStatus): boolean {
+  return CLIENT_EDITABLE_REQUEST_STATUSES.includes(status);
+}
+
+export function isClientResubmitStatus(status: RequestStatus): boolean {
+  return status === "rejected";
 }
 
 export const REQUEST_STATUS_STYLES: Record<RequestStatus, string> = {

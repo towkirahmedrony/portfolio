@@ -2,17 +2,14 @@ import { CancelRequestButton } from "@/components/profile/cancel-request-button"
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { formatDate, formatStatusLabel, getStatusStyle } from "@/lib/admin-project-constants";
+import { formatDate } from "@/lib/admin-project-constants";
 import {
   displaySlug,
   formatRequestBudget,
-  formatRequestDeadline,
   formatClientRequestStatusLabel,
-  formatYesNo,
   getRequestStatusStyle,
 } from "@/lib/admin-project-request-constants";
 import type { CustomerProjectRequestItem } from "@/lib/customer-project-requests";
-import { formatMoney } from "@/lib/quote-money";
 import type { ProjectRequestRow } from "@/types/database";
 
 function Detail({
@@ -39,18 +36,21 @@ function requestTitle(request: ProjectRequestRow): string {
   return type ? displaySlug(type) : "Project request";
 }
 
+function shortSummary(request: ProjectRequestRow): string | null {
+  const text = request.description?.trim();
+  if (!text) {
+    return null;
+  }
+  if (text.length <= 160) {
+    return text;
+  }
+  return `${text.slice(0, 157).trimEnd()}…`;
+}
+
 function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
-  const { request, linkedProject, quote, canCancel } = item;
-  const features = (request.required_features as string[] | null) ?? [];
-  const designBits = [
-    request.has_design != null ? `Design: ${formatYesNo(request.has_design)}` : null,
-    request.design_style ? displaySlug(request.design_style) : null,
-    request.has_logo != null ? `Logo: ${formatYesNo(request.has_logo)}` : null,
-    request.has_brand_colors != null
-      ? `Brand colors: ${formatYesNo(request.has_brand_colors)}`
-      : null,
-    request.brand_colors,
-  ].filter((value): value is string => Boolean(value));
+  const { request, canCancel, canResubmit } = item;
+  const summary = shortSummary(request);
+  const lastUpdated = request.updated_at || request.submitted_at;
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-card-border bg-background p-5">
@@ -67,24 +67,38 @@ function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
           <h4 className="font-display text-lg tracking-tight font-medium">
             {requestTitle(request)}
           </h4>
-          <p className="mt-1 text-xs text-muted">
-            Submitted {formatDate(request.submitted_at)}
-          </p>
         </div>
-        {canCancel ? (
-          <CancelRequestButton
-            requestId={request.id}
-            requestNumber={request.request_number}
-          />
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <ButtonLink
+            href={`/profile/project-requests/${request.id}`}
+            variant="secondary"
+            className="h-10 px-4 text-xs"
+          >
+            View Details
+          </ButtonLink>
+          {canResubmit ? (
+            <ButtonLink
+              href={`/profile/project-requests/${request.id}/edit`}
+              className="h-10 px-4 text-xs"
+            >
+              Edit & Resubmit
+            </ButtonLink>
+          ) : null}
+          {canCancel ? (
+            <CancelRequestButton
+              requestId={request.id}
+              requestNumber={request.request_number}
+            />
+          ) : null}
+        </div>
       </div>
 
-      {request.description ? (
-        <p className="whitespace-pre-line text-sm leading-6 text-muted">{request.description}</p>
+      {summary ? (
+        <p className="text-sm leading-6 text-muted">{summary}</p>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Detail label="Page count" value={request.page_count ?? "Not specified"} />
+        <Detail label="Submitted" value={formatDate(request.submitted_at)} />
         <Detail
           label="Budget"
           value={formatRequestBudget(
@@ -93,71 +107,8 @@ function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
             request.budget_currency || "BDT",
           )}
         />
-        <Detail
-          label="Deadline"
-          value={formatRequestDeadline(request.deadline_date, request.deadline_type)}
-        />
-        <Detail
-          label="Design"
-          value={designBits.length > 0 ? designBits.join(" · ") : "Not specified"}
-        />
+        <Detail label="Last updated" value={formatDate(lastUpdated)} />
       </div>
-
-      <div>
-        <p className="text-[10px] font-medium uppercase tracking-wider text-muted">
-          Required features
-        </p>
-        {features.length > 0 ? (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {features.map((feature) => (
-              <span
-                key={feature}
-                className="rounded-full border border-card-border px-2.5 py-1 text-xs text-muted"
-              >
-                {displaySlug(feature)}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-1 text-sm text-foreground">None selected</p>
-        )}
-      </div>
-
-      {quote ? (
-        <div className="rounded-lg border border-card-border px-4 py-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted">Quote</p>
-          <p className="mt-1 text-sm font-medium">
-            {formatMoney(Number(quote.total), quote.currency)}
-            <span className="ml-2 text-xs font-normal text-muted">
-              Version {quote.version} · {quote.status.replace(/_/g, " ")}
-            </span>
-          </p>
-        </div>
-      ) : null}
-
-      {linkedProject ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-card-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted">
-              Linked project
-            </p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">{linkedProject.project_number}</span>
-              <Badge className={getStatusStyle(linkedProject.status)}>
-                {formatStatusLabel(linkedProject.status)}
-              </Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted">{linkedProject.title}</p>
-          </div>
-          <ButtonLink
-            href={`/profile/projects/${linkedProject.id}`}
-            variant="secondary"
-            className="h-10 px-4 text-xs"
-          >
-            View project
-          </ButtonLink>
-        </div>
-      ) : null}
     </div>
   );
 }
