@@ -343,14 +343,15 @@ export async function getCustomerProjectRequest(
     return null;
   }
 
-  const { data: projectRow } = await supabase
+  const { data: projectRows } = await supabase
     .from("projects")
     .select(PROJECT_COLUMNS)
     .eq("request_id", request.id)
     .eq("client_id", userId)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
 
-  const linked = (projectRow ?? null) as LinkedProjectRow | null;
+  const linked = (projectRows?.[0] ?? null) as LinkedProjectRow | null;
   const projectsByRequestId = new Map<string, LinkedProjectRow>();
   const quotesByProjectId = new Map<string, LinkedQuoteRow[]>();
   let quoteItems: QuoteItemRow[] = [];

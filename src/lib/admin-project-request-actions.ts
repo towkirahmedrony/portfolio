@@ -91,13 +91,17 @@ export async function convertProjectRequest(
   }
 
   const supabase = await createServerSupabaseClient();
-  const { data: existing } = await supabase
+  const { data: existingRows, error: existingError } = await supabase
     .from("projects")
     .select("id")
     .eq("request_id", requestId)
-    .maybeSingle();
+    .limit(2);
 
-  if (existing?.id) {
+  if (existingError) {
+    return { ok: false, error: existingError.message };
+  }
+
+  if (existingRows && existingRows.length > 0) {
     return {
       ok: false,
       error: "This request has already been converted to a project.",

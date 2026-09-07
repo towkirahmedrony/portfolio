@@ -150,13 +150,14 @@ export async function getAdminProjectRequest(
     referralCode = (code as RequestReferralCode | null) ?? null;
   }
 
-  const { data: project } = await supabase
+  const { data: projectRows } = await supabase
     .from("projects")
-    .select("id, project_number, title, status")
+    .select("id, project_number, title, status, created_at")
     .eq("request_id", request.id)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
 
-  linkedProject = (project as LinkedProjectSummary | null) ?? null;
+  linkedProject = (projectRows?.[0] as LinkedProjectSummary | undefined) ?? null;
 
   return {
     status: "ok",

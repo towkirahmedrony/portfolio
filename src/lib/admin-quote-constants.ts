@@ -52,19 +52,12 @@ export type QuoteListFilters = {
 };
 
 /**
- * Requests that may be turned into a quote draft directly from the
- * Admin Quotes workflow. `draft`, `rejected` and `cancelled` requests are not
- * quotable; `converted` requests already have a linked project to quote on.
- * An approved request is the classic convert-then-quote path, but an admin may
- * also quote an open request (new / reviewing / quoted): creating the quote
- * approves and converts the request into its single projects row.
+ * Quotes attach to an existing project only. A request is quotable after it
+ * has been explicitly converted (project_requests.status = converted) and a
+ * projects row already exists. Creating or updating a quote never converts a
+ * request or creates a project.
  */
-export const QUOTABLE_REQUEST_STATUSES: RequestStatus[] = [
-  "new",
-  "reviewing",
-  "quoted",
-  "approved",
-];
+export const QUOTABLE_REQUEST_STATUSES: RequestStatus[] = ["converted"];
 
 export type QuoteRequestLink = Pick<
   ProjectRequestRow,
@@ -118,23 +111,27 @@ export type QuoteEligibleRequestListItem = {
 };
 
 export function quoteFromRequestBlockedReason(
-  status: RequestStatus,
-  hasClient: boolean,
+  _status: RequestStatus,
+  _hasClient: boolean,
   alreadyConverted: boolean,
 ): string | null {
   if (alreadyConverted) {
-    return "This request is already linked to a project. Create or version quotes on the project instead.";
+    return null;
   }
-  if (status === "converted") {
-    return "This request is already marked converted.";
+  return "Convert this request to a project first. Creating or updating a quote never creates a project.";
+}
+
+export function resolveExistingProjectForQuote(
+  linkedProjectId: string | null | undefined,
+): { ok: true; projectId: string } | { ok: false; error: string } {
+  if (!linkedProjectId) {
+    return {
+      ok: false,
+      error:
+        "Convert this request to a project first. Quotes can only be created on an existing project.",
+    };
   }
-  if (status === "draft" || status === "rejected" || status === "cancelled") {
-    return "Only open requests (new, reviewing, quoted, approved) can be quoted.";
-  }
-  if (!hasClient) {
-    return "This request has no linked client profile, so it cannot be converted or quoted yet.";
-  }
-  return null;
+  return { ok: true, projectId: linkedProjectId };
 }
 
 export function isQuoteStatus(value: string): value is QuoteStatus {

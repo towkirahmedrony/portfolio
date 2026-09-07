@@ -10,7 +10,7 @@ import {
   canSendQuote,
   getAllowedQuoteTransitions,
   isQuoteStatus,
-  QUOTABLE_REQUEST_STATUSES,
+  resolveExistingProjectForQuote,
 } from "@/lib/admin-quote-constants";
 import {
   assertMatchingTotals,
@@ -27,7 +27,6 @@ import type {
   QuoteItemRow,
   QuoteRow,
   QuoteStatus,
-  RequestStatus,
 } from "@/types/database";
 
 type ActionResult = { ok: true; quoteId?: string } | { ok: false; error: string };
@@ -616,16 +615,15 @@ function buildQuoteDraftNotes(
 }
 
 /**
- * Creates a quote DRAFT from an eligible project request.
+ * Creates a quote DRAFT on the EXISTING project linked to a request.
  *
- * Pipeline: request (new / reviewing / quoted / approved) -> single projects
- * row (reusing the existing admin_convert_project_request RPC when the request
- * has not been converted yet) -> prefilled, editable draft quote.
+ * Quotes never create projects, never convert a request, and never change
+ * project_requests.status or projects.status. Conversion is an explicit
+ * admin action on the request. If this request has no project yet, the
+ * admin must convert it first.
  *
  * The client's submitted budget becomes the suggested unit price of a single
- * line item — never a locked/final price. The admin adjusts amounts, line
- * items, discount, tax, notes, terms and validity in the quote editor, saves
- * the draft and sends it later.
+ * line item — never a locked/final price.
  */
 export async function createQuoteDraftFromRequest(
   formData: FormData,
@@ -652,65 +650,25 @@ export async function createQuoteDraftFromRequest(
   }
 
   const requestRow = request as ProjectRequestRow;
-  const status = requestRow.status as RequestStatus;
 
-  // Reuse the single linked project when conversion already happened — never
-  // create a duplicate projects row for the same request.
-  const { data: linkedProject, error: linkedError } = await supabase
+  const { data: linkedProjects, error: linkedError } = await supabase
     .from("projects")
-    .select("id, title, currency, client_id")
+    .select("id, title, currency, client_id, created_at")
     .eq("request_id", requestId)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
 
   if (linkedError) {
     return { ok: false, error: linkedError.message };
   }
 
-  let projectId: string;
-  if (linkedProject?.id) {
-    projectId = linkedProject.id;
-  } else {
-    if (!QUOTABLE_REQUEST_STATUSES.includes(status)) {
-      return {
-        ok: false,
-        error:
-          "Only open requests (new, reviewing, quoted, approved) can be turned into quotes.",
-      };
-    }
-
-    if (!requestRow.client_id) {
-      return {
-        ok: false,
-        error:
-          "This request has no linked client profile, so it cannot be converted and quoted.",
-      };
-    }
-
-    if (status !== "approved") {
-      const { error: approveError } = await supabase
-        .from("project_requests")
-        .update({ status: "approved" })
-        .eq("id", requestId)
-        .in("status", ["new", "reviewing", "quoted", "approved"]);
-
-      if (approveError) {
-        return { ok: false, error: approveError.message };
-      }
-    }
-
-    const { data: convertedId, error: convertError } = await supabase.rpc(
-      "admin_convert_project_request",
-      { p_request_id: requestId },
-    );
-
-    if (convertError || !convertedId) {
-      return {
-        ok: false,
-        error: convertError?.message ?? "Could not convert the request to a project.",
-      };
-    }
-    projectId = String(convertedId);
+  const linkedProject = linkedProjects?.[0] ?? null;
+  const existingProject = resolveExistingProjectForQuote(linkedProject?.id);
+  if (!existingProject.ok) {
+    return existingProject;
   }
+
+  const projectId = existingProject.projectId;
 
   const { data: project } = await supabase
     .from("projects")

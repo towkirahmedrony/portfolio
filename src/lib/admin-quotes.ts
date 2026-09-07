@@ -338,7 +338,7 @@ export async function getQuoteEligibleProjectRequests(): Promise<
   );
   const available = rows.filter(
     (row): row is ProjectRequestRow & { client_id: string } =>
-      Boolean(row.client_id) && !linkedRequestIds.has(row.id),
+      Boolean(row.client_id) && linkedRequestIds.has(row.id),
   );
   if (available.length === 0) {
     return toQueryResult([], null, "project_requests", true);

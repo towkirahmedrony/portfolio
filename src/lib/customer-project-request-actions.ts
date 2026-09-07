@@ -134,13 +134,13 @@ export async function updateOwnProjectRequest(
     return { ok: false, error: "This request can no longer be edited." };
   }
 
-  const { data: linkedProject } = await supabase
+  const { data: linkedProjects } = await supabase
     .from("projects")
     .select("id")
     .eq("request_id", trimmedId)
-    .maybeSingle();
+    .limit(1);
 
-  if (linkedProject) {
+  if (linkedProjects && linkedProjects.length > 0) {
     return { ok: false, error: "This request can no longer be edited." };
   }
 

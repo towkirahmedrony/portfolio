@@ -69,12 +69,12 @@ export function QuoteFromRequestPanel({
   return (
     <AdminPanel
       title="Quote from a project request"
-      description="Open client orders that have not been converted yet. Creating a quote approves the request, converts it into its single project record (never a duplicate), and opens a prefilled draft — the submitted budget is only a suggested starting amount."
+      description="Converted requests that already have a project. Creating a quote attaches a draft to that existing project — it never converts the request or creates another project. The submitted budget is only a suggested starting amount."
     >
       {requests.length === 0 ? (
         <p className="text-sm text-muted">
-          No open project requests are waiting to be quoted. New submissions appear here
-          after review; converted requests are quoted from their project.
+          No converted requests are ready to quote. Approve a request, convert it to a
+          project, then create quote versions on that project.
         </p>
       ) : (
         <div className="space-y-3">

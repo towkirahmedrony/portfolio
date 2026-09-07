@@ -6,7 +6,6 @@ import {
   convertProjectRequest,
   updateProjectRequestStatus,
 } from "@/lib/admin-project-request-actions";
-import { createQuoteDraftFromRequest } from "@/lib/admin-quote-actions";
 import {
   convertBlockedReason,
   displaySlug,
@@ -269,7 +268,7 @@ export function ProjectRequestDetail({
 
         <AdminPanel
           title="Quotes"
-          description="Turn this order into a quote draft without creating duplicate projects."
+          description="Quotes belong to the existing project. Creating or updating a quote never converts this request or creates another project."
         >
           {request.linkedProject ? (
             <div className="space-y-3 text-sm">
@@ -281,7 +280,7 @@ export function ProjectRequestDetail({
                 >
                   {request.linkedProject.project_number}
                 </Link>
-                . Quotes live on the project.
+                . Quote versions stay on that project.
               </p>
               {quotes.length > 0 ? (
                 <ul className="space-y-2">
@@ -316,28 +315,11 @@ export function ProjectRequestDetail({
                 New quote for project
               </Link>
             </div>
-          ) : quoteBlocked ? (
-            <p className="text-sm text-muted">{quoteBlocked}</p>
           ) : (
-            <ActionForm
-              action={createQuoteDraftFromRequest}
-              className="grid gap-3"
-              successMessage="Quote draft created."
-            >
-              <input type="hidden" name="requestId" value={request.id} />
-              <p className="text-sm text-muted">
-                Approves this request, converts it into a single project record
-                (request_id stays unique), and opens a prefilled draft. The
-                submitted budget is used as a suggested starting amount — nothing is
-                final until you save and send.
-              </p>
-              <ConfirmSubmitButton
-                message="Approve and convert this request into a project, then open a prefilled quote draft?"
-                className="rounded-xl bg-foreground px-3 py-2 text-sm font-medium text-background"
-              >
-                Create quote draft
-              </ConfirmSubmitButton>
-            </ActionForm>
+            <p className="text-sm text-muted">
+              {quoteBlocked ??
+                "Convert this request to a project first. Quotes can only be created on an existing project."}
+            </p>
           )}
         </AdminPanel>
 
