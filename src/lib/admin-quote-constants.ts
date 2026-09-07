@@ -62,12 +62,12 @@ export type QuoteListFilters = {
 };
 
 /**
- * Quotes attach to an existing project only. A request is quotable after it
- * has been explicitly converted (project_requests.status = converted) and a
- * projects row already exists. Creating or updating a quote never converts a
- * request or creates a project.
+ * Quotes attach to a project request. A request is quotable after admin review
+ * (reviewing or quoted) and before it is rejected or cancelled. Creating or
+ * updating a quote never creates a project — that happens only when the client
+ * accepts the quote.
  */
-export const QUOTABLE_REQUEST_STATUSES: RequestStatus[] = ["converted"];
+export const QUOTABLE_REQUEST_STATUSES: RequestStatus[] = ["reviewing", "quoted"];
 
 export type QuoteRequestLink = Pick<
   ProjectRequestRow,
@@ -92,6 +92,7 @@ export type AdminQuoteDetail = {
   quote: QuoteRow;
   items: QuoteItemRow[];
   project: QuoteProjectSummary | null;
+  request: QuoteRequestLink | null;
   client: ProjectClient | null;
   versions: QuoteRow[];
   invoice: QuoteInvoiceLink | null;
@@ -121,27 +122,38 @@ export type QuoteEligibleRequestListItem = {
 };
 
 export function quoteFromRequestBlockedReason(
-  _status: RequestStatus,
-  _hasClient: boolean,
-  alreadyConverted: boolean,
+  status: RequestStatus,
+  hasClient: boolean,
+  _alreadyConverted: boolean,
 ): string | null {
-  if (alreadyConverted) {
+  if (!hasClient) {
+    return "This lead has no linked client profile, so a quote cannot be created yet.";
+  }
+  if (status === "new") {
+    return "Move this request to reviewing before creating a quote.";
+  }
+  if (status === "draft") {
+    return "This request is still a draft.";
+  }
+  if (status === "rejected" || status === "cancelled") {
+    return "This request cannot be quoted.";
+  }
+  if (QUOTABLE_REQUEST_STATUSES.includes(status) || status === "converted" || status === "approved") {
     return null;
   }
-  return "Convert this request to a project first. Creating or updating a quote never creates a project.";
+  return "This request is not ready to quote.";
 }
 
-export function resolveExistingProjectForQuote(
-  linkedProjectId: string | null | undefined,
-): { ok: true; projectId: string } | { ok: false; error: string } {
-  if (!linkedProjectId) {
+export function resolveQuoteRequestForDraft(
+  requestId: string | null | undefined,
+): { ok: true; requestId: string } | { ok: false; error: string } {
+  if (!requestId) {
     return {
       ok: false,
-      error:
-        "Convert this request to a project first. Quotes can only be created on an existing project.",
+      error: "Select a project request. Quotes are created from a request, not from a project.",
     };
   }
-  return { ok: true, projectId: linkedProjectId };
+  return { ok: true, requestId };
 }
 
 export function isQuoteStatus(value: string): value is QuoteStatus {

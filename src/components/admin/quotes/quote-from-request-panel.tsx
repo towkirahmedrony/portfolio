@@ -69,12 +69,12 @@ export function QuoteFromRequestPanel({
   return (
     <AdminPanel
       title="Quote from a project request"
-      description="Converted requests that already have a project. Creating a quote attaches a draft to that existing project — it never converts the request or creates another project. The submitted budget is only a suggested starting amount."
+      description="Reviewed requests that are ready for a quote. Creating a quote never creates a project. The submitted budget is only a suggested starting amount."
     >
       {requests.length === 0 ? (
         <p className="text-sm text-muted">
-          No converted requests are ready to quote. Approve a request, convert it to a
-          project, then create quote versions on that project.
+          No reviewed requests are ready to quote. Move a request to reviewing, then create
+          a quote from that request.
         </p>
       ) : (
         <div className="space-y-3">

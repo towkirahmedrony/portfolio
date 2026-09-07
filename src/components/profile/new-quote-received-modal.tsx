@@ -13,7 +13,7 @@ import { formatMoney } from "@/lib/quote-money";
 export function NewQuoteReceivedModal({ alert }: { alert: CustomerQuoteAlert }) {
   const [open, setOpen] = useState(true);
   const markedRef = useRef(false);
-  const { quote, projectId, projectTitle } = alert;
+  const { quote, projectId, projectTitle, requestId } = alert;
   const currency = quote.currency || "BDT";
   const summary = quote.notes?.trim()
     ? quote.notes.trim().slice(0, 220)
@@ -73,7 +73,11 @@ export function NewQuoteReceivedModal({ alert }: { alert: CustomerQuoteAlert }) 
         <ClientQuoteActions quote={quote} className="flex flex-wrap gap-2" />
 
         <ButtonLink
-          href={`/profile/projects/${projectId}`}
+          href={
+            projectId
+              ? `/profile/projects/${projectId}`
+              : `/profile/project-requests/${requestId}`
+          }
           variant="secondary"
           className="h-10 w-full px-4 text-xs"
         >

@@ -58,7 +58,11 @@ export function QuoteActionBanner({ alerts }: { alerts: CustomerQuoteAlert[] }) 
               </p>
               <ClientQuoteActions quote={alert.quote} className="flex flex-wrap gap-2" />
               <ButtonLink
-                href={`/profile/projects/${alert.projectId}`}
+                href={
+                  alert.projectId
+                    ? `/profile/projects/${alert.projectId}`
+                    : `/profile/project-requests/${alert.requestId}`
+                }
                 variant="secondary"
                 className="h-10 px-4 text-xs"
               >

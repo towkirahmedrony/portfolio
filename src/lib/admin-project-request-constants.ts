@@ -87,7 +87,7 @@ export const REQUEST_STATUS_STYLES: Record<RequestStatus, string> = {
   cancelled: "bg-neutral-500/10 text-neutral-500 border-neutral-500/20",
 };
 
-export const CONVERTIBLE_REQUEST_STATUS: RequestStatus = "approved";
+export const CONVERTIBLE_REQUEST_STATUS: RequestStatus = "quoted";
 
 export type ProjectRequestListFilters = {
   q?: string;
@@ -212,12 +212,9 @@ export function convertBlockedReason(
     return "This request is already marked converted.";
   }
   if (!hasClient) {
-    return "This lead has no linked client profile, so it cannot be converted yet.";
+    return "This lead has no linked client profile, so a project cannot be created yet.";
   }
-  if (status !== CONVERTIBLE_REQUEST_STATUS) {
-    return "Only approved requests can be converted to a project.";
-  }
-  return null;
+  return "A project is created when the client accepts a quote. Create and send a quote from this request instead.";
 }
 
 export function buildProjectRequestsHref(

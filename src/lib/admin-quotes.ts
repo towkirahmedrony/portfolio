@@ -178,23 +178,43 @@ export async function getAdminQuotes(
   }
 
   const rows = (data ?? []) as QuoteRow[];
-  const projects = await loadProjectsByIds(rows.map((row) => row.project_id));
-  const requestIds = [...projects.values()]
-    .map((project) => project.request_id)
-    .filter((id): id is string => Boolean(id));
-  const requests = await loadRequestsByIds(requestIds);
-  const invoices = await loadInvoicesByQuoteIds(rows.map((row) => row.id));
-  const clients = await loadClientsByIds(
-    [...projects.values()].map((project) => project.client_id),
+  const projects = await loadProjectsByIds(
+    rows.map((row) => row.project_id).filter((id): id is string => Boolean(id)),
   );
+  const requestIds = [
+    ...rows.map((row) => row.project_request_id),
+    ...[...projects.values()].map((project) => project.request_id),
+  ].filter((id): id is string => Boolean(id));
+  const uniqueRequestIds = [...new Set(requestIds)];
+  const requests = await loadRequestsByIds(uniqueRequestIds);
+  const invoices = await loadInvoicesByQuoteIds(rows.map((row) => row.id));
+  const requestOwnerIds = new Map<string, string>();
+  if (uniqueRequestIds.length > 0) {
+    const { data: ownerRows } = await supabase
+      .from("project_requests")
+      .select("id, client_id")
+      .in("id", uniqueRequestIds);
+    for (const row of ownerRows ?? []) {
+      if (row.client_id) {
+        requestOwnerIds.set(row.id, row.client_id);
+      }
+    }
+  }
+  const clients = await loadClientsByIds([
+    ...[...projects.values()].map((project) => project.client_id),
+    ...[...requestOwnerIds.values()],
+  ]);
 
   const items: AdminQuoteListItem[] = rows.map((row) => {
-    const project = projects.get(row.project_id) ?? null;
+    const project = row.project_id ? projects.get(row.project_id) ?? null : null;
+    const requestId = row.project_request_id || project?.request_id || null;
+    const request = requestId ? requests.get(requestId) ?? null : null;
+    const clientId = project?.client_id || (requestId ? requestOwnerIds.get(requestId) : undefined);
     return {
       ...row,
       project,
-      request: project?.request_id ? requests.get(project.request_id) ?? null : null,
-      client: project ? clients.get(project.client_id) ?? null : null,
+      request,
+      client: clientId ? clients.get(clientId) ?? null : null,
       invoice: invoices.get(row.id) ?? null,
     };
   });
@@ -206,6 +226,7 @@ const EMPTY_QUOTE_DETAIL: AdminQuoteDetail = {
   quote: {} as QuoteRow,
   items: [],
   project: null,
+  request: null,
   client: null,
   versions: [],
   invoice: null,
@@ -230,17 +251,27 @@ export async function getAdminQuote(
   }
 
   const quote = data as QuoteRow;
+  const versionsQuery = quote.project_request_id
+    ? supabase
+        .from("quotes")
+        .select("*")
+        .eq("project_request_id", quote.project_request_id)
+        .order("version", { ascending: false })
+    : quote.project_id
+      ? supabase
+          .from("quotes")
+          .select("*")
+          .eq("project_id", quote.project_id)
+          .order("version", { ascending: false })
+      : supabase.from("quotes").select("*").eq("id", quote.id);
+
   const [itemsResult, versionsResult, invoiceResult] = await Promise.all([
     supabase
       .from("quote_items")
       .select("*")
       .eq("quote_id", quote.id)
       .order("sort_order", { ascending: true }),
-    supabase
-      .from("quotes")
-      .select("*")
-      .eq("project_id", quote.project_id)
-      .order("version", { ascending: false }),
+    versionsQuery,
     supabase
       .from("invoices")
       .select("id, invoice_number, status")
@@ -263,9 +294,21 @@ export async function getAdminQuote(
   const versions = ((versionsResult.data ?? []) as QuoteRow[]).sort(
     (a, b) => b.version - a.version,
   );
-  const projects = await loadProjectsByIds([quote.project_id]);
-  const project = projects.get(quote.project_id) ?? null;
-  const clients = await loadClientsByIds(project ? [project.client_id] : []);
+  const projects = await loadProjectsByIds(quote.project_id ? [quote.project_id] : []);
+  const project = quote.project_id ? projects.get(quote.project_id) ?? null : null;
+  const requestId = quote.project_request_id || project?.request_id || null;
+  const requests = await loadRequestsByIds(requestId ? [requestId] : []);
+  const request = requestId ? requests.get(requestId) ?? null : null;
+  let clientId = project?.client_id ?? null;
+  if (!clientId && requestId) {
+    const { data: requestOwner } = await supabase
+      .from("project_requests")
+      .select("client_id")
+      .eq("id", requestId)
+      .maybeSingle();
+    clientId = requestOwner?.client_id ?? null;
+  }
+  const clients = await loadClientsByIds(clientId ? [clientId] : []);
 
   return {
     status: "ok",
@@ -273,7 +316,8 @@ export async function getAdminQuote(
       quote,
       items: (itemsResult.data ?? []) as QuoteItemRow[],
       project,
-      client: project ? clients.get(project.client_id) ?? null : null,
+      request,
+      client: clientId ? clients.get(clientId) ?? null : null,
       versions,
       invoice: (invoiceResult.data as QuoteInvoiceLink | null) ?? null,
     },
@@ -323,22 +367,8 @@ export async function getQuoteEligibleProjectRequests(): Promise<
     return toQueryResult([], null, "project_requests", true);
   }
 
-  const requestIds = rows.map((row) => row.id);
-  const { data: linkedRows, error: linkedError } = await supabase
-    .from("projects")
-    .select("request_id")
-    .in("request_id", requestIds);
-
-  if (linkedError && !isMissingRelation(linkedError)) {
-    return toQueryResult([], linkedError, "projects", true);
-  }
-
-  const linkedRequestIds = new Set(
-    (linkedRows ?? []).map((row) => row.request_id).filter((id): id is string => Boolean(id)),
-  );
   const available = rows.filter(
-    (row): row is ProjectRequestRow & { client_id: string } =>
-      Boolean(row.client_id) && linkedRequestIds.has(row.id),
+    (row): row is ProjectRequestRow & { client_id: string } => Boolean(row.client_id),
   );
   if (available.length === 0) {
     return toQueryResult([], null, "project_requests", true);

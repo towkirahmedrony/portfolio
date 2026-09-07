@@ -1424,7 +1424,8 @@ export type Database = {
           discount_total: number
           id: string
           notes: string | null
-          project_id: string
+          project_id: string | null
+          project_request_id: string | null
           rejected_at: string | null
           sent_at: string | null
           status: Database["public"]["Enums"]["quote_status"]
@@ -1443,7 +1444,8 @@ export type Database = {
           discount_total?: number
           id?: string
           notes?: string | null
-          project_id: string
+          project_id?: string | null
+          project_request_id?: string | null
           rejected_at?: string | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["quote_status"]
@@ -1462,7 +1464,8 @@ export type Database = {
           discount_total?: number
           id?: string
           notes?: string | null
-          project_id?: string
+          project_id?: string | null
+          project_request_id?: string | null
           rejected_at?: string | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["quote_status"]
@@ -1480,6 +1483,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_project_request_id_fkey"
+            columns: ["project_request_id"]
+            isOneToOne: false
+            referencedRelation: "project_requests"
             referencedColumns: ["id"]
           },
         ]

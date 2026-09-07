@@ -1,11 +1,8 @@
 import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/admin/projects/action-form";
-import { ConfirmSubmitButton } from "@/components/admin/projects/confirm-button";
 import { AdminPanel, StatusPill } from "@/components/admin/projects/query-state";
-import {
-  convertProjectRequest,
-  updateProjectRequestStatus,
-} from "@/lib/admin-project-request-actions";
+import { updateProjectRequestStatus } from "@/lib/admin-project-request-actions";
+import { createQuoteDraftFromRequest } from "@/lib/admin-quote-actions";
 import {
   convertBlockedReason,
   displaySlug,
@@ -230,11 +227,11 @@ export function ProjectRequestDetail({
           <p className="mt-2 text-xs text-muted">Currency: {request.budget_currency}</p>
         </AdminPanel>
 
-        <AdminPanel title="Convert to project">
+        <AdminPanel title="Linked project">
           {request.linkedProject ? (
             <div className="space-y-3 text-sm">
               <p className="text-muted">
-                This request is already linked to a project. Duplicate conversion is blocked.
+                This request is linked to a project created when the client accepted a quote.
               </p>
               <Link
                 href={`/admin/projects/${request.linkedProject.id}`}
@@ -243,84 +240,62 @@ export function ProjectRequestDetail({
                 Open {request.linkedProject.project_number}
               </Link>
             </div>
-          ) : blocked ? (
-            <p className="text-sm text-muted">{blocked}</p>
           ) : (
-            <ActionForm
-              action={convertProjectRequest}
-              className="grid gap-3"
-              successMessage="Request converted to a project."
-            >
-              <input type="hidden" name="requestId" value={request.id} />
-              <p className="text-sm text-muted">
-                Creates a projects row with this request as request_id, copies the submitted
-                scope, and marks the lead converted.
-              </p>
-              <ConfirmSubmitButton
-                message="Convert this approved request into a project? This cannot be undone."
-                className="rounded-xl bg-foreground px-3 py-2 text-sm font-medium text-background"
-              >
-                Convert to project
-              </ConfirmSubmitButton>
-            </ActionForm>
+            <p className="text-sm text-muted">
+              {blocked ??
+                "A project is created when the client accepts a quote. Create and send a quote from this request instead."}
+            </p>
           )}
         </AdminPanel>
 
         <AdminPanel
           title="Quotes"
-          description="Quotes belong to the existing project. Creating or updating a quote never converts this request or creates another project."
+          description="Quotes attach to this request. Creating or updating a quote never creates a project."
         >
-          {request.linkedProject ? (
-            <div className="space-y-3 text-sm">
-              <p className="text-muted">
-                This request is already linked to{" "}
-                <Link
-                  href={`/admin/projects/${request.linkedProject.id}`}
-                  className="text-foreground underline"
-                >
-                  {request.linkedProject.project_number}
-                </Link>
-                . Quote versions stay on that project.
-              </p>
-              {quotes.length > 0 ? (
-                <ul className="space-y-2">
-                  {quotes.map((quote) => (
-                    <li key={quote.id}>
-                      <Link
-                        href={`/admin/quotes/${quote.id}`}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-card-border bg-background px-3 py-2 hover:border-foreground/30"
-                      >
-                        <span className="font-medium text-foreground">v{quote.version}</span>
-                        <StatusPill
-                          label={formatQuoteStatusLabel(quote.status)}
-                          className={getQuoteStatusStyle(quote.status)}
-                        />
-                        <span className="text-muted">
-                          {formatMoney(Number(quote.total), quote.currency || "BDT")}
-                        </span>
-                        <span className="text-xs text-muted">
-                          {formatDateTime(quote.created_at)}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-muted">No quotes yet on this project.</p>
-              )}
-              <Link
-                href={`/admin/quotes/new?projectId=${request.linkedProject.id}`}
-                className="inline-flex rounded-xl bg-foreground px-3 py-2 text-sm font-medium text-background"
-              >
-                New quote for project
-              </Link>
-            </div>
-          ) : (
-            <p className="text-sm text-muted">
-              {quoteBlocked ??
-                "Convert this request to a project first. Quotes can only be created on an existing project."}
-            </p>
-          )}
+          <div className="space-y-3 text-sm">
+            {quotes.length > 0 ? (
+              <ul className="space-y-2">
+                {quotes.map((quote) => (
+                  <li key={quote.id}>
+                    <Link
+                      href={`/admin/quotes/${quote.id}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-card-border bg-background px-3 py-2 hover:border-foreground/30"
+                    >
+                      <span className="font-medium text-foreground">v{quote.version}</span>
+                      <StatusPill
+                        label={formatQuoteStatusLabel(quote.status)}
+                        className={getQuoteStatusStyle(quote.status)}
+                      />
+                      <span className="text-muted">
+                        {formatMoney(Number(quote.total), quote.currency || "BDT")}
+                      </span>
+                      <span className="text-xs text-muted">
+                        {formatDateTime(quote.created_at)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted">No quotes yet on this request.</p>
+            )}
+            {quoteBlocked ? (
+              <p className="text-muted">{quoteBlocked}</p>
+            ) : (
+              <ActionForm action={createQuoteDraftFromRequest} className="grid gap-3">
+                <input type="hidden" name="requestId" value={request.id} />
+                <SubmitButton pendingLabel="Creating…" className="bg-foreground text-background">
+                  Create quote
+                </SubmitButton>
+              </ActionForm>
+            )}
+            <Link
+              href={`/admin/quotes/new?requestId=${request.id}`}
+              className="inline-flex rounded-xl border border-card-border px-3 py-2 text-sm font-medium text-foreground"
+            >
+              New quote for request
+            </Link>
+          </div>
         </AdminPanel>
 
         <AdminPanel title="Referral">
@@ -352,25 +327,24 @@ export function ProjectRequestDetail({
 
         <AdminPanel
           title="Internal notes"
-          description="project_notes is scoped to projects, so notes become available after conversion."
-        >
-          {request.linkedProject ? (
-            <p className="text-sm text-muted">
-              Manage internal notes on{" "}
-              <Link
-                href={`/admin/projects/${request.linkedProject.id}?tab=notes`}
-                className="text-foreground underline"
-              >
-                {request.linkedProject.project_number}
-              </Link>
-              .
-            </p>
-          ) : (
-            <p className="text-sm text-muted">
-              Convert this request to a project to add internal notes. The schema does not
-              store notes on project_requests.
-            </p>
-          )}
+           description="project_notes is scoped to projects, so notes become available after the client accepts a quote."
+         >
+           {request.linkedProject ? (
+             <p className="text-sm text-muted">
+               Manage internal notes on{" "}
+               <Link
+                 href={`/admin/projects/${request.linkedProject.id}?tab=notes`}
+                 className="text-foreground underline"
+               >
+                 {request.linkedProject.project_number}
+               </Link>
+               .
+             </p>
+           ) : (
+             <p className="text-sm text-muted">
+               Internal notes become available after the client accepts a quote and a project is created. The schema does not store notes on project_requests.
+             </p>
+           )}
         </AdminPanel>
       </aside>
     </div>
