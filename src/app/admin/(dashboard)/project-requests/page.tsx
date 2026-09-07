@@ -51,7 +51,7 @@ export default async function AdminProjectRequestsPage({
   return (
     <AdminPage
       title="Project Requests"
-      description="Incoming leads from the /start-project form. Filter by status, search the submitted fields, and open a request to review or convert it."
+      description="Incoming leads from the /start-project form. Filter by status, search by request number, client, or email, and open a request to review it and create a quote."
       className="mx-auto w-full max-w-7xl"
     >
       <ProjectRequestsToolbar filters={filters} />

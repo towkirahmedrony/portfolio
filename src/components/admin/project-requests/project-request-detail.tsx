@@ -4,7 +4,6 @@ import { AdminPanel, StatusPill } from "@/components/admin/projects/query-state"
 import { updateProjectRequestStatus } from "@/lib/admin-project-request-actions";
 import { createQuoteDraftFromRequest } from "@/lib/admin-quote-actions";
 import {
-  convertBlockedReason,
   displaySlug,
   formatDateTime,
   formatRequestBudget,
@@ -50,17 +49,13 @@ export function ProjectRequestDetail({
   quotes?: ProjectRequestQuoteSummary[];
 }) {
   const alreadyConverted = Boolean(request.linkedProject);
-  const blocked = convertBlockedReason(
-    request.status,
-    Boolean(request.client_id),
-    alreadyConverted,
-  );
   const quoteBlocked = quoteFromRequestBlockedReason(
     request.status,
     Boolean(request.client_id),
     alreadyConverted,
   );
   const editableStatuses = REQUEST_STATUSES.filter((status) => status !== "converted");
+  const locked = request.status === "converted" || alreadyConverted;
   const features = request.required_features ?? [];
   const references = request.reference_urls ?? [];
 
@@ -186,9 +181,10 @@ export function ProjectRequestDetail({
             label={formatRequestStatusLabel(request.status)}
             className={getRequestStatusStyle(request.status)}
           />
-          {request.status === "converted" ? (
+          {locked ? (
             <p className="mt-3 text-sm text-muted">
-              Converted requests are locked. Open the linked project to continue.
+              This request is approved and linked to a project. Open the linked project to
+              continue.
             </p>
           ) : (
             <ActionForm
@@ -242,7 +238,7 @@ export function ProjectRequestDetail({
             </div>
           ) : (
             <p className="text-sm text-muted">
-              {blocked ??
+              {quoteBlocked ??
                 "A project is created when the client accepts a quote. Create and send a quote from this request instead."}
             </p>
           )}

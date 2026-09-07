@@ -9,12 +9,25 @@ import {
   type QueryResult,
   type RequestReferralCode,
 } from "@/lib/admin-project-request-constants";
-import type { ProjectRequestRow, ServiceRow } from "@/types/database";
+import type { ProjectRequestRow, ProjectRow, RequestStatus, ServiceRow } from "@/types/database";
 
 export * from "@/lib/admin-project-request-constants";
 
 const REQUEST_COLUMNS =
   "id, request_number, client_id, full_name, email, phone, company_name, project_type, website_status, page_count, description, required_features, has_design, figma_url, reference_urls, design_style, has_logo, has_brand_colors, brand_colors, budget_min, budget_max, budget_currency, deadline_type, deadline_date, referral_code_entered, referral_code_id, source, status, service_id, form_snapshot, submitted_at, updated_at";
+
+/**
+ * Statuses a request list filter applies. Filtering by "approved" also returns
+ * requests the database marked `converted` after the client accepted a quote —
+ * the product treats both as an approved request (a project exists for the
+ * converted ones).
+ */
+function statusesForFilter(status: RequestStatus | null): RequestStatus[] | null {
+  if (!status) {
+    return null;
+  }
+  return status === "approved" ? ["approved", "converted"] : [status];
+}
 
 function isMissingRelation(error: { message?: string; code?: string } | null): boolean {
   if (!error) {
@@ -71,8 +84,9 @@ export async function getAdminProjectRequests(
     .select(REQUEST_COLUMNS)
     .order("submitted_at", { ascending, nullsFirst: false });
 
-  if (status) {
-    query = query.eq("status", status);
+  const statuses = statusesForFilter(status);
+  if (statuses) {
+    query = query.in("status", statuses);
   }
 
   if (search) {
@@ -88,7 +102,41 @@ export async function getAdminProjectRequests(
 
   const { data, error } = await query;
   const rows = (data ?? []) as ProjectRequestRow[];
-  return toQueryResult(rows, error, "project_requests", rows.length === 0);
+  if (error) {
+    return toQueryResult([], error, "project_requests", true);
+  }
+
+  // Attach the actual project (if any) to every request so admin lists can
+  // surface the linked PJ number next to the PR number.
+  const requestIds = rows.map((row) => row.id);
+  const linkedByRequestId = new Map<string, LinkedProjectSummary>();
+  if (requestIds.length > 0) {
+    const { data: projectRows } = await supabase
+      .from("projects")
+      .select("id, request_id, project_number, title, status")
+      .in("request_id", requestIds)
+      .order("created_at", { ascending: true });
+
+    for (const project of (projectRows ?? []) as Array<
+      Pick<ProjectRow, "id" | "request_id" | "project_number" | "title" | "status">
+    >) {
+      if (project.request_id && !linkedByRequestId.has(project.request_id)) {
+        linkedByRequestId.set(project.request_id, {
+          id: project.id,
+          project_number: project.project_number,
+          title: project.title,
+          status: project.status,
+        });
+      }
+    }
+  }
+
+  const items: AdminProjectRequestListItem[] = rows.map((row) => ({
+    ...row,
+    linkedProject: linkedByRequestId.get(row.id) ?? null,
+  }));
+
+  return toQueryResult(items, null, "project_requests", items.length === 0);
 }
 
 export async function getAdminProjectRequest(

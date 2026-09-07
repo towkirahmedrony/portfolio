@@ -115,7 +115,7 @@ export function InvoiceEditor({
             <div className="grid gap-2 text-sm">
               <span className="font-medium">Project</span>
               <div className="rounded-xl border border-card-border bg-background px-3 py-2 text-foreground">
-                {project ? `${project.project_number} · ${project.title}` : invoice.project_id}
+                {project ? `${project.project_number} · ${project.title}` : "Not linked to a project"}
               </div>
             </div>
             <div className="grid gap-2 text-sm">

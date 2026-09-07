@@ -98,7 +98,9 @@ export function QuoteEditor({
     ? `${selectedRequest.request_number} · ${selectedRequest.project_type || "Request"}`
     : request
       ? `${request.request_number}${request.project_type ? ` · ${request.project_type}` : ""}`
-      : quote?.project_request_id || "Select a project request";
+      : quote?.project_request_id
+        ? "Request details unavailable"
+        : "Select a project request";
 
   const calculation = useMemo(() => {
     const parsedLines = lines.map((line) => ({

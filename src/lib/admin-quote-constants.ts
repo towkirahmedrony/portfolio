@@ -63,11 +63,17 @@ export type QuoteListFilters = {
 
 /**
  * Quotes attach to a project request. A request is quotable after admin review
- * (reviewing or quoted) and before it is rejected or cancelled. Creating or
+ * (reviewing or quoted), after admin approval, or once it already has a
+ * project (creating another quote version from the request). Creating or
  * updating a quote never creates a project — that happens only when the client
  * accepts the quote.
  */
-export const QUOTABLE_REQUEST_STATUSES: RequestStatus[] = ["reviewing", "quoted"];
+export const QUOTABLE_REQUEST_STATUSES: RequestStatus[] = [
+  "reviewing",
+  "quoted",
+  "approved",
+  "converted",
+];
 
 export type QuoteRequestLink = Pick<
   ProjectRequestRow,
@@ -138,7 +144,7 @@ export function quoteFromRequestBlockedReason(
   if (status === "rejected" || status === "cancelled") {
     return "This request cannot be quoted.";
   }
-  if (QUOTABLE_REQUEST_STATUSES.includes(status) || status === "converted" || status === "approved") {
+  if (QUOTABLE_REQUEST_STATUSES.includes(status)) {
     return null;
   }
   return "This request is not ready to quote.";
@@ -226,6 +232,11 @@ export function buildQuotesHref(filters: QuoteListFilters): string {
   return query ? `/admin/quotes?${query}` : "/admin/quotes";
 }
 
-export function quoteDisplayId(quote: Pick<QuoteRow, "id" | "version">): string {
-  return `${quote.id.slice(0, 8)} · v${quote.version}`;
+/**
+ * Human-facing label for a quote. Quotes have no number of their own — the
+ * version plus the linked project request (PR-...) or project (PJ-...) is the
+ * canonical way to refer to one, so the raw UUID is never shown to users.
+ */
+export function quoteDisplayId(quote: Pick<QuoteRow, "version">): string {
+  return `Quote v${quote.version}`;
 }

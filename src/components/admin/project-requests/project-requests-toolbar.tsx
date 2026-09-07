@@ -5,7 +5,7 @@ import { useTransition } from "react";
 import {
   buildProjectRequestsHref,
   formatRequestStatusLabel,
-  REQUEST_STATUSES,
+  REQUEST_FILTER_STATUSES,
   type ProjectRequestListFilters,
 } from "@/lib/admin-project-request-constants";
 
@@ -49,7 +49,7 @@ export function ProjectRequestsToolbar({
         className="rounded-xl border border-card-border bg-background px-3 py-2 text-sm text-foreground"
       >
         <option value="all">All statuses</option>
-        {REQUEST_STATUSES.map((status) => (
+        {REQUEST_FILTER_STATUSES.map((status) => (
           <option key={status} value={status}>
             {formatRequestStatusLabel(status)}
           </option>

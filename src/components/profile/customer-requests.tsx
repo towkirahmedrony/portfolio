@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CancelRequestButton } from "@/components/profile/cancel-request-button";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
@@ -104,6 +105,18 @@ function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
           <h4 className="font-display text-lg tracking-tight font-medium">
             {requestTitle(request)}
           </h4>
+          {linkedProject ? (
+            <p className="mt-1 text-xs text-muted">
+              Project{" "}
+              <Link
+                href={`/profile/projects/${linkedProject.id}`}
+                className="font-medium text-foreground hover:underline"
+              >
+                {linkedProject.project_number}
+              </Link>
+              {linkedProject.title ? ` · ${linkedProject.title}` : ""}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {isQuoteAwaitingClient(quote) && linkedProject ? (

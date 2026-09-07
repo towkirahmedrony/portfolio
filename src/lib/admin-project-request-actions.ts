@@ -41,7 +41,7 @@ export async function updateProjectRequestStatus(
   if (statusRaw === "converted") {
     return {
       ok: false,
-      error: "A request becomes converted when the client accepts a quote.",
+      error: "This status is set automatically when the client accepts a quote.",
     };
   }
 
@@ -61,7 +61,7 @@ export async function updateProjectRequestStatus(
   if (existing.status === "converted") {
     return {
       ok: false,
-      error: "Converted requests cannot change status. Open the linked project instead.",
+      error: "This request is approved and linked to a project. Its status is locked — open the linked project instead.",
     };
   }
 
@@ -78,39 +78,4 @@ export async function updateProjectRequestStatus(
 
   revalidateRequest(requestId);
   return { ok: true };
-}
-
-export async function convertProjectRequest(
-  formData: FormData,
-): Promise<ActionResult> {
-  await requireAdmin();
-  const requestId = asString(formData.get("requestId"));
-
-  if (!requestId) {
-    return { ok: false, error: "Missing request." };
-  }
-
-  const supabase = await createServerSupabaseClient();
-  const { data: existingRows, error: existingError } = await supabase
-    .from("projects")
-    .select("id")
-    .eq("request_id", requestId)
-    .limit(2);
-
-  if (existingError) {
-    return { ok: false, error: existingError.message };
-  }
-
-  if (existingRows && existingRows.length > 0) {
-    return {
-      ok: false,
-      error: "This request is already linked to a project.",
-    };
-  }
-
-  return {
-    ok: false,
-    error:
-      "Projects are created when the client accepts a quote. Create and send a quote from this request instead.",
-  };
 }

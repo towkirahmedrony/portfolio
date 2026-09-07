@@ -175,10 +175,50 @@ function formatActionLabel(action: string): string {
   return action.replace(/[_-]+/g, " ").trim();
 }
 
-function formatEntity(entityType: string, entityId: string | null): string {
+type ActivityEntityRefs = {
+  requestNumbers?: Map<string, string>;
+  projectNumbers?: Map<string, string>;
+  invoiceNumbers?: Map<string, string>;
+  quoteVersions?: Map<string, number>;
+};
+
+function formatEntity(
+  entityType: string,
+  entityId: string | null,
+  refs?: ActivityEntityRefs,
+): string {
   const type = formatActionLabel(entityType);
   if (!entityId) {
     return type;
+  }
+
+  const requestNumber =
+    entityType === "project_request" || entityType === "request"
+      ? refs?.requestNumbers?.get(entityId)
+      : undefined;
+  if (requestNumber) {
+    return `request ${requestNumber}`;
+  }
+
+  if (entityType === "project") {
+    const projectNumber = refs?.projectNumbers?.get(entityId);
+    if (projectNumber) {
+      return `project ${projectNumber}`;
+    }
+  }
+
+  if (entityType === "invoice") {
+    const invoiceNumber = refs?.invoiceNumbers?.get(entityId);
+    if (invoiceNumber) {
+      return `invoice ${invoiceNumber}`;
+    }
+  }
+
+  if (entityType === "quote") {
+    const version = refs?.quoteVersions?.get(entityId);
+    if (version != null) {
+      return `quote v${version}`;
+    }
   }
 
   return `${type} ${entityId.slice(0, 8)}`;
@@ -389,13 +429,81 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
       }
     }
 
+    // Resolve audit entities to their human-facing numbers (PR-... / PJ-... /
+    // INV-...) instead of showing truncated UUIDs in the activity feed.
+    const requestEntityIds = rows
+      .filter((row) => row.entity_type === "project_request" || row.entity_type === "request")
+      .map((row) => row.entity_id)
+      .filter((id): id is string => Boolean(id));
+    const projectEntityIds = rows
+      .filter((row) => row.entity_type === "project")
+      .map((row) => row.entity_id)
+      .filter((id): id is string => Boolean(id));
+    const invoiceEntityIds = rows
+      .filter((row) => row.entity_type === "invoice")
+      .map((row) => row.entity_id)
+      .filter((id): id is string => Boolean(id));
+    const quoteEntityIds = rows
+      .filter((row) => row.entity_type === "quote")
+      .map((row) => row.entity_id)
+      .filter((id): id is string => Boolean(id));
+
+    const requestNumbers = new Map<string, string>();
+    const projectNumbers = new Map<string, string>();
+    const invoiceNumbers = new Map<string, string>();
+    const quoteVersions = new Map<string, number>();
+
+    const entityRefs: ActivityEntityRefs = {
+      requestNumbers,
+      projectNumbers,
+      invoiceNumbers,
+      quoteVersions,
+    };
+
+    if (requestEntityIds.length > 0) {
+      const { data: requestRows } = await supabase
+        .from("project_requests")
+        .select("id, request_number")
+        .in("id", requestEntityIds);
+      for (const row of requestRows ?? []) {
+        requestNumbers.set(row.id, row.request_number);
+      }
+    }
+    if (projectEntityIds.length > 0) {
+      const { data: projectRows } = await supabase
+        .from("projects")
+        .select("id, project_number")
+        .in("id", projectEntityIds);
+      for (const row of projectRows ?? []) {
+        projectNumbers.set(row.id, row.project_number);
+      }
+    }
+    if (invoiceEntityIds.length > 0) {
+      const { data: invoiceRows } = await supabase
+        .from("invoices")
+        .select("id, invoice_number")
+        .in("id", invoiceEntityIds);
+      for (const row of invoiceRows ?? []) {
+        invoiceNumbers.set(row.id, row.invoice_number);
+      }
+    }
+    if (quoteEntityIds.length > 0) {
+      const { data: quoteRows } = await supabase
+        .from("quotes")
+        .select("id, version")
+        .in("id", quoteEntityIds);
+      for (const row of quoteRows ?? []) {
+        quoteVersions.set(row.id, Number(row.version ?? 1));
+      }
+    }
+
     const items = rows.map((row) => ({
       id: row.id,
       actor: row.actor_id
         ? actorNames.get(row.actor_id) ?? `User ${row.actor_id.slice(0, 8)}`
         : "System",
       action: formatActionLabel(row.action),
-      entity: formatEntity(row.entity_type, row.entity_id),
+      entity: formatEntity(row.entity_type, row.entity_id, entityRefs),
       timestamp: formatTimestamp(row.created_at),
     }));
 

@@ -18,10 +18,9 @@ export function QuotesListTable({ quotes }: { quotes: AdminQuoteListItem[] }) {
       <table className="w-full min-w-[86rem] text-left text-sm">
         <thead className="border-b border-card-border text-xs uppercase tracking-wide text-muted">
           <tr>
-            <th className="px-4 py-3">Quote / version</th>
+            <th className="px-4 py-3">Quote</th>
             <th className="px-4 py-3">Project / request</th>
             <th className="px-4 py-3">Client</th>
-            <th className="px-4 py-3">Version</th>
             <th className="px-4 py-3">Subtotal</th>
             <th className="px-4 py-3">Discount</th>
             <th className="px-4 py-3">Tax</th>
@@ -72,7 +71,6 @@ export function QuotesListTable({ quotes }: { quotes: AdminQuoteListItem[] }) {
                   <div className="text-xs text-muted">{quote.client.company_name}</div>
                 ) : null}
               </td>
-              <td className="px-4 py-3 text-foreground">v{quote.version}</td>
               <td className="px-4 py-3 text-muted">
                 {formatMoney(Number(quote.subtotal), quote.currency || "BDT")}
               </td>

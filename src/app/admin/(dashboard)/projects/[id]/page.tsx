@@ -28,6 +28,7 @@ import {
   isProjectDetailTab,
 } from "@/lib/admin-projects";
 import { requireAdmin } from "@/lib/require-admin";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function AdminProjectDetailPage({
   params,
@@ -59,6 +60,19 @@ export default async function AdminProjectDetailPage({
   }
 
   const project = projectResult.data;
+
+  // Show the originating request number so the PR -> PJ relationship is
+  // visible from the project side too.
+  let originRequest: { id: string; request_number: string } | null = null;
+  if (project.request_id) {
+    const supabase = await createServerSupabaseClient();
+    const { data: request } = await supabase
+      .from("project_requests")
+      .select("id, request_number")
+      .eq("id", project.request_id)
+      .maybeSingle();
+    originRequest = request ?? null;
+  }
   let tabContent = <ProjectOverviewTab project={project} />;
 
   if (tab === "requirements") {
@@ -99,7 +113,7 @@ export default async function AdminProjectDetailPage({
   return (
     <AdminPage
       title={project.title}
-      description={project.project_number}
+      description={`Project #${project.project_number}`}
       className="mx-auto w-full max-w-6xl"
     >
       <Link
@@ -108,6 +122,17 @@ export default async function AdminProjectDetailPage({
       >
         Back to all projects
       </Link>
+      {originRequest ? (
+        <p className="mb-4 text-sm text-muted">
+          Created from request{" "}
+          <Link
+            href={`/admin/project-requests/${originRequest.id}`}
+            className="font-medium text-foreground hover:underline"
+          >
+            {originRequest.request_number}
+          </Link>
+        </p>
+      ) : null}
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <StatusPill
           label={formatStatusLabel(project.status)}

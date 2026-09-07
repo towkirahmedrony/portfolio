@@ -21,6 +21,7 @@ export function ProjectRequestsListTable({
         <thead className="border-b border-card-border text-xs uppercase tracking-wide text-muted">
           <tr>
             <th className="px-4 py-3">Request</th>
+            <th className="px-4 py-3">Project</th>
             <th className="px-4 py-3">Client</th>
             <th className="px-4 py-3">Email</th>
             <th className="px-4 py-3">Project type</th>
@@ -44,6 +45,19 @@ export function ProjectRequestsListTable({
                 >
                   {request.request_number}
                 </Link>
+              </td>
+              <td className="px-4 py-3">
+                {request.linkedProject ? (
+                  <Link
+                    href={`/admin/projects/${request.linkedProject.id}`}
+                    className="text-foreground hover:underline"
+                  >
+                    <div>{request.linkedProject.project_number}</div>
+                    <div className="text-xs text-muted">{request.linkedProject.title}</div>
+                  </Link>
+                ) : (
+                  <span className="text-muted">—</span>
+                )}
               </td>
               <td className="px-4 py-3">
                 <div className="text-foreground">{request.full_name}</div>

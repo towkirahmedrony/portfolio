@@ -81,21 +81,43 @@ export async function getAdminProjects(
     filters.priority && isProjectPriority(filters.priority) ? filters.priority : null;
   const sort = filters.sort && isProjectSortField(filters.sort) ? filters.sort : "created_at";
   const ascending = filters.dir === "asc";
+  const escapedSearch = search.replace(/[%_,()]/g, " ").trim();
 
   let clientIds: string[] | null = null;
+  let requestIds: string[] | null = null;
+  let invoiceProjectIds: string[] | null = null;
 
-  if (search) {
-    const escaped = search.replace(/[%_,()]/g, " ").trim();
-    if (escaped) {
-      const { data: matchedClients } = await supabase
-        .from("profiles")
-        .select("id")
-        .or(
-          `full_name.ilike.%${escaped}%,display_name.ilike.%${escaped}%,company_name.ilike.%${escaped}%`,
-        );
+  if (escapedSearch) {
+    const { data: matchedClients } = await supabase
+      .from("profiles")
+      .select("id")
+      .or(
+        `full_name.ilike.%${escapedSearch}%,display_name.ilike.%${escapedSearch}%,company_name.ilike.%${escapedSearch}%,email.ilike.%${escapedSearch}%`,
+      );
 
-      clientIds = (matchedClients ?? []).map((row) => row.id);
-    }
+    clientIds = (matchedClients ?? []).map((row) => row.id);
+
+    // Searching a PR number (e.g. PR-20260907-...) returns the projects that
+    // were created from the matching requests.
+    const { data: matchedRequests } = await supabase
+      .from("project_requests")
+      .select("id")
+      .ilike("request_number", `%${escapedSearch}%`)
+      .limit(50);
+
+    requestIds = (matchedRequests ?? []).map((row) => row.id);
+
+    // Searching an invoice number returns the project the invoice bills.
+    const { data: matchedInvoices } = await supabase
+      .from("invoices")
+      .select("project_id")
+      .ilike("invoice_number", `%${escapedSearch}%`)
+      .not("project_id", "is", null)
+      .limit(50);
+
+    invoiceProjectIds = (matchedInvoices ?? [])
+      .map((row) => row.project_id)
+      .filter((id): id is string => Boolean(id));
   }
 
   let query = supabase
@@ -113,7 +135,6 @@ export async function getAdminProjects(
     query = query.eq("priority", priority);
   }
 
-  const escapedSearch = search.replace(/[%_,()]/g, " ").trim();
   if (escapedSearch) {
     const searchFilter = [
       `title.ilike.%${escapedSearch}%`,
@@ -122,6 +143,12 @@ export async function getAdminProjects(
     ];
     if (clientIds && clientIds.length > 0) {
       searchFilter.push(`client_id.in.(${clientIds.join(",")})`);
+    }
+    if (requestIds && requestIds.length > 0) {
+      searchFilter.push(`request_id.in.(${requestIds.join(",")})`);
+    }
+    if (invoiceProjectIds && invoiceProjectIds.length > 0) {
+      searchFilter.push(`id.in.(${invoiceProjectIds.join(",")})`);
     }
     query = query.or(searchFilter.join(","));
   }

@@ -104,6 +104,17 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
             {project.priority && <Badge className="border-accent/20">{`Priority: ${project.priority}`}</Badge>}
           </div>
           <h1 className="font-display mt-2 text-3xl tracking-tight sm:text-4xl">{project.title}</h1>
+          {detail.request ? (
+            <p className="mt-2 text-sm text-muted">
+              Created from request{" "}
+              <Link
+                href={`/profile/project-requests/${detail.request.id}`}
+                className="font-medium text-foreground hover:underline"
+              >
+                {detail.request.request_number}
+              </Link>
+            </p>
+          ) : null}
           {project.description && <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">{project.description}</p>}
         </div>
       </div>

@@ -15,6 +15,10 @@ import {
   formatQuoteStatusLabel,
   getQuoteStatusStyle,
 } from "@/lib/admin-quote-constants";
+import {
+  formatRequestStatusLabel,
+  getRequestStatusStyle,
+} from "@/lib/admin-project-request-constants";
 import type {
   AdminClientRelatedData,
   ClientInvoiceSummaryRow,
@@ -25,29 +29,7 @@ import type {
   ClientRequestSummaryRow,
   ClientSummarySection,
 } from "@/lib/admin-clients";
-import type { RequestStatus, RewardStatus } from "@/types/database";
-
-const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
-  draft: "Draft",
-  new: "New",
-  reviewing: "Reviewing",
-  quoted: "Quoted",
-  approved: "Approved",
-  rejected: "Rejected",
-  converted: "Converted",
-  cancelled: "Cancelled",
-};
-
-const REQUEST_STATUS_STYLES: Record<RequestStatus, string> = {
-  draft: "bg-slate-500/10 text-slate-700 border-slate-500/20 dark:text-slate-400",
-  new: "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:text-blue-400",
-  reviewing: "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400",
-  quoted: "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:text-purple-400",
-  approved: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-400",
-  rejected: "bg-red-500/10 text-red-700 border-red-500/20 dark:text-red-400",
-  converted: "bg-teal-500/10 text-teal-700 border-teal-500/20 dark:text-teal-400",
-  cancelled: "bg-neutral-500/10 text-neutral-500 border-neutral-500/20",
-};
+import type { RewardStatus } from "@/types/database";
 
 const REWARD_STATUS_LABELS: Record<RewardStatus, string> = {
   pending: "Pending",
@@ -64,18 +46,6 @@ const REWARD_STATUS_STYLES: Record<RewardStatus, string> = {
   expired: "bg-neutral-500/10 text-neutral-500 border-neutral-500/20",
   cancelled: "bg-red-500/10 text-red-700 border-red-500/20 dark:text-red-400",
 };
-
-function requestLabel(status: string): string {
-  return status in REQUEST_STATUS_LABELS
-    ? REQUEST_STATUS_LABELS[status as RequestStatus]
-    : status.replace(/_/g, " ");
-}
-
-function requestStyle(status: string): string {
-  return status in REQUEST_STATUS_STYLES
-    ? REQUEST_STATUS_STYLES[status as RequestStatus]
-    : "border-card-border bg-background text-muted";
-}
 
 function rewardLabel(status: string): string {
   return status in REWARD_STATUS_LABELS
@@ -230,8 +200,8 @@ function RequestRows({ rows }: { rows: ClientRequestSummaryRow[] }) {
                 {formatDate(row.submitted_at)}
               </span>
               <StatusPill
-                label={requestLabel(row.status)}
-                className={requestStyle(row.status)}
+                label={formatRequestStatusLabel(row.status)}
+                className={getRequestStatusStyle(row.status)}
               />
             </div>
           }

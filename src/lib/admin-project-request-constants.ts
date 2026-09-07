@@ -21,6 +21,15 @@ export const REQUEST_STATUSES: RequestStatus[] = [
   "cancelled",
 ];
 
+/**
+ * Statuses admins can select/see in filters. `converted` is a database-side
+ * state written when the client accepts a quote — it is never a workflow
+ * status admins choose, so it stays out of filter lists.
+ */
+export const REQUEST_FILTER_STATUSES: RequestStatus[] = REQUEST_STATUSES.filter(
+  (status) => status !== "converted",
+);
+
 export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
   draft: "Draft",
   new: "New",
@@ -28,7 +37,9 @@ export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
   quoted: "Quoted",
   approved: "Approved",
   rejected: "Rejected",
-  converted: "Converted",
+  // The database stores `converted` after a quote is accepted, but the product
+  // status is "Approved": the request is approved and a project now exists.
+  converted: "Approved",
   cancelled: "Cancelled",
 };
 
@@ -39,7 +50,7 @@ export const CLIENT_REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
   quoted: "Quote Ready",
   approved: "Approved",
   rejected: "Rejected",
-  converted: "Converted",
+  converted: "Approved",
   cancelled: "Cancelled",
 };
 
@@ -83,11 +94,9 @@ export const REQUEST_STATUS_STYLES: Record<RequestStatus, string> = {
   quoted: "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:text-purple-400",
   approved: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-400",
   rejected: "bg-red-500/10 text-red-700 border-red-500/20 dark:text-red-400",
-  converted: "bg-teal-500/10 text-teal-700 border-teal-500/20 dark:text-teal-400",
+  converted: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-400",
   cancelled: "bg-neutral-500/10 text-neutral-500 border-neutral-500/20",
 };
-
-export const CONVERTIBLE_REQUEST_STATUS: RequestStatus = "quoted";
 
 export type ProjectRequestListFilters = {
   q?: string;
@@ -106,7 +115,9 @@ export type RequestReferralCode = {
   is_active: boolean;
 };
 
-export type AdminProjectRequestListItem = ProjectRequestRow;
+export type AdminProjectRequestListItem = ProjectRequestRow & {
+  linkedProject: LinkedProjectSummary | null;
+};
 
 export type ProjectRequestQuoteSummary = Pick<
   QuoteRow,
@@ -198,23 +209,6 @@ export function formatYesNo(value: boolean | null | undefined): string {
 export function displaySlug(value: string | null | undefined): string {
   const trimmed = value?.trim();
   return trimmed ? trimmed.replace(/_/g, " ") : "—";
-}
-
-export function convertBlockedReason(
-  status: RequestStatus,
-  hasClient: boolean,
-  alreadyConverted: boolean,
-): string | null {
-  if (alreadyConverted) {
-    return "This request is already linked to a project.";
-  }
-  if (status === "converted") {
-    return "This request is already marked converted.";
-  }
-  if (!hasClient) {
-    return "This lead has no linked client profile, so a project cannot be created yet.";
-  }
-  return "A project is created when the client accepts a quote. Create and send a quote from this request instead.";
 }
 
 export function buildProjectRequestsHref(
