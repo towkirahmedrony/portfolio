@@ -3,8 +3,12 @@
 import { useMemo, useState } from "react";
 import { ActionForm, SubmitButton } from "@/components/admin/projects/action-form";
 import { AdminPanel } from "@/components/admin/projects/query-state";
-import { clientDisplayName } from "@/lib/admin-project-constants";
-import type { QuoteProjectOption } from "@/lib/admin-quote-constants";
+import { clientDisplayName, type ProjectClient } from "@/lib/admin-project-constants";
+import type {
+  QuoteEligibleRequestListItem,
+  QuoteProjectSummary,
+  QuoteRequestLink,
+} from "@/lib/admin-quote-constants";
 import { saveQuoteDraft } from "@/lib/admin-quote-actions";
 import {
   calculateQuoteFinancials,
@@ -61,18 +65,24 @@ function fromQuoteItems(items: QuoteItemRow[]): EditorLine[] {
 export function QuoteEditor({
   quote,
   items = [],
-  projects,
+  requests = [],
+  request = null,
+  client = null,
+  project = null,
   readOnly = false,
-  preselectedProjectId,
+  preselectedRequestId,
 }: {
   quote?: QuoteRow;
   items?: QuoteItemRow[];
-  projects: QuoteProjectOption[];
+  requests?: QuoteEligibleRequestListItem[];
+  request?: QuoteRequestLink | null;
+  client?: ProjectClient | null;
+  project?: QuoteProjectSummary | null;
   readOnly?: boolean;
-  preselectedProjectId?: string;
+  preselectedRequestId?: string;
 }) {
-  const [projectId, setProjectId] = useState(
-    quote?.project_id ?? preselectedProjectId ?? "",
+  const [requestId, setRequestId] = useState(
+    quote?.project_request_id ?? preselectedRequestId ?? "",
   );
   const [lines, setLines] = useState<EditorLine[]>(() => fromQuoteItems(items));
   const [discount, setDiscount] = useState(String(quote?.discount_total ?? 0));
@@ -81,8 +91,14 @@ export function QuoteEditor({
   const [terms, setTerms] = useState(quote?.terms ?? "");
   const [validUntil, setValidUntil] = useState(toDatetimeLocal(quote?.valid_until));
 
-  const selectedProject = projects.find((project) => project.id === projectId) ?? null;
-  const currency = quote?.currency || selectedProject?.currency || "BDT";
+  const selectedRequest = requests.find((item) => item.id === requestId) ?? null;
+  const currency = quote?.currency || selectedRequest?.budget_currency || "BDT";
+  const displayClient = selectedRequest?.client ?? client;
+  const requestLabel = selectedRequest
+    ? `${selectedRequest.request_number} · ${selectedRequest.project_type || "Request"}`
+    : request
+      ? `${request.request_number}${request.project_type ? ` · ${request.project_type}` : ""}`
+      : quote?.project_request_id || "Select a project request";
 
   const calculation = useMemo(() => {
     const parsedLines = lines.map((line) => ({
@@ -129,31 +145,38 @@ export function QuoteEditor({
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-2 text-sm">
-            <span className="font-medium">Project</span>
+            <span className="font-medium">Project request</span>
             {quote ? (
               <>
-                <input type="hidden" name="projectId" value={quote.project_id} />
+                <input type="hidden" name="requestId" value={quote.project_request_id ?? ""} />
                 <div className="rounded-xl border border-card-border bg-background px-3 py-2 text-foreground">
-                  {selectedProject
-                    ? `${selectedProject.project_number} · ${selectedProject.title}`
-                    : quote.project_id}
+                  {requestLabel}
                 </div>
+                {project ? (
+                  <p className="text-xs text-muted">
+                    Linked project {project.project_number} · {project.title}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted">
+                    A project is created only after the client accepts this quote.
+                  </p>
+                )}
               </>
             ) : (
               <select
-                name="projectId"
+                name="requestId"
                 required
-                value={projectId}
-                onChange={(event) => setProjectId(event.target.value)}
+                value={requestId}
+                onChange={(event) => setRequestId(event.target.value)}
                 disabled={readOnly}
                 className={fieldClass}
               >
                 <option value="" disabled>
-                  Select a project
+                  Select a project request
                 </option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.project_number} · {project.title}
+                {requests.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.request_number} · {item.project_type || "Request"}
                   </option>
                 ))}
               </select>
@@ -162,10 +185,8 @@ export function QuoteEditor({
           <div className="grid gap-2 text-sm">
             <span className="font-medium">Client</span>
             <div className="rounded-xl border border-card-border bg-background px-3 py-2 text-foreground">
-              {clientDisplayName(selectedProject?.client ?? null)}
-              {selectedProject?.client?.company_name
-                ? ` · ${selectedProject.client.company_name}`
-                : ""}
+              {clientDisplayName(displayClient)}
+              {displayClient?.company_name ? ` · ${displayClient.company_name}` : ""}
             </div>
           </div>
           <div className="grid gap-2 text-sm">

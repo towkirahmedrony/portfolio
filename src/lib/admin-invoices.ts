@@ -222,7 +222,7 @@ export async function getAcceptedQuoteOptions(): Promise<QueryResult<AcceptedQuo
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("quotes")
-    .select("id, project_id, version, total, currency, status")
+    .select("id, project_id, project_request_id, version, total, currency, status")
     .eq("status", "accepted")
     .order("accepted_at", { ascending: false });
 
@@ -231,7 +231,7 @@ export async function getAcceptedQuoteOptions(): Promise<QueryResult<AcceptedQuo
   }
 
   const quotes = (data ?? []) as Array<
-    Pick<QuoteRow, "id" | "project_id" | "version" | "total" | "currency" | "status">
+    Pick<QuoteRow, "id" | "project_id" | "project_request_id" | "version" | "total" | "currency" | "status">
   >;
 
   const { data: existingInvoices, error: existingError } = await supabase
@@ -250,22 +250,54 @@ export async function getAcceptedQuoteOptions(): Promise<QueryResult<AcceptedQuo
   );
 
   const available = quotes.filter((quote) => !usedQuoteIds.has(quote.id));
-  const projects = await loadProjectsByIds(available.map((quote) => quote.project_id));
+  const requestIds = available
+    .map((quote) => quote.project_request_id)
+    .filter((id): id is string => Boolean(id));
+  const projectsById = await loadProjectsByIds(
+    available.map((quote) => quote.project_id).filter((id): id is string => Boolean(id)),
+  );
+  const projectsByRequestId = new Map<string, InvoiceProjectSummary>();
+  if (requestIds.length > 0) {
+    const { data: requestProjects } = await supabase
+      .from("projects")
+      .select("id, project_number, title, client_id, currency, request_id")
+      .in("request_id", requestIds);
+    for (const row of requestProjects ?? []) {
+      const summary: InvoiceProjectSummary = {
+        id: row.id,
+        project_number: row.project_number,
+        title: row.title,
+        client_id: row.client_id,
+        currency: row.currency,
+      };
+      if (row.request_id) {
+        projectsByRequestId.set(row.request_id, summary);
+      }
+      projectsById.set(row.id, summary);
+    }
+  }
   const clients = await loadClientsByIds(
-    [...projects.values()].map((project) => project.client_id),
+    [...projectsById.values()].map((project) => project.client_id),
   );
 
-  const options: AcceptedQuoteOption[] = available.map((quote) => {
-    const project = projects.get(quote.project_id) ?? null;
-    return {
+  const options: AcceptedQuoteOption[] = [];
+  for (const quote of available) {
+    const project =
+      (quote.project_id ? projectsById.get(quote.project_id) : null) ??
+      (quote.project_request_id ? projectsByRequestId.get(quote.project_request_id) : null) ??
+      null;
+    if (!project) {
+      continue;
+    }
+    options.push({
       id: quote.id,
       version: quote.version,
       total: quote.total,
       currency: quote.currency || "BDT",
       project,
-      client: project ? clients.get(project.client_id) ?? null : null,
-    };
-  });
+      client: clients.get(project.client_id) ?? null,
+    });
+  }
 
   return toQueryResult(options, null, "quotes", options.length === 0);
 }

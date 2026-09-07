@@ -55,7 +55,7 @@ export function QuotesListTable({ quotes }: { quotes: AdminQuoteListItem[] }) {
                     <div className="text-xs text-muted">{quote.project.title}</div>
                   </Link>
                 ) : (
-                  <span className="text-muted">Unknown project</span>
+                  <span className="text-muted">Awaiting acceptance</span>
                 )}
                 {quote.request ? (
                   <Link

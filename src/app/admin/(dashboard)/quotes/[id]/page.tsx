@@ -12,7 +12,7 @@ import {
   getQuoteStatusStyle,
   quoteDisplayId,
 } from "@/lib/admin-quote-constants";
-import { getAdminQuote, getQuoteProjectOptions } from "@/lib/admin-quotes";
+import { getAdminQuote } from "@/lib/admin-quotes";
 import { requireAdmin } from "@/lib/require-admin";
 
 export default async function AdminQuoteDetailPage({
@@ -22,10 +22,7 @@ export default async function AdminQuoteDetailPage({
 }) {
   await requireAdmin();
   const { id } = await params;
-  const [quoteResult, projectsResult] = await Promise.all([
-    getAdminQuote(id),
-    getQuoteProjectOptions(),
-  ]);
+  const quoteResult = await getAdminQuote(id);
 
   if (quoteResult.status === "empty") {
     notFound();
@@ -43,21 +40,8 @@ export default async function AdminQuoteDetailPage({
     );
   }
 
-  const { quote, items, project, client, versions, invoice } = quoteResult.data;
+  const { quote, items, project, request, client, versions, invoice } = quoteResult.data;
   const editable = canEditQuote(quote.status);
-  const projectOptions =
-    projectsResult.status === "ok" || projectsResult.status === "empty"
-      ? projectsResult.data
-      : [];
-  const projects = project
-    ? [
-        {
-          ...project,
-          client,
-        },
-        ...projectOptions.filter((option) => option.id !== project.id),
-      ]
-    : projectOptions;
 
   return (
     <AdminPage
@@ -65,7 +49,9 @@ export default async function AdminQuoteDetailPage({
       description={
         project
           ? `${project.project_number} · ${project.title}`
-          : "Quote detail"
+          : request
+            ? `${request.request_number}${request.project_type ? ` · ${request.project_type}` : ""}`
+            : "Quote detail"
       }
       className="mx-auto w-full max-w-6xl"
     >
@@ -96,7 +82,9 @@ export default async function AdminQuoteDetailPage({
         <QuoteEditor
           quote={quote}
           items={items}
-          projects={projects}
+          request={request}
+          client={client}
+          project={project}
           readOnly={!editable}
         />
         <div className="grid gap-6 self-start">

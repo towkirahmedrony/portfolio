@@ -22,6 +22,7 @@ function isClientQuoteAction(value: string): value is ClientQuoteAction {
 
 function revalidateClientQuote(quoteId: string, projectId?: string | null, requestId?: string | null) {
   revalidatePath("/profile", "layout");
+  revalidatePath("/admin/projects");
   if (projectId) {
     revalidatePath(`/profile/projects/${projectId}`);
     revalidatePath(`/admin/projects/${projectId}`);
@@ -39,13 +40,24 @@ async function loadOwnedQuoteContext(
   quoteId: string,
   userId: string,
 ): Promise<
-  | { ok: true; quote: { id: string; project_id: string; status: QuoteStatus; version: number }; project: { id: string; client_id: string; request_id: string | null } }
+  | {
+      ok: true;
+      quote: {
+        id: string;
+        project_id: string | null;
+        project_request_id: string | null;
+        status: QuoteStatus;
+        version: number;
+      };
+      projectId: string | null;
+      requestId: string | null;
+    }
   | { ok: false; error: string }
 > {
   const supabase = await createServerSupabaseClient();
   const { data: quote, error } = await supabase
     .from("quotes")
-    .select("id, project_id, status, version")
+    .select("id, project_id, project_request_id, status, version")
     .eq("id", quoteId)
     .maybeSingle();
 
@@ -56,18 +68,38 @@ async function loadOwnedQuoteContext(
     return { ok: false, error: "Quote not found." };
   }
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, client_id, request_id")
-    .eq("id", quote.project_id)
-    .eq("client_id", userId)
-    .maybeSingle();
+  let requestId = quote.project_request_id;
+  const projectId = quote.project_id;
+  let owns = false;
 
-  if (!project || project.client_id !== userId) {
+  if (requestId) {
+    const { data: request } = await supabase
+      .from("project_requests")
+      .select("id, client_id")
+      .eq("id", requestId)
+      .eq("client_id", userId)
+      .maybeSingle();
+    owns = Boolean(request);
+  }
+
+  if (!owns && projectId) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("id, client_id, request_id")
+      .eq("id", projectId)
+      .eq("client_id", userId)
+      .maybeSingle();
+    if (project) {
+      owns = true;
+      requestId = requestId || project.request_id;
+    }
+  }
+
+  if (!owns) {
     return { ok: false, error: "Quote not found." };
   }
 
-  return { ok: true, quote, project };
+  return { ok: true, quote, projectId, requestId };
 }
 
 export async function respondToOwnQuote(
@@ -123,7 +155,17 @@ export async function respondToOwnQuote(
     };
   }
 
-  revalidateClientQuote(quoteId, context.project.id, context.project.request_id);
+  let projectId = context.projectId;
+  if (actionRaw === "accept" && !projectId && context.requestId) {
+    const { data: createdProject } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("request_id", context.requestId)
+      .maybeSingle();
+    projectId = createdProject?.id ?? projectId;
+  }
+
+  revalidateClientQuote(quoteId, projectId, context.requestId);
   return { ok: true, status: data as QuoteStatus };
 }
 

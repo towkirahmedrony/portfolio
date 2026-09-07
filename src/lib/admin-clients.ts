@@ -39,7 +39,7 @@ export type ClientRequestSummaryRow = Pick<
 
 export type ClientQuoteSummaryRow = Pick<
   QuoteRow,
-  "id" | "project_id" | "version" | "currency" | "total" | "status" | "created_at"
+  "id" | "project_id" | "project_request_id" | "version" | "currency" | "total" | "status" | "created_at"
 >;
 
 export type ClientInvoiceSummaryRow = Pick<
@@ -389,12 +389,34 @@ async function fetchRequests(
 
 async function fetchQuotes(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  clientId: string,
   projectIds: string[],
 ): Promise<ClientSummarySection<ClientQuoteSummaryRow>> {
+  const { data: requestRows, error: requestError } = await supabase
+    .from("project_requests")
+    .select("id")
+    .eq("client_id", clientId);
+
+  if (requestError) {
+    return sectionResult<ClientQuoteSummaryRow>([], 0, requestError, "quotes");
+  }
+
+  const requestIds = (requestRows ?? []).map((row) => row.id);
+  const filters: string[] = [];
+  if (projectIds.length > 0) {
+    filters.push(`project_id.in.(${projectIds.join(",")})`);
+  }
+  if (requestIds.length > 0) {
+    filters.push(`project_request_id.in.(${requestIds.join(",")})`);
+  }
+  if (filters.length === 0) {
+    return sectionResult<ClientQuoteSummaryRow>([], 0, null, "quotes");
+  }
+
   const { count, error: countError } = await supabase
     .from("quotes")
     .select("id", { count: "exact", head: true })
-    .in("project_id", projectIds);
+    .or(filters.join(","));
 
   if (countError) {
     return sectionResult<ClientQuoteSummaryRow>([], 0, countError, "quotes");
@@ -403,8 +425,8 @@ async function fetchQuotes(
   const total = count ?? 0;
   const { data, error } = await supabase
     .from("quotes")
-    .select("id, project_id, version, currency, total, status, created_at")
-    .in("project_id", projectIds)
+    .select("id, project_id, project_request_id, version, currency, total, status, created_at")
+    .or(filters.join(","))
     .order("created_at", { ascending: false })
     .limit(5);
 
@@ -500,12 +522,7 @@ export async function getAdminClientRelatedData(
 
   const [requests, quotes, invoices, payments, messages] = await Promise.all([
     fetchRequests(supabase, clientId),
-    projectIds.length > 0
-      ? fetchQuotes(supabase, projectIds)
-      : Promise.resolve<ClientSummarySection<ClientQuoteSummaryRow>>({
-          status: "empty",
-          data: { total: 0, rows: [] },
-        }),
+    fetchQuotes(supabase, clientId, projectIds),
     fetchInvoices(supabase, clientId),
     fetchPayments(supabase, clientId),
     projectIds.length > 0

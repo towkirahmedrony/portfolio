@@ -52,7 +52,7 @@ export default async function AdminQuotesPage({
   return (
     <AdminPage
       title="Quotes"
-      description="Create and version quotes on existing projects. Convert a request first if it has no project yet — quote save never creates a project."
+      description="Create and version quotes from reviewed project requests. A project is created only after the client accepts a quote."
       className="mx-auto w-full max-w-6xl"
     >
       <QuotesToolbar filters={filters} />

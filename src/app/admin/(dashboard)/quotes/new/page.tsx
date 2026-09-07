@@ -2,22 +2,22 @@ import Link from "next/link";
 import { AdminPage } from "@/components/admin/admin-page";
 import { QueryStateNotice } from "@/components/admin/projects/query-state";
 import { QuoteEditor } from "@/components/admin/quotes/quote-editor";
-import { getQuoteProjectOptions } from "@/lib/admin-quotes";
+import { getQuoteEligibleProjectRequests } from "@/lib/admin-quotes";
 import { requireAdmin } from "@/lib/require-admin";
 
 export default async function AdminNewQuotePage({
   searchParams,
 }: {
-  searchParams: Promise<{ projectId?: string }>;
+  searchParams: Promise<{ requestId?: string }>;
 }) {
   await requireAdmin();
-  const { projectId } = await searchParams;
-  const projects = await getQuoteProjectOptions();
+  const { requestId } = await searchParams;
+  const requests = await getQuoteEligibleProjectRequests();
 
   return (
     <AdminPage
       title="New quote"
-      description="Draft a quote against an existing project. Saving creates version 1 or the next unused version."
+      description="Draft a quote from a reviewed project request. Saving never creates a project."
       className="mx-auto w-full max-w-6xl"
     >
       <Link
@@ -26,15 +26,15 @@ export default async function AdminNewQuotePage({
       >
         Back to all quotes
       </Link>
-      {projects.status === "error" || projects.status === "unavailable" ? (
-        <QueryStateNotice result={projects} />
-      ) : projects.status === "empty" ? (
+      {requests.status === "error" || requests.status === "unavailable" ? (
+        <QueryStateNotice result={requests} />
+      ) : requests.status === "empty" ? (
         <QueryStateNotice
-          result={projects}
-          emptyMessage="Create a project before drafting a quote."
+          result={requests}
+          emptyMessage="No reviewed project requests are ready to quote. Move a request to reviewing first."
         />
       ) : (
-        <QuoteEditor projects={projects.data} preselectedProjectId={projectId} />
+        <QuoteEditor requests={requests.data} preselectedRequestId={requestId} />
       )}
     </AdminPage>
   );

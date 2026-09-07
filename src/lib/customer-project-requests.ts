@@ -59,6 +59,7 @@ type LinkedQuoteRow = Pick<
   QuoteRow,
   | "id"
   | "project_id"
+  | "project_request_id"
   | "version"
   | "currency"
   | "subtotal"
@@ -77,7 +78,7 @@ type LinkedQuoteRow = Pick<
 >;
 
 const QUOTE_COLUMNS =
-  "id, project_id, version, currency, subtotal, discount_total, tax_total, total, status, notes, terms, valid_until, sent_at, accepted_at, rejected_at, created_at, updated_at";
+  "id, project_id, project_request_id, version, currency, subtotal, discount_total, tax_total, total, status, notes, terms, valid_until, sent_at, accepted_at, rejected_at, created_at, updated_at";
 
 const PROJECT_COLUMNS =
   "id, project_number, request_id, client_id, title, status, agreed_price, estimated_budget, currency, due_date, updated_at";
@@ -101,7 +102,8 @@ export type CustomerInvoiceSummary = Pick<
 
 export type CustomerRequestQuote = {
   id: string;
-  projectId: string;
+  projectId: string | null;
+  requestId: string | null;
   version: number;
   currency: string;
   subtotal: number;
@@ -124,7 +126,7 @@ export type CustomerRequestQuote = {
 
 export type CustomerQuoteAlert = {
   quote: CustomerRequestQuote;
-  projectId: string;
+  projectId: string | null;
   projectTitle: string;
   requestId: string;
 };
@@ -183,6 +185,7 @@ function toCustomerQuote(quote: LinkedQuoteRow): CustomerRequestQuote {
   return {
     id: quote.id,
     projectId: quote.project_id,
+    requestId: quote.project_request_id,
     version: quote.version,
     currency: quote.currency || "BDT",
     subtotal: Number(quote.subtotal ?? 0),
@@ -227,13 +230,17 @@ function toVisibleQuoteVersions(quotes: LinkedQuoteRow[]): CustomerRequestQuote[
 }
 
 function toQuoteAlert(item: CustomerProjectRequestItem): CustomerQuoteAlert | null {
-  if (!item.quote || !item.linkedProject) {
+  if (!item.quote) {
     return null;
   }
+  const title =
+    item.linkedProject?.title ||
+    item.request.project_type?.trim() ||
+    item.request.request_number;
   return {
     quote: item.quote,
-    projectId: item.linkedProject.id,
-    projectTitle: item.linkedProject.title,
+    projectId: item.linkedProject?.id ?? item.quote.projectId,
+    projectTitle: title,
     requestId: item.request.id,
   };
 }
@@ -320,34 +327,38 @@ export async function getCustomerProjectRequests(
     }
   }
 
-  const projectIds = projects.map((project) => project.id);
-  const quotesByProjectId = new Map<string, LinkedQuoteRow[]>();
-  if (projectIds.length > 0) {
+  const quotesByRequestId = new Map<string, LinkedQuoteRow[]>();
+  const requestIds = requests.map((request) => request.id);
+  if (requestIds.length > 0) {
     const { data: quoteRows, error: quoteError } = await supabase
       .from("quotes")
       .select(QUOTE_COLUMNS)
-      .in("project_id", projectIds)
+      .in("project_request_id", requestIds)
       .order("version", { ascending: false });
 
     if (!quoteError) {
       for (const quote of (quoteRows ?? []) as LinkedQuoteRow[]) {
-        const list = quotesByProjectId.get(quote.project_id) ?? [];
+        const key = quote.project_request_id;
+        if (!key) {
+          continue;
+        }
+        const list = quotesByRequestId.get(key) ?? [];
         list.push(quote);
-        quotesByProjectId.set(quote.project_id, list);
+        quotesByRequestId.set(key, list);
       }
     }
   }
 
-  return requests.map((request) => toCustomerItem(request, projectsByRequestId, quotesByProjectId));
+  return requests.map((request) => toCustomerItem(request, projectsByRequestId, quotesByRequestId));
 }
 
 function toCustomerItem(
   request: ProjectRequestRow,
   projectsByRequestId: Map<string, LinkedProjectRow>,
-  quotesByProjectId: Map<string, LinkedQuoteRow[]>,
+  quotesByRequestId: Map<string, LinkedQuoteRow[]>,
 ): CustomerProjectRequestItem {
   const linked = projectsByRequestId.get(request.id) ?? null;
-  const quote = linked ? pickLatestQuote(quotesByProjectId.get(linked.id) ?? []) : null;
+  const quote = pickLatestQuote(quotesByRequestId.get(request.id) ?? []);
   const locked = Boolean(linked);
   return {
     request,
@@ -410,32 +421,35 @@ export async function getCustomerProjectRequest(
 
   const linked = (projectRows?.[0] ?? null) as LinkedProjectRow | null;
   const projectsByRequestId = new Map<string, LinkedProjectRow>();
-  const quotesByProjectId = new Map<string, LinkedQuoteRow[]>();
+  const quotesByRequestId = new Map<string, LinkedQuoteRow[]>();
   let quoteItems: QuoteItemRow[] = [];
   let invoices: CustomerInvoiceSummary[] = [];
 
   if (linked) {
     projectsByRequestId.set(request.id, linked);
-    const { data: quoteRows } = await supabase
-      .from("quotes")
-      .select(QUOTE_COLUMNS)
-      .eq("project_id", linked.id)
-      .order("version", { ascending: false });
+  }
 
-    quotesByProjectId.set(linked.id, (quoteRows ?? []) as LinkedQuoteRow[]);
+  const { data: quoteRows } = await supabase
+    .from("quotes")
+    .select(QUOTE_COLUMNS)
+    .eq("project_request_id", request.id)
+    .order("version", { ascending: false });
 
-    const latestQuote = pickLatestQuote((quoteRows ?? []) as LinkedQuoteRow[]);
-    if (latestQuote) {
-      const { data: itemRows, error: itemError } = await supabase
-        .from("quote_items")
-        .select("*")
-        .eq("quote_id", latestQuote.id)
-        .order("sort_order", { ascending: true });
-      if (!itemError) {
-        quoteItems = (itemRows ?? []) as QuoteItemRow[];
-      }
+  quotesByRequestId.set(request.id, (quoteRows ?? []) as LinkedQuoteRow[]);
+
+  const latestQuote = pickLatestQuote((quoteRows ?? []) as LinkedQuoteRow[]);
+  if (latestQuote) {
+    const { data: itemRows, error: itemError } = await supabase
+      .from("quote_items")
+      .select("*")
+      .eq("quote_id", latestQuote.id)
+      .order("sort_order", { ascending: true });
+    if (!itemError) {
+      quoteItems = (itemRows ?? []) as QuoteItemRow[];
     }
+  }
 
+  if (linked) {
     const { data: invoiceRows } = await supabase
       .from("invoices")
       .select("id, invoice_number, status, total, amount_paid, amount_due, currency, quote_id")
@@ -500,11 +514,11 @@ export async function getCustomerProjectRequest(
   }
 
   return {
-    ...toCustomerItem(request, projectsByRequestId, quotesByProjectId),
+    ...toCustomerItem(request, projectsByRequestId, quotesByRequestId),
     serviceName,
     files,
     quoteItems,
-    quoteVersions: toVisibleQuoteVersions(quotesByProjectId.get(linked?.id ?? "") ?? []),
+    quoteVersions: toVisibleQuoteVersions(quotesByRequestId.get(request.id) ?? []),
     invoices,
   };
 }
@@ -561,11 +575,18 @@ export async function getCustomerProjectDetail(
     request = requestResult.data;
   }
 
-  const { data: quoteRows } = await supabase
-    .from("quotes")
-    .select(QUOTE_COLUMNS)
-    .eq("project_id", project.id)
-    .order("version", { ascending: false });
+  const quoteQuery = project.request_id
+    ? supabase
+        .from("quotes")
+        .select(QUOTE_COLUMNS)
+        .eq("project_request_id", project.request_id)
+        .order("version", { ascending: false })
+    : supabase
+        .from("quotes")
+        .select(QUOTE_COLUMNS)
+        .eq("project_id", project.id)
+        .order("version", { ascending: false });
+  const { data: quoteRows } = await quoteQuery;
 
   const quote = pickLatestQuote((quoteRows ?? []) as LinkedQuoteRow[]);
   let quoteItems: QuoteItemRow[] = [];

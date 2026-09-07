@@ -10,7 +10,7 @@ import {
   canSendQuote,
   getAllowedQuoteTransitions,
   isQuoteStatus,
-  resolveExistingProjectForQuote,
+  quoteFromRequestBlockedReason,
 } from "@/lib/admin-quote-constants";
 import {
   assertMatchingTotals,
@@ -91,9 +91,10 @@ function parseLineItems(formData: FormData): QuoteLineInput[] {
   return items;
 }
 
-function revalidateQuotes(quoteId?: string, projectId?: string) {
+function revalidateQuotes(quoteId?: string, projectId?: string | null, requestId?: string | null) {
   revalidatePath("/admin");
   revalidatePath("/admin/quotes");
+  revalidatePath("/admin/project-requests");
   revalidatePath("/profile", "layout");
   if (quoteId) {
     revalidatePath(`/admin/quotes/${quoteId}`);
@@ -101,6 +102,10 @@ function revalidateQuotes(quoteId?: string, projectId?: string) {
   if (projectId) {
     revalidatePath(`/admin/projects/${projectId}`);
     revalidatePath(`/profile/projects/${projectId}`);
+  }
+  if (requestId) {
+    revalidatePath(`/admin/project-requests/${requestId}`);
+    revalidatePath(`/profile/project-requests/${requestId}`);
   }
 }
 
@@ -130,23 +135,59 @@ async function writeAuditLog(input: {
   }
 }
 
-function currencyFromProject(projectCurrency: string | null | undefined, fallback: string) {
-  const currency = projectCurrency?.trim() || fallback.trim() || "BDT";
+function currencyFromSource(sourceCurrency: string | null | undefined, fallback: string) {
+  const currency = sourceCurrency?.trim() || fallback.trim() || "BDT";
   if (!currency) {
     throw new Error("Currency is required.");
   }
   return currency;
 }
 
+async function nextQuoteVersionForRequest(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  requestId: string | null,
+  projectId: string | null,
+): Promise<{ ok: true; version: number } | { ok: false; error: string }> {
+  let query = supabase.from("quotes").select("version").order("version", { ascending: false }).limit(1);
+  if (requestId) {
+    query = query.eq("project_request_id", requestId);
+  } else if (projectId) {
+    query = query.eq("project_id", projectId);
+  } else {
+    return { ok: true, version: 1 };
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  const version = data && data.length > 0 ? Number(data[0].version ?? 0) + 1 : 1;
+  return { ok: true, version };
+}
+
+async function markRequestQuoted(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  requestId: string | null | undefined,
+) {
+  if (!requestId) {
+    return;
+  }
+  await supabase
+    .from("project_requests")
+    .update({ status: "quoted" })
+    .eq("id", requestId)
+    .in("status", ["new", "reviewing", "quoted", "approved"]);
+}
+
 export async function saveQuoteDraft(formData: FormData): Promise<ActionResult> {
   const admin = await requireAdmin();
   const quoteId = asOptionalString(formData.get("quoteId"));
-  const projectId = asString(formData.get("projectId"));
+  const requestIdInput = asString(formData.get("requestId"));
   const notes = asOptionalString(formData.get("notes"));
   const terms = asOptionalString(formData.get("terms"));
 
-  if (!projectId) {
-    return { ok: false, error: "Select a project." };
+  if (!quoteId && !requestIdInput) {
+    return { ok: false, error: "Select a project request." };
   }
 
   let discountTotal: number;
@@ -190,19 +231,6 @@ export async function saveQuoteDraft(formData: FormData): Promise<ActionResult> 
   }
 
   const supabase = await createServerSupabaseClient();
-  const { data: project, error: projectError } = await supabase
-    .from("projects")
-    .select("id, client_id, currency")
-    .eq("id", projectId)
-    .maybeSingle();
-
-  if (projectError) {
-    return { ok: false, error: projectError.message };
-  }
-  if (!project) {
-    return { ok: false, error: "Project not found." };
-  }
-
   const totals = {
     subtotal: toPostgresNumeric(calculated.totals.subtotal),
     discount_total: toPostgresNumeric(calculated.totals.discount_total),
@@ -223,9 +251,6 @@ export async function saveQuoteDraft(formData: FormData): Promise<ActionResult> 
     if (!existing) {
       return { ok: false, error: "Quote not found." };
     }
-    if (existing.project_id !== projectId) {
-      return { ok: false, error: "Quote project cannot be changed." };
-    }
     if (!canEditQuote(existing.status)) {
       return { ok: false, error: "Only draft quotes can be edited. Create a new version instead." };
     }
@@ -236,7 +261,7 @@ export async function saveQuoteDraft(formData: FormData): Promise<ActionResult> 
         notes,
         terms,
         valid_until: validUntil,
-        currency: existing.currency || currencyFromProject(project.currency, existing.currency ?? ""),
+        currency: existing.currency || currencyFromSource(existing.currency, "BDT"),
         ...totals,
         status: "draft",
       })
@@ -279,25 +304,51 @@ export async function saveQuoteDraft(formData: FormData): Promise<ActionResult> 
       newData: totals,
     });
 
-    revalidateQuotes(quoteId, projectId);
+    revalidateQuotes(quoteId, existing.project_id, existing.project_request_id);
     return { ok: true, quoteId };
   }
 
-  const { data: latest } = await supabase
-    .from("quotes")
-    .select("version")
-    .eq("project_id", projectId)
-    .order("version", { ascending: false })
-    .limit(1);
+  const { data: request, error: requestError } = await supabase
+    .from("project_requests")
+    .select("id, client_id, status, budget_currency")
+    .eq("id", requestIdInput)
+    .maybeSingle();
 
-  const version = latest && latest.length > 0 ? Number(latest[0].version ?? 0) + 1 : 1;
-  const currency = currencyFromProject(project.currency, "BDT");
+  if (requestError) {
+    return { ok: false, error: requestError.message };
+  }
+  if (!request) {
+    return { ok: false, error: "Project request not found." };
+  }
+
+  const blocked = quoteFromRequestBlockedReason(
+    request.status,
+    Boolean(request.client_id),
+    false,
+  );
+  if (blocked) {
+    return { ok: false, error: blocked };
+  }
+
+  const { data: linkedProject } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("request_id", request.id)
+    .maybeSingle();
+
+  const versionResult = await nextQuoteVersionForRequest(supabase, request.id, linkedProject?.id ?? null);
+  if (!versionResult.ok) {
+    return versionResult;
+  }
+
+  const currency = currencyFromSource(request.budget_currency, "BDT");
 
   const { data: created, error: insertError } = await supabase
     .from("quotes")
     .insert({
-      project_id: projectId,
-      version,
+      project_id: linkedProject?.id ?? null,
+      project_request_id: request.id,
+      version: versionResult.version,
       currency,
       notes,
       terms,
@@ -331,10 +382,10 @@ export async function saveQuoteDraft(formData: FormData): Promise<ActionResult> 
     actorId: admin.id,
     action: "quote.created",
     entityId: created.id,
-    newData: { version, ...totals },
+    newData: { version: versionResult.version, request_id: request.id, ...totals },
   });
 
-  revalidateQuotes(created.id, projectId);
+  revalidateQuotes(created.id, linkedProject?.id ?? null, request.id);
   redirectToQuote(created.id);
   return { ok: true, quoteId: created.id };
 }
@@ -374,24 +425,21 @@ export async function createQuoteVersion(formData: FormData): Promise<ActionResu
     return { ok: false, error: itemsError.message };
   }
 
-  const { data: latest, error: latestError } = await supabase
-    .from("quotes")
-    .select("version")
-    .eq("project_id", source.project_id)
-    .order("version", { ascending: false })
-    .limit(1);
-
-  if (latestError) {
-    return { ok: false, error: latestError.message };
+  const versionResult = await nextQuoteVersionForRequest(
+    supabase,
+    source.project_request_id,
+    source.project_id,
+  );
+  if (!versionResult.ok) {
+    return versionResult;
   }
-
-  const nextVersion = latest && latest.length > 0 ? Number(latest[0].version ?? 0) + 1 : 1;
 
   const { data: created, error: insertError } = await supabase
     .from("quotes")
     .insert({
       project_id: source.project_id,
-      version: nextVersion,
+      project_request_id: source.project_request_id,
+      version: versionResult.version,
       currency: source.currency,
       subtotal: source.subtotal,
       discount_total: source.discount_total,
@@ -432,10 +480,10 @@ export async function createQuoteVersion(formData: FormData): Promise<ActionResu
     action: "quote.version_created",
     entityId: created.id,
     oldData: { source_quote_id: source.id, source_version: source.version },
-    newData: { version: nextVersion },
+    newData: { version: versionResult.version },
   });
 
-  revalidateQuotes(created.id, source.project_id);
+  revalidateQuotes(created.id, source.project_id, source.project_request_id);
   redirectToQuote(created.id);
   return { ok: true, quoteId: created.id };
 }
@@ -492,20 +540,24 @@ export async function sendQuoteToClient(formData: FormData): Promise<ActionResul
     return { ok: false, error: updateError.message };
   }
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, client_id")
-    .eq("id", quote.project_id)
-    .maybeSingle();
+  if (quote.project_id) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("id, client_id")
+      .eq("id", quote.project_id)
+      .maybeSingle();
 
-  if (project?.client_id) {
-    await supabase.from("project_messages").insert({
-      project_id: quote.project_id,
-      sender_id: admin.id,
-      message: `Quote version ${quote.version} has been sent for review.`,
-      is_read: false,
-    });
+    if (project?.client_id) {
+      await supabase.from("project_messages").insert({
+        project_id: quote.project_id,
+        sender_id: admin.id,
+        message: `Quote version ${quote.version} has been sent for review.`,
+        is_read: false,
+      });
+    }
   }
+
+  await markRequestQuoted(supabase, quote.project_request_id);
 
   await writeAuditLog({
     actorId: admin.id,
@@ -515,7 +567,7 @@ export async function sendQuoteToClient(formData: FormData): Promise<ActionResul
     newData: { status: "sent", sent_at: sentAt },
   });
 
-  revalidateQuotes(quoteId, quote.project_id);
+  revalidateQuotes(quoteId, quote.project_id, quote.project_request_id);
   return { ok: true, quoteId };
 }
 
@@ -615,15 +667,8 @@ function buildQuoteDraftNotes(
 }
 
 /**
- * Creates a quote DRAFT on the EXISTING project linked to a request.
- *
- * Quotes never create projects, never convert a request, and never change
- * project_requests.status or projects.status. Conversion is an explicit
- * admin action on the request. If this request has no project yet, the
- * admin must convert it first.
- *
- * The client's submitted budget becomes the suggested unit price of a single
- * line item — never a locked/final price.
+ * Creates a quote DRAFT from a project request. No project is created.
+ * The submitted budget is only a suggested starting amount.
  */
 export async function createQuoteDraftFromRequest(
   formData: FormData,
@@ -650,10 +695,18 @@ export async function createQuoteDraftFromRequest(
   }
 
   const requestRow = request as ProjectRequestRow;
+  const blocked = quoteFromRequestBlockedReason(
+    requestRow.status,
+    Boolean(requestRow.client_id),
+    false,
+  );
+  if (blocked) {
+    return { ok: false, error: blocked };
+  }
 
   const { data: linkedProjects, error: linkedError } = await supabase
     .from("projects")
-    .select("id, title, currency, client_id, created_at")
+    .select("id, title, currency")
     .eq("request_id", requestId)
     .order("created_at", { ascending: true })
     .limit(1);
@@ -663,22 +716,6 @@ export async function createQuoteDraftFromRequest(
   }
 
   const linkedProject = linkedProjects?.[0] ?? null;
-  const existingProject = resolveExistingProjectForQuote(linkedProject?.id);
-  if (!existingProject.ok) {
-    return existingProject;
-  }
-
-  const projectId = existingProject.projectId;
-
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, title, currency, client_id")
-    .eq("id", projectId)
-    .maybeSingle();
-
-  if (!project) {
-    return { ok: false, error: "Project not found." };
-  }
 
   let serviceName: string | null = null;
   if (requestRow.service_id) {
@@ -694,8 +731,12 @@ export async function createQuoteDraftFromRequest(
     Number(requestRow.budget_max ?? requestRow.budget_min ?? 0) || 0,
   );
   const currency =
-    requestRow.budget_currency?.trim() || project.currency?.trim() || "BDT";
-  const title = project.title?.trim() || serviceName?.trim() || `Project ${requestRow.request_number}`;
+    requestRow.budget_currency?.trim() || linkedProject?.currency?.trim() || "BDT";
+  const title =
+    linkedProject?.title?.trim() ||
+    serviceName?.trim() ||
+    requestRow.project_type?.trim() ||
+    `Project ${requestRow.request_number}`;
 
   const lineItems: QuoteLineInput[] = [
     {
@@ -717,24 +758,21 @@ export async function createQuoteDraftFromRequest(
   };
 
   const notes = buildQuoteDraftNotes(requestRow, serviceName);
-
-  const { data: latest, error: latestError } = await supabase
-    .from("quotes")
-    .select("version")
-    .eq("project_id", projectId)
-    .order("version", { ascending: false })
-    .limit(1);
-
-  if (latestError) {
-    return { ok: false, error: latestError.message };
+  const versionResult = await nextQuoteVersionForRequest(
+    supabase,
+    requestId,
+    linkedProject?.id ?? null,
+  );
+  if (!versionResult.ok) {
+    return versionResult;
   }
-  const version = latest && latest.length > 0 ? Number(latest[0].version ?? 0) + 1 : 1;
 
   const { data: created, error: insertError } = await supabase
     .from("quotes")
     .insert({
-      project_id: projectId,
-      version,
+      project_id: linkedProject?.id ?? null,
+      project_request_id: requestId,
+      version: versionResult.version,
       currency,
       notes,
       terms: null,
@@ -774,18 +812,10 @@ export async function createQuoteDraftFromRequest(
       requested_budget_max: requestRow.budget_max,
       requested_budget_min: requestRow.budget_min,
     },
-    newData: { version, project_id: projectId, ...totals },
+    newData: { version: versionResult.version, request_id: requestId, ...totals },
   });
 
-  revalidatePath("/admin");
-  revalidatePath("/admin/quotes");
-  revalidatePath(`/admin/quotes/${created.id}`);
-  revalidatePath("/admin/project-requests");
-  revalidatePath(`/admin/project-requests/${requestId}`);
-  revalidatePath("/admin/projects");
-  revalidatePath(`/admin/projects/${projectId}`);
-  revalidatePath("/profile");
-
+  revalidateQuotes(created.id, linkedProject?.id ?? null, requestId);
   redirectToQuote(created.id);
   return { ok: true, quoteId: created.id };
 }
@@ -803,6 +833,12 @@ export async function updateQuoteStatus(formData: FormData): Promise<ActionResul
   }
 
   const nextStatus = statusRaw as QuoteStatus;
+  if (nextStatus === "accepted") {
+    return {
+      ok: false,
+      error: "The client accepts the quote. That is the only path that creates a project.",
+    };
+  }
   const supabase = await createServerSupabaseClient();
   const { data: quote, error: quoteError } = await supabase
     .from("quotes")
@@ -831,9 +867,6 @@ export async function updateQuoteStatus(formData: FormData): Promise<ActionResul
   if (nextStatus === "sent" && !quote.sent_at) {
     patch.sent_at = now;
   }
-  if (nextStatus === "accepted") {
-    patch.accepted_at = now;
-  }
   if (nextStatus === "rejected") {
     patch.rejected_at = now;
   }
@@ -848,6 +881,10 @@ export async function updateQuoteStatus(formData: FormData): Promise<ActionResul
     return { ok: false, error: updateError.message };
   }
 
+  if (nextStatus === "sent") {
+    await markRequestQuoted(supabase, quote.project_request_id);
+  }
+
   await writeAuditLog({
     actorId: admin.id,
     action: "quote.status_updated",
@@ -856,6 +893,6 @@ export async function updateQuoteStatus(formData: FormData): Promise<ActionResul
     newData: { status: nextStatus },
   });
 
-  revalidateQuotes(quoteId, quote.project_id);
+  revalidateQuotes(quoteId, quote.project_id, quote.project_request_id);
   return { ok: true, quoteId };
 }

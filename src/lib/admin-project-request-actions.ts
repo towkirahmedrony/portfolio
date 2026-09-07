@@ -41,7 +41,7 @@ export async function updateProjectRequestStatus(
   if (statusRaw === "converted") {
     return {
       ok: false,
-      error: "Use Convert to Project to mark a request as converted.",
+      error: "A request becomes converted when the client accepts a quote.",
     };
   }
 
@@ -104,19 +104,13 @@ export async function convertProjectRequest(
   if (existingRows && existingRows.length > 0) {
     return {
       ok: false,
-      error: "This request has already been converted to a project.",
+      error: "This request is already linked to a project.",
     };
   }
 
-  const { data, error } = await supabase.rpc("admin_convert_project_request", {
-    p_request_id: requestId,
-  });
-
-  if (error) {
-    return { ok: false, error: error.message };
-  }
-
-  const projectId = typeof data === "string" && data ? data : undefined;
-  revalidateRequest(requestId, projectId);
-  return { ok: true, projectId };
+  return {
+    ok: false,
+    error:
+      "Projects are created when the client accepts a quote. Create and send a quote from this request instead.",
+  };
 }
