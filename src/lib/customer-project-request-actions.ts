@@ -20,7 +20,7 @@ export type CancelProjectRequestResult =
   | { ok: false; error: string };
 
 export type UpdateProjectRequestResult =
-  | { ok: true; requestNumber: string }
+  | { ok: true; requestNumber: string; requestId: string }
   | { ok: false; error: string; unauthenticated?: true };
 
 function asString(value: FormDataEntryValue | null): string {
@@ -165,5 +165,9 @@ export async function updateOwnProjectRequest(
   revalidatePath("/profile");
   revalidatePath(`/profile/project-requests/${trimmedId}`);
   revalidatePath(`/profile/project-requests/${trimmedId}/edit`);
-  return { ok: true, requestNumber: existing.request_number };
+  return {
+    ok: true,
+    requestId: existing.id,
+    requestNumber: existing.request_number,
+  };
 }

@@ -13,6 +13,10 @@ import {
 import { useRouter } from "next/navigation";
 import { PlaceOrderAuthModal } from "@/components/auth/place-order-auth-modal";
 import { Button } from "@/components/ui/button";
+import {
+  ProjectRequestFileUploadField,
+  type PendingProjectRequestFile,
+} from "@/components/project-request/file-upload-field";
 import { FormProgress } from "@/components/project-request/progress";
 import { ProjectRequestSuccess } from "@/components/project-request/success";
 import { StepFields } from "@/components/project-request/step-fields";
@@ -46,6 +50,15 @@ import {
   saveProjectRequestDraft,
 } from "@/lib/project-request-draft";
 import { updateOwnProjectRequest } from "@/lib/customer-project-request-actions";
+import {
+  deleteOwnProjectRequestFile,
+  uploadProjectRequestFile,
+} from "@/lib/project-request-file-actions";
+import {
+  isValidProjectRequestFile,
+  PROJECT_REQUEST_MAX_FILES,
+  type ProjectRequestFileSummary,
+} from "@/lib/project-request-files";
 import { submitProjectRequest } from "@/lib/submit-project-request";
 import { cn } from "@/lib/utils";
 import type {
@@ -64,6 +77,8 @@ type Props = {
   initialData?: ProjectRequest;
   requestNumber?: string | null;
   resubmit?: boolean;
+  initialFiles?: ProjectRequestFileSummary[];
+  currentUserId?: string | null;
 };
 
 function subscribeNever() {
@@ -107,6 +122,8 @@ function ProjectRequestFormInner({
   initialData,
   requestNumber: existingRequestNumber,
   resubmit = false,
+  initialFiles = [],
+  currentUserId = null,
 }: Props) {
   const router = useRouter();
   const formId = useId();
@@ -162,6 +179,13 @@ function ProjectRequestFormInner({
   const [authNotice, setAuthNotice] = useState<string | null>(initial.notice);
   const [authOpen, setAuthOpen] = useState(false);
   const [submitHighlight, setSubmitHighlight] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<PendingProjectRequestFile[]>([]);
+  const [existingFiles, setExistingFiles] = useState<ProjectRequestFileSummary[]>(initialFiles);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [uploadingLabel, setUploadingLabel] = useState<string | null>(null);
+  const [createdRequestId, setCreatedRequestId] = useState<string | null>(
+    isEdit && requestId ? requestId : null,
+  );
   const resolvedServiceId = initial.serviceId;
   const submittingRef = useRef(false);
   const skipPersistRef = useRef(false);
@@ -267,6 +291,131 @@ function ProjectRequestFormInner({
       window.clearTimeout(timeoutId);
     };
   }, [focusSubmitSection, hasSteps, step, submitted, totalSteps]);
+
+  const filesStep = useMemo(() => {
+    const preferred = config.steps.findIndex(
+      (item) =>
+        !item.isReview &&
+        (item.stepKey === "design" ||
+          item.stepKey === "requirements" ||
+          item.title.toLowerCase().includes("design")),
+    );
+    if (preferred >= 0) {
+      return preferred + 1;
+    }
+    for (let index = config.steps.length - 1; index >= 0; index -= 1) {
+      if (!config.steps[index]?.isReview) {
+        return index + 1;
+      }
+    }
+    return 1;
+  }, [config.steps]);
+
+  function addSelectedFiles(files: File[]) {
+    setFileError(null);
+    setFormError(null);
+    const nextErrors: string[] = [];
+    const accepted: PendingProjectRequestFile[] = [];
+
+    setPendingFiles((current) => {
+      const remaining = Math.max(
+        PROJECT_REQUEST_MAX_FILES - existingFiles.length - current.length,
+        0,
+      );
+      const seen = new Set(
+        current.map((item) => `${item.file.name}:${item.file.size}:${item.file.lastModified}`),
+      );
+
+      for (const file of files) {
+        if (accepted.length >= remaining) {
+          nextErrors.push(`You can attach up to ${PROJECT_REQUEST_MAX_FILES} files.`);
+          break;
+        }
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        const invalid = isValidProjectRequestFile(file);
+        if (invalid) {
+          nextErrors.push(invalid);
+          continue;
+        }
+        seen.add(key);
+        accepted.push({
+          id:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `${file.name}-${file.size}-${file.lastModified}`,
+          file,
+        });
+      }
+
+      return accepted.length > 0 ? [...current, ...accepted] : current;
+    });
+
+    if (nextErrors.length > 0) {
+      setFileError(nextErrors[0] ?? null);
+    }
+  }
+
+  function removePendingFile(id: string) {
+    setPendingFiles((current) => current.filter((item) => item.id !== id));
+    setFileError(null);
+  }
+
+  async function removeExistingFile(file: ProjectRequestFileSummary) {
+    const targetRequestId = createdRequestId ?? requestId;
+    if (!targetRequestId) {
+      setExistingFiles((current) => current.filter((item) => item.id !== file.id));
+      return;
+    }
+
+    const result = await deleteOwnProjectRequestFile(targetRequestId, file.id);
+    if (!result.ok) {
+      setFileError(result.error);
+      return;
+    }
+    setExistingFiles((current) => current.filter((item) => item.id !== file.id));
+    setFileError(null);
+  }
+
+  async function uploadPendingFiles(targetRequestId: string): Promise<string | null> {
+    if (pendingFiles.length === 0) {
+      return null;
+    }
+
+    const remaining: PendingProjectRequestFile[] = [];
+    const failed: string[] = [];
+
+    for (let index = 0; index < pendingFiles.length; index += 1) {
+      const item = pendingFiles[index];
+      if (!item) {
+        continue;
+      }
+      setUploadingLabel(`Uploading ${index + 1} of ${pendingFiles.length}…`);
+      const data = new FormData();
+      data.set("requestId", targetRequestId);
+      data.set("file", item.file);
+      const result = await uploadProjectRequestFile(data);
+      if (!result.ok) {
+        remaining.push(item);
+        failed.push(result.error);
+        continue;
+      }
+      setExistingFiles((current) => [result.file, ...current]);
+    }
+
+    setPendingFiles(remaining);
+    setUploadingLabel(null);
+
+    if (failed.length === 0) {
+      return null;
+    }
+    if (remaining.length === pendingFiles.length) {
+      return failed[0] ?? "Could not upload the selected files. Your request was saved.";
+    }
+    return `${failed[0]} Your request was saved. You can retry the remaining files.`;
+  }
 
   function updateField(field: string, value: string | string[]) {
     const nextValue =
@@ -398,18 +547,19 @@ function ProjectRequestFormInner({
     setData(normalized);
 
     try {
-      const result = isEdit && requestId
-        ? await updateOwnProjectRequest(
-            requestId,
-            normalized,
-            config,
-            resolvedServiceId,
-          )
-        : await submitProjectRequest(
-            normalized,
-            config,
-            resolvedServiceId,
-          );
+      const result =
+        (isEdit && requestId) || createdRequestId
+          ? await updateOwnProjectRequest(
+              createdRequestId ?? requestId ?? "",
+              normalized,
+              config,
+              resolvedServiceId,
+            )
+          : await submitProjectRequest(
+              normalized,
+              config,
+              resolvedServiceId,
+            );
       if (!result.ok) {
         if (result.unauthenticated) {
           if (isEdit) {
@@ -420,6 +570,20 @@ function ProjectRequestFormInner({
           return;
         }
         setFormError(result.error);
+        return;
+      }
+
+      setCreatedRequestId(result.requestId);
+      const uploadError = await uploadPendingFiles(result.requestId);
+      if (uploadError) {
+        skipPersistRef.current = true;
+        if (!isEdit) {
+          clearProjectRequestDraft();
+        }
+        setFormError(uploadError);
+        setAuthNotice(
+          "Your project request was saved. Some files could not be uploaded.",
+        );
         return;
       }
 
@@ -464,6 +628,11 @@ function ProjectRequestFormInner({
     setRequestNumber(null);
     setFormError(null);
     setAuthNotice(null);
+    setPendingFiles([]);
+    setExistingFiles([]);
+    setFileError(null);
+    setUploadingLabel(null);
+    setCreatedRequestId(null);
     persistRef.current = {
       data: values,
       step: 1,
@@ -515,7 +684,14 @@ function ProjectRequestFormInner({
 
         <div aria-live="polite">
           {current?.isReview ? (
-            <StepReview data={data} config={config} onEdit={goToStep} />
+            <StepReview
+              data={data}
+              config={config}
+              onEdit={goToStep}
+              existingFiles={existingFiles}
+              pendingFiles={pendingFiles}
+              filesStep={filesStep}
+            />
           ) : current ? (
             <StepFields
               step={current}
@@ -523,6 +699,22 @@ function ProjectRequestFormInner({
               data={data}
               errors={errors}
               onChange={updateField}
+              extra={
+                step === filesStep ? (
+                  <ProjectRequestFileUploadField
+                    existingFiles={existingFiles}
+                    pendingFiles={pendingFiles}
+                    currentUserId={currentUserId}
+                    disabled={submitting}
+                    uploading={Boolean(uploadingLabel)}
+                    uploadingLabel={uploadingLabel}
+                    error={fileError}
+                    onAddFiles={addSelectedFiles}
+                    onRemovePending={removePendingFile}
+                    onRemoveExisting={removeExistingFile}
+                  />
+                ) : null
+              }
             />
           ) : null}
         </div>

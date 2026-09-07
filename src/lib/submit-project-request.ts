@@ -13,7 +13,7 @@ const UNIQUE_VIOLATION = "23505";
 const MAX_REQUEST_NUMBER_ATTEMPTS = 5;
 
 export type SubmitProjectRequestResult =
-  | { ok: true; requestNumber: string }
+  | { ok: true; requestNumber: string; requestId: string }
   | { ok: false; error: string; unauthenticated?: true };
 
 function uniqueViolation(error: { code?: string; message?: string }): boolean {
@@ -66,27 +66,32 @@ export async function submitProjectRequest(
         ? payload
         : { ...payload, request_number: generateRequestNumber() };
 
-    const { error } = await supabase
+    const { data: inserted, error } = await supabase
       .from("project_requests")
-      .insert(insertPayload);
+      .insert(insertPayload)
+      .select("id, request_number")
+      .single();
 
-    if (!error) {
+    if (!error && inserted) {
       revalidatePath("/profile");
+      revalidatePath(`/profile/project-requests/${inserted.id}`);
       return {
         ok: true,
-        requestNumber: insertPayload.request_number ?? generateRequestNumber(),
+        requestId: inserted.id,
+        requestNumber: inserted.request_number ?? insertPayload.request_number ?? generateRequestNumber(),
       };
     }
 
-    // TEMP DEBUG: prints the real Postgres error to the `next dev` terminal.
-    console.error("submitProjectRequest insert failed:", {
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-    });
+    if (error) {
+      console.error("submitProjectRequest insert failed:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+    }
 
-    if (uniqueViolation(error) && attempt < MAX_REQUEST_NUMBER_ATTEMPTS - 1) {
+    if (error && uniqueViolation(error) && attempt < MAX_REQUEST_NUMBER_ATTEMPTS - 1) {
       continue;
     }
 

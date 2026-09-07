@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { OrderFormFieldControl } from "@/components/project-request/order-form-field";
 import { isFieldVisible } from "@/lib/order-form";
 import type {
@@ -13,9 +14,17 @@ type Props = {
   data: ProjectRequest;
   errors: ProjectRequestErrors;
   onChange: (fieldKey: string, value: string | string[]) => void;
+  extra?: ReactNode;
 };
 
-export function StepFields({ step, config, data, errors, onChange }: Props) {
+export function StepFields({
+  step,
+  config,
+  data,
+  errors,
+  onChange,
+  extra,
+}: Props) {
   const fields = step.fields.filter((field) => isFieldVisible(field, data));
   const usesTwoColumn = fields.some(
     (field) =>
@@ -36,6 +45,7 @@ export function StepFields({ step, config, data, errors, onChange }: Props) {
           onChange={onChange}
         />
       ))}
+      {extra}
     </div>
   );
 }

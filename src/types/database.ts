@@ -831,7 +831,8 @@ export type Database = {
           is_public: boolean
           mime_type: string | null
           original_name: string
-          project_id: string
+          project_id: string | null
+          project_request_id: string | null
           storage_path: string
           uploaded_by: string | null
         }
@@ -845,7 +846,8 @@ export type Database = {
           is_public?: boolean
           mime_type?: string | null
           original_name: string
-          project_id: string
+          project_id?: string | null
+          project_request_id?: string | null
           storage_path: string
           uploaded_by?: string | null
         }
@@ -859,7 +861,8 @@ export type Database = {
           is_public?: boolean
           mime_type?: string | null
           original_name?: string
-          project_id?: string
+          project_id?: string | null
+          project_request_id?: string | null
           storage_path?: string
           uploaded_by?: string | null
         }
@@ -869,6 +872,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_files_project_request_id_fkey"
+            columns: ["project_request_id"]
+            isOneToOne: false
+            referencedRelation: "project_requests"
             referencedColumns: ["id"]
           },
           {

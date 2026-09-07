@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: [".monkeycode-ai.live"],
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "12mb",
+    },
+  },
   images: {
     // Project thumbnails are admin-provided https URLs (Supabase Storage or an
     // external CDN) — there is no single known host to whitelist. Rendering

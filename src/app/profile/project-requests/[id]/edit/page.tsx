@@ -73,6 +73,8 @@ export default async function EditProjectRequestPage({
             requestNumber={detail.request.request_number}
             resubmit={detail.canResubmit}
             initialData={projectRequestToFormData(detail.request, configResult.data)}
+            initialFiles={detail.files}
+            currentUserId={user.id}
           />
         ) : configResult.status === "empty" ? (
           <ContentStateMessage>

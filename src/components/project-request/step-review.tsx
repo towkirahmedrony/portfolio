@@ -6,6 +6,9 @@ import {
   isReferralFieldKey,
   normalizeReferralCode,
 } from "@/lib/project-request";
+import { formatFileSize } from "@/lib/project-request-files";
+import type { PendingProjectRequestFile } from "@/components/project-request/file-upload-field";
+import type { ProjectRequestFileSummary } from "@/lib/project-request-files";
 import type {
   OrderFormConfig,
   OrderFormStepConfig,
@@ -17,6 +20,9 @@ type Props = {
   data: ProjectRequest;
   config: OrderFormConfig;
   onEdit: (step: ProjectRequestStep) => void;
+  existingFiles?: ProjectRequestFileSummary[];
+  pendingFiles?: PendingProjectRequestFile[];
+  filesStep?: ProjectRequestStep;
 };
 
 function ReviewBlock({
@@ -69,7 +75,14 @@ function isWideField(step: OrderFormStepConfig, fieldKey: string): boolean {
   );
 }
 
-export function StepReview({ data, config, onEdit }: Props) {
+export function StepReview({
+  data,
+  config,
+  onEdit,
+  existingFiles = [],
+  pendingFiles = [],
+  filesStep = 1,
+}: Props) {
   return (
     <div className="grid gap-4">
       {config.steps.map((step, index) => {
@@ -111,6 +124,28 @@ export function StepReview({ data, config, onEdit }: Props) {
           </ReviewBlock>
         );
       })}
+      {existingFiles.length > 0 || pendingFiles.length > 0 ? (
+        <ReviewBlock
+          title="Attachments"
+          step={filesStep}
+          onEdit={onEdit}
+        >
+          <Item
+            label="Files"
+            wide
+            value={[
+              ...existingFiles.map(
+                (file) =>
+                  `${file.original_name} (${formatFileSize(file.file_size_bytes)})`,
+              ),
+              ...pendingFiles.map(
+                (item) =>
+                  `${item.file.name} (${formatFileSize(item.file.size)})`,
+              ),
+            ].join("\n")}
+          />
+        </ReviewBlock>
+      ) : null}
     </div>
   );
 }

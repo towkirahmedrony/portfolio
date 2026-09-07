@@ -87,6 +87,7 @@ export type CustomerRequestFile = {
   created_at: string;
   bucket_name: string;
   storage_path: string;
+  uploaded_by?: string | null;
 };
 
 export type CustomerProjectRequestItem = {
@@ -316,7 +317,29 @@ export async function getCustomerProjectRequest(
   }
 
   const files: CustomerRequestFile[] = [];
-  if (linked) {
+  const { data: requestFileRows, error: requestFileError } = await supabase
+    .from("project_files")
+    .select("id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by")
+    .eq("project_request_id", request.id)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+
+  if (!requestFileError) {
+    for (const file of requestFileRows ?? []) {
+      files.push({
+        id: file.id,
+        original_name: file.original_name,
+        category: file.category,
+        file_size_bytes: file.file_size_bytes,
+        created_at: file.created_at,
+        bucket_name: file.bucket_name,
+        storage_path: file.storage_path,
+        uploaded_by: file.uploaded_by,
+      });
+    }
+  }
+
+  if (linked && files.length === 0) {
     const { data: fileRows } = await supabase
       .from("project_files")
       .select("id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path")
