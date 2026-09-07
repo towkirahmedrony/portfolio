@@ -8,7 +8,13 @@ import { TextArea } from "@/components/ui/form-field";
 import { respondToOwnQuote } from "@/lib/customer-quote-actions";
 import type { CustomerRequestQuote } from "@/lib/customer-project-requests";
 
-export function ClientQuoteActions({ quote }: { quote: CustomerRequestQuote }) {
+export function ClientQuoteActions({
+  quote,
+  className,
+}: {
+  quote: CustomerRequestQuote;
+  className?: string;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<"accept" | "reject" | "request_changes" | null>(null);
   const [pending, setPending] = useState(false);
@@ -41,7 +47,7 @@ export function ClientQuoteActions({ quote }: { quote: CustomerRequestQuote }) {
 
   return (
     <>
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className={className ?? "mt-6 flex flex-wrap gap-2"}>
         {quote.canAccept ? (
           <Button className="h-10 px-4 text-xs" onClick={() => { setError(null); setMode("accept"); }}>
             Accept Quote
@@ -60,7 +66,7 @@ export function ClientQuoteActions({ quote }: { quote: CustomerRequestQuote }) {
           <Button
             variant="ghost"
             className="h-10 px-4 text-xs"
-            onClick={() => { setError(null); setMessage(""); setMode("request_changes"); }}
+            onClick={() => { setError(null); setMessage("I'd like to discuss/revise the quoted price."); setMode("request_changes"); }}
           >
             Request Changes
           </Button>
@@ -133,7 +139,7 @@ export function ClientQuoteActions({ quote }: { quote: CustomerRequestQuote }) {
               rows={5}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              placeholder="Describe the changes you need"
+              placeholder="I'd like to discuss/revise the quoted price."
               required
             />
           </div>

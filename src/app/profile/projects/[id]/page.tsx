@@ -14,7 +14,7 @@ import {
   getRequestStatusStyle,
 } from "@/lib/admin-project-request-constants";
 import {
-  formatQuoteStatusLabel,
+  formatClientQuoteStatusLabel,
   getQuoteStatusStyle,
 } from "@/lib/admin-quote-constants";
 import { getCustomerProjectDetail } from "@/lib/customer-project-requests";
@@ -98,7 +98,7 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
             </Badge>
             {detail.quote ? (
               <Badge className={getQuoteStatusStyle(detail.quote.status)}>
-                {`Quote: ${formatQuoteStatusLabel(detail.quote.status)}`}
+                {`Quote: ${formatClientQuoteStatusLabel(detail.quote.status)}`}
               </Badge>
             ) : null}
             {project.priority && <Badge className="border-accent/20">{`Priority: ${project.priority}`}</Badge>}
@@ -116,7 +116,7 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
               {submittedBudget ? (
                 <div className="flex justify-between gap-3"><span className="text-muted">Your submitted budget:</span><span className="font-medium text-right">{submittedBudget}</span></div>
               ) : null}
-              <div className="flex justify-between gap-3"><span className="text-muted">Quoted amount:</span><span className="font-medium text-right">{quotedAmount}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-muted">Current quote:</span><span className="font-medium text-right">{quotedAmount}</span></div>
               <div className="flex justify-between gap-3"><span className="text-muted">Invoice amount:</span><span className="font-medium text-right">{formatMoney(invoiceAmount, project.currency || "BDT")}</span></div>
               {(discounts as DiscountRow[])?.map(d => (
                 <div key={d.id} className="flex justify-between text-emerald-500"><span>{`Discount (${d.label}):`}</span><span className="font-medium">{`-${d.discount_amount} ${d.currency}`}</span></div>
@@ -170,6 +170,7 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
           items={detail.quoteItems}
           invoices={detail.invoices}
           submittedBudget={submittedBudget}
+          versions={detail.quoteVersions}
         />
       </div>
 

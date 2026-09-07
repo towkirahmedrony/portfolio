@@ -104,6 +104,12 @@ export async function respondToOwnQuote(
     return { ok: false, error: context.error };
   }
 
+  if (context.quote.status === "sent") {
+    await supabase.rpc("client_mark_quote_viewed", {
+      p_quote_id: quoteId,
+    });
+  }
+
   const { data, error } = await supabase.rpc("client_respond_to_quote", {
     p_quote_id: quoteId,
     p_action: actionRaw,

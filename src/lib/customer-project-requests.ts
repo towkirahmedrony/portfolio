@@ -101,6 +101,7 @@ export type CustomerInvoiceSummary = Pick<
 
 export type CustomerRequestQuote = {
   id: string;
+  projectId: string;
   version: number;
   currency: string;
   subtotal: number;
@@ -119,6 +120,13 @@ export type CustomerRequestQuote = {
   canAccept: boolean;
   canReject: boolean;
   canRequestChanges: boolean;
+};
+
+export type CustomerQuoteAlert = {
+  quote: CustomerRequestQuote;
+  projectId: string;
+  projectTitle: string;
+  requestId: string;
 };
 
 export type CustomerRequestFile = {
@@ -145,6 +153,7 @@ export type CustomerProjectRequestDetail = CustomerProjectRequestItem & {
   serviceName: string | null;
   files: CustomerRequestFile[];
   quoteItems: QuoteItemRow[];
+  quoteVersions: CustomerRequestQuote[];
   invoices: CustomerInvoiceSummary[];
 };
 
@@ -173,6 +182,7 @@ function toLinkedProject(row: LinkedProjectRow): CustomerLinkedProject {
 function toCustomerQuote(quote: LinkedQuoteRow): CustomerRequestQuote {
   return {
     id: quote.id,
+    projectId: quote.project_id,
     version: quote.version,
     currency: quote.currency || "BDT",
     subtotal: Number(quote.subtotal ?? 0),
@@ -194,22 +204,69 @@ function toCustomerQuote(quote: LinkedQuoteRow): CustomerRequestQuote {
   };
 }
 
-function pickLatestQuote(quotes: LinkedQuoteRow[]): CustomerRequestQuote | null {
-  const visible = quotes.filter((quote) =>
-    CLIENT_VISIBLE_QUOTE_STATUSES.includes(quote.status),
-  );
-  if (visible.length === 0) {
-    return null;
-  }
+function visibleQuoteRows(quotes: LinkedQuoteRow[]): LinkedQuoteRow[] {
+  return quotes.filter((quote) => CLIENT_VISIBLE_QUOTE_STATUSES.includes(quote.status));
+}
 
-  const latest = [...visible].sort((a, b) => {
+function sortQuotesLatestFirst(quotes: LinkedQuoteRow[]): LinkedQuoteRow[] {
+  return [...quotes].sort((a, b) => {
     if (b.version !== a.version) {
       return b.version - a.version;
     }
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-  })[0];
+  });
+}
 
-  return toCustomerQuote(latest);
+function pickLatestQuote(quotes: LinkedQuoteRow[]): CustomerRequestQuote | null {
+  const latest = sortQuotesLatestFirst(visibleQuoteRows(quotes))[0];
+  return latest ? toCustomerQuote(latest) : null;
+}
+
+function toVisibleQuoteVersions(quotes: LinkedQuoteRow[]): CustomerRequestQuote[] {
+  return sortQuotesLatestFirst(visibleQuoteRows(quotes)).map(toCustomerQuote);
+}
+
+function toQuoteAlert(item: CustomerProjectRequestItem): CustomerQuoteAlert | null {
+  if (!item.quote || !item.linkedProject) {
+    return null;
+  }
+  return {
+    quote: item.quote,
+    projectId: item.linkedProject.id,
+    projectTitle: item.linkedProject.title,
+    requestId: item.request.id,
+  };
+}
+
+export function isQuoteAwaitingClient(quote: CustomerRequestQuote | null | undefined): boolean {
+  return quote?.status === "sent" || quote?.status === "viewed";
+}
+
+export function findLatestUnviewedSentQuote(
+  items: CustomerProjectRequestItem[],
+): CustomerQuoteAlert | null {
+  const sent = items
+    .map(toQuoteAlert)
+    .filter((alert): alert is CustomerQuoteAlert => alert?.quote.status === "sent")
+    .sort((a, b) => {
+      const aTime = new Date(a.quote.sent_at || a.quote.updated_at).getTime();
+      const bTime = new Date(b.quote.sent_at || b.quote.updated_at).getTime();
+      return bTime - aTime;
+    });
+  return sent[0] ?? null;
+}
+
+export function findQuotesAwaitingClient(
+  items: CustomerProjectRequestItem[],
+): CustomerQuoteAlert[] {
+  return items
+    .map(toQuoteAlert)
+    .filter((alert): alert is CustomerQuoteAlert => isQuoteAwaitingClient(alert?.quote))
+    .sort((a, b) => {
+      const aTime = new Date(a.quote.sent_at || a.quote.updated_at).getTime();
+      const bTime = new Date(b.quote.sent_at || b.quote.updated_at).getTime();
+      return bTime - aTime;
+    });
 }
 
 export async function getCustomerProjectRequests(
@@ -447,6 +504,7 @@ export async function getCustomerProjectRequest(
     serviceName,
     files,
     quoteItems,
+    quoteVersions: toVisibleQuoteVersions(quotesByProjectId.get(linked?.id ?? "") ?? []),
     invoices,
   };
 }
@@ -456,6 +514,7 @@ export type CustomerProjectDetail = {
   request: ProjectRequestRow | null;
   quote: CustomerRequestQuote | null;
   quoteItems: QuoteItemRow[];
+  quoteVersions: CustomerRequestQuote[];
   invoices: CustomerInvoiceSummary[];
 };
 
@@ -533,6 +592,7 @@ export async function getCustomerProjectDetail(
     request,
     quote,
     quoteItems,
+    quoteVersions: toVisibleQuoteVersions((quoteRows ?? []) as LinkedQuoteRow[]),
     invoices: (invoiceRows ?? []) as CustomerInvoiceSummary[],
   };
 }

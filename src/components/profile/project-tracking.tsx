@@ -12,10 +12,13 @@ import {
   getRequestStatusStyle,
 } from "@/lib/admin-project-request-constants";
 import {
-  formatQuoteStatusLabel,
+  formatClientQuoteStatusLabel,
   getQuoteStatusStyle,
 } from "@/lib/admin-quote-constants";
-import type { CustomerProjectRequestItem } from "@/lib/customer-project-requests";
+import {
+  isQuoteAwaitingClient,
+  type CustomerProjectRequestItem,
+} from "@/lib/customer-project-requests";
 import { formatMoney } from "@/lib/quote-money";
 
 export function ProjectTracking({ items }: { items: CustomerProjectRequestItem[] }) {
@@ -69,7 +72,7 @@ export function ProjectTracking({ items }: { items: CustomerProjectRequestItem[]
                       </Badge>
                       {item.quote ? (
                         <Badge className={getQuoteStatusStyle(item.quote.status)}>
-                          {`Quote: ${formatQuoteStatusLabel(item.quote.status)}`}
+                          {`Quote: ${formatClientQuoteStatusLabel(item.quote.status)}`}
                         </Badge>
                       ) : null}
                     </div>
@@ -91,7 +94,7 @@ export function ProjectTracking({ items }: { items: CustomerProjectRequestItem[]
                       </div>
                       <div>
                         <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted">
-                          Quoted amount
+                          Current quote
                         </p>
                         <p className="text-sm font-medium">
                           {item.quote
@@ -112,7 +115,7 @@ export function ProjectTracking({ items }: { items: CustomerProjectRequestItem[]
                       href={`/profile/projects/${project.id}`}
                       className="inline-flex w-fit items-center justify-center rounded-md bg-accent/10 px-4 py-2 text-xs font-bold text-accent transition-colors hover:bg-accent hover:text-white"
                     >
-                      View Details &rarr;
+                      {isQuoteAwaitingClient(item.quote) ? "Review Quote" : "View Details"}
                     </Link>
                   </div>
                 </div>

@@ -21,10 +21,11 @@ import {
   getRequestStatusStyle,
 } from "@/lib/admin-project-request-constants";
 import {
-  formatQuoteStatusLabel,
+  formatClientQuoteStatusLabel,
   getQuoteStatusStyle,
 } from "@/lib/admin-quote-constants";
 import type { CustomerProjectRequestDetail } from "@/lib/customer-project-requests";
+import { formatMoney } from "@/lib/quote-money";
 import type { Json } from "@/types/database";
 
 function DetailItem({
@@ -152,6 +153,7 @@ export function ProjectRequestDetails({
     serviceName,
     files,
     quoteItems,
+    quoteVersions,
     invoices,
   } = detail;
   const features = (request.required_features as string[] | null) ?? [];
@@ -195,7 +197,7 @@ export function ProjectRequestDetails({
             ) : null}
             {quote ? (
               <Badge className={getQuoteStatusStyle(quote.status)}>
-                {`Quote: ${formatQuoteStatusLabel(quote.status)}`}
+                {`Quote: ${formatClientQuoteStatusLabel(quote.status)}`}
               </Badge>
             ) : null}
           </div>
@@ -242,9 +244,13 @@ export function ProjectRequestDetails({
               />
             ) : null}
             {quote ? (
-              <DetailItem label="Quote status" value={formatQuoteStatusLabel(quote.status)} />
+              <DetailItem label="Quote status" value={formatClientQuoteStatusLabel(quote.status)} />
             ) : null}
             <DetailItem label="Your submitted budget" value={submittedBudget} />
+            <DetailItem
+              label="Current quote"
+              value={quote ? formatMoney(quote.total, quote.currency) : "No admin quote yet"}
+            />
             <DetailItem
               label="Timeline"
               value={formatRequestDeadline(request.deadline_date, request.deadline_type)}
@@ -399,6 +405,7 @@ export function ProjectRequestDetails({
           items={quoteItems}
           invoices={invoices}
           submittedBudget={submittedBudget}
+          versions={quoteVersions}
         />
 
         {linkedProject ? (

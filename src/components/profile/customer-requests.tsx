@@ -14,10 +14,13 @@ import {
   getRequestStatusStyle,
 } from "@/lib/admin-project-request-constants";
 import {
-  formatQuoteStatusLabel,
+  formatClientQuoteStatusLabel,
   getQuoteStatusStyle,
 } from "@/lib/admin-quote-constants";
-import type { CustomerProjectRequestItem } from "@/lib/customer-project-requests";
+import {
+  isQuoteAwaitingClient,
+  type CustomerProjectRequestItem,
+} from "@/lib/customer-project-requests";
 import { formatMoney } from "@/lib/quote-money";
 import type { ProjectRequestRow } from "@/types/database";
 
@@ -94,7 +97,7 @@ function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
             ) : null}
             {quote ? (
               <Badge className={getQuoteStatusStyle(quote.status)}>
-                {`Quote: ${formatQuoteStatusLabel(quote.status)}`}
+                {`Quote: ${formatClientQuoteStatusLabel(quote.status)}`}
               </Badge>
             ) : null}
           </div>
@@ -103,6 +106,14 @@ function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
           </h4>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isQuoteAwaitingClient(quote) && linkedProject ? (
+            <ButtonLink
+              href={`/profile/projects/${linkedProject.id}`}
+              className="h-10 px-4 text-xs"
+            >
+              Review Quote
+            </ButtonLink>
+          ) : null}
           <ButtonLink
             href={`/profile/project-requests/${request.id}`}
             variant="secondary"
@@ -136,11 +147,11 @@ function RequestCard({ item }: { item: CustomerProjectRequestItem }) {
         <Detail label="Your submitted budget" value={submittedBudget} />
         {quote ? (
           <Detail
-            label="Quoted amount"
+            label="Current quote"
             value={formatMoney(quote.total, quote.currency)}
           />
         ) : (
-          <Detail label="Quoted amount" value="No admin quote yet" />
+          <Detail label="Current quote" value="No admin quote yet" />
         )}
         <Detail label="Last updated" value={formatDate(latestTimestamp(item))} />
       </div>

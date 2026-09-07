@@ -2,9 +2,15 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { CustomerProfile } from "@/components/profile/customer-profile";
 import { CustomerRequests } from "@/components/profile/customer-requests";
+import { NewQuoteReceivedModal } from "@/components/profile/new-quote-received-modal";
 import { ProjectTracking } from "@/components/profile/project-tracking";
+import { QuoteActionBanner } from "@/components/profile/quote-action-banner";
 import { ReferralSection } from "@/components/profile/referral-section";
-import { getCustomerProjectRequests } from "@/lib/customer-project-requests";
+import {
+  findLatestUnviewedSentQuote,
+  findQuotesAwaitingClient,
+  getCustomerProjectRequests,
+} from "@/lib/customer-project-requests";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { buildCustomerReferral, mapProfileRow } from "@/lib/profile";
 import type { ProfileRow } from "@/types/database";
@@ -80,12 +86,16 @@ export default async function ProfilePage() {
     availableRewards: rewardRows,
   });
   const requestItems = await getCustomerProjectRequests(user.id);
+  const quoteAlerts = findQuotesAwaitingClient(requestItems);
+  const unviewedQuote = findLatestUnviewedSentQuote(requestItems);
 
   return (
     <section className="py-12 sm:py-16 mt-8 sm:mt-12">
       <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
         <div className="grid gap-5">
+          {unviewedQuote ? <NewQuoteReceivedModal alert={unviewedQuote} /> : null}
           <CustomerProfile initialProfile={mapped.profile} initialAccount={mapped.account} />
+          <QuoteActionBanner alerts={quoteAlerts} />
           <CustomerRequests items={requestItems} />
           <ProjectTracking items={requestItems} />
           <ReferralSection referral={referral} />

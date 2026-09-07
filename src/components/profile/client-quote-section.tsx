@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { ClientQuoteActions } from "@/components/profile/client-quote-actions";
 import { formatDateTime } from "@/lib/admin-project-constants";
 import {
-  formatQuoteStatusLabel,
+  formatClientQuoteStatusLabel,
   getQuoteStatusStyle,
 } from "@/lib/admin-quote-constants";
 import type {
@@ -37,11 +37,13 @@ export function ClientQuoteSection({
   items,
   invoices,
   submittedBudget,
+  versions,
 }: {
   quote: CustomerRequestQuote | null;
   items: QuoteItemRow[];
   invoices?: CustomerInvoiceSummary[];
   submittedBudget?: string | null;
+  versions?: CustomerRequestQuote[];
 }) {
   if (!quote) {
     return (
@@ -71,13 +73,13 @@ export function ClientQuoteSection({
           <p className="mt-1 text-sm text-muted">{`Quote v${quote.version}`}</p>
         </div>
         <Badge className={getQuoteStatusStyle(quote.status)}>
-          {formatQuoteStatusLabel(quote.status)}
+          {formatClientQuoteStatusLabel(quote.status)}
         </Badge>
       </div>
 
       <dl className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
-          <dt className="text-[10px] font-medium uppercase tracking-wider text-muted">Quoted amount</dt>
+          <dt className="text-[10px] font-medium uppercase tracking-wider text-muted">Current quote</dt>
           <dd className="mt-1 text-lg font-medium">{formatMoney(quote.total, currency)}</dd>
         </div>
         {submittedBudget ? (
@@ -178,6 +180,22 @@ export function ClientQuoteSection({
       ) : null}
 
       <ClientQuoteActions quote={quote} />
+
+      {versions && versions.filter((version) => version.id !== quote.id).length > 0 ? (
+        <div className="mt-8 border-t border-card-border pt-6">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted">Quote history</p>
+          <ul className="mt-3 space-y-2">
+            {versions
+              .filter((version) => version.id !== quote.id)
+              .map((version) => (
+                <li key={version.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span>{`v${version.version} · ${formatClientQuoteStatusLabel(version.status)}`}</span>
+                  <span className="text-muted">{formatMoney(version.total, version.currency || currency)}</span>
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
     </Card>
   );
 }

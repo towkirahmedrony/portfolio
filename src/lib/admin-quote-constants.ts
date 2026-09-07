@@ -27,6 +27,16 @@ export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
   cancelled: "Cancelled",
 };
 
+export const CLIENT_QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
+  draft: "Draft",
+  sent: "Awaiting Your Approval",
+  viewed: "Awaiting Your Approval",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  expired: "Expired",
+  cancelled: "Cancelled",
+};
+
 export const QUOTE_STATUS_STYLES: Record<QuoteStatus, string> = {
   draft: "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400",
   sent: "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:text-blue-400",
@@ -141,6 +151,13 @@ export function isQuoteStatus(value: string): value is QuoteStatus {
 export function formatQuoteStatusLabel(status: string): string {
   if (isQuoteStatus(status)) {
     return QUOTE_STATUS_LABELS[status];
+  }
+  return status.replace(/_/g, " ");
+}
+
+export function formatClientQuoteStatusLabel(status: string): string {
+  if (isQuoteStatus(status)) {
+    return CLIENT_QUOTE_STATUS_LABELS[status];
   }
   return status.replace(/_/g, " ");
 }
