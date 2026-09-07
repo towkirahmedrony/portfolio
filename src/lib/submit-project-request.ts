@@ -57,6 +57,9 @@ export async function submitProjectRequest(
     serviceId,
   );
 
+  // TEMP DEBUG: remove once the submit error is found.
+  console.error("submitProjectRequest payload:", JSON.stringify(payload, null, 2));
+
   for (let attempt = 0; attempt < MAX_REQUEST_NUMBER_ATTEMPTS; attempt += 1) {
     const insertPayload =
       attempt === 0
@@ -74,6 +77,14 @@ export async function submitProjectRequest(
         requestNumber: insertPayload.request_number ?? generateRequestNumber(),
       };
     }
+
+    // TEMP DEBUG: prints the real Postgres error to the `next dev` terminal.
+    console.error("submitProjectRequest insert failed:", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
 
     if (uniqueViolation(error) && attempt < MAX_REQUEST_NUMBER_ATTEMPTS - 1) {
       continue;
