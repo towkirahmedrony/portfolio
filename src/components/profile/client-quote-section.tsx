@@ -91,28 +91,53 @@ export function ClientQuoteSection({
       </dl>
 
       {items.length > 0 ? (
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[32rem] text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-muted">
-              <tr>
-                <th className="pb-2 pr-3">Item</th>
-                <th className="pb-2 pr-3">Qty</th>
-                <th className="pb-2 pr-3">Unit</th>
-                <th className="pb-2 text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-t border-card-border">
-                  <td className="py-2 pr-3">{item.description}</td>
-                  <td className="py-2 pr-3">{item.quantity}</td>
-                  <td className="py-2 pr-3">{formatMoney(Number(item.unit_price), currency)}</td>
-                  <td className="py-2 text-right">{formatMoney(Number(item.amount), currency)}</td>
+        <>
+          {/* Mobile: stacked item cards (no horizontal scrolling). */}
+          <ul className="mt-4 grid gap-2 sm:hidden">
+            {items.map((item) => (
+              <li
+                key={item.id}
+                className="rounded-xl border border-card-border p-3"
+              >
+                <p className="min-w-0 break-words text-sm font-medium text-foreground">
+                  {item.description}
+                </p>
+                <p className="mt-1.5 flex items-center justify-between gap-3 text-xs text-muted">
+                  <span>
+                    Qty {item.quantity} · {formatMoney(Number(item.unit_price), currency)} each
+                  </span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {formatMoney(Number(item.amount), currency)}
+                  </span>
+                </p>
+              </li>
+            ))}
+          </ul>
+
+          {/* Desktop: tabular layout. */}
+          <div className="mt-6 hidden overflow-hidden sm:block">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-muted">
+                <tr>
+                  <th className="pb-2 pr-3">Item</th>
+                  <th className="pb-2 pr-3">Qty</th>
+                  <th className="pb-2 pr-3">Unit</th>
+                  <th className="pb-2 text-right">Amount</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id} className="border-t border-card-border align-top">
+                    <td className="break-words py-2 pr-3">{item.description}</td>
+                    <td className="py-2 pr-3">{item.quantity}</td>
+                    <td className="py-2 pr-3">{formatMoney(Number(item.unit_price), currency)}</td>
+                    <td className="py-2 text-right">{formatMoney(Number(item.amount), currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : (
         <p className="mt-4 text-sm text-muted">Line items are not available for this quote.</p>
       )}

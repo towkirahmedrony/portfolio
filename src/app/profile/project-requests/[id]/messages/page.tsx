@@ -58,13 +58,13 @@ export default async function ProjectRequestMessagesPage({
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-5 pt-24 pb-10 sm:px-8 sm:pt-28">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto flex w-full max-w-4xl flex-col px-2 pt-[4.25rem] pb-2 sm:px-8 sm:pt-28 sm:pb-10">
+      <div className="mb-4 hidden items-end justify-between gap-3 sm:flex">
         <div>
           <p className="text-xs font-semibold tracking-wider text-accent uppercase">
             {request.request_number}
           </p>
-          <h1 className="font-display mt-1 text-2xl tracking-tight sm:text-3xl">
+          <h1 className="font-display mt-1 text-3xl tracking-tight">
             Request messages
           </h1>
         </div>
@@ -84,6 +84,7 @@ export default async function ProjectRequestMessagesPage({
         backHref={`/profile/project-requests/${request.id}`}
         backLabel="Request details"
         allowSendMessages={canClientMessageRequest(request.status)}
+        className="h-[calc(100dvh_-_4.5rem)] min-h-[22rem] sm:h-[min(76vh,44rem)] sm:min-h-[30rem]"
       />
     </div>
   );

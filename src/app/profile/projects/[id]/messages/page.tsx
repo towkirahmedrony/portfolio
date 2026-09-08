@@ -47,13 +47,15 @@ export default async function ProjectMessagesPage({
   const clientName = profile?.display_name || profile?.full_name || "Client";
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-5 pt-24 pb-10 sm:px-8 sm:pt-28">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto flex w-full max-w-4xl flex-col px-2 pt-[4.25rem] pb-2 sm:px-8 sm:pt-28 sm:pb-10">
+      {/* Slim context line on desktop only — on mobile the chat header (back,
+          reference + title) provides the full app-like context. */}
+      <div className="mb-4 hidden items-end justify-between gap-3 sm:flex">
         <div>
           <p className="text-xs font-semibold tracking-wider text-accent uppercase">
             {project.project_number}
           </p>
-          <h1 className="font-display mt-1 text-2xl tracking-tight sm:text-3xl">
+          <h1 className="font-display mt-1 text-3xl tracking-tight">
             Project messages
           </h1>
         </div>
@@ -71,6 +73,7 @@ export default async function ProjectMessagesPage({
         backHref={`/profile/projects/${project.id}`}
         backLabel="Project details"
         allowSendMessages={project.status !== "cancelled"}
+        className="h-[calc(100dvh_-_4.5rem)] min-h-[22rem] sm:h-[min(76vh,44rem)] sm:min-h-[30rem]"
       />
     </div>
   );

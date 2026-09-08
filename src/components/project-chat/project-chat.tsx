@@ -192,6 +192,8 @@ export function ProjectChat({
   const [channelState, setChannelState] = useState<ChannelState>("connecting");
   const [showJump, setShowJump] = useState(false);
   const [loadedAll, setLoadedAll] = useState(false);
+  // Height of the area covered by the mobile soft keyboard (visual viewport).
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
 
   const [client] = useState<ReturnType<typeof createBrowserSupabaseClient> | null>(() => {
     if (!isSupabaseConfigured()) {
@@ -539,6 +541,32 @@ export function ProjectChat({
     }
   }, [messages.length, scrollToBottom]);
 
+  // Mobile: keep the composer above the soft keyboard. The visual viewport
+  // shrinks when the keyboard opens; we add that overlap as bottom padding so
+  // the input is never covered (no hardcoded vh assumptions).
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      return;
+    }
+    const update = () => {
+      const overlap = Math.max(0, window.innerHeight - viewport.height);
+      setKeyboardOffset((prev) => (Math.abs(prev - overlap) < 2 ? prev : overlap));
+    };
+    viewport.addEventListener("resize", update);
+    window.addEventListener("resize", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (keyboardOffset > 0) {
+      scrollToBottom();
+    }
+  }, [keyboardOffset, scrollToBottom]);
+
   // Auto-resize the composer textarea (bounded).
   const handleDraftChange = useCallback((value: string) => {
     setDraft(value);
@@ -562,35 +590,36 @@ export function ProjectChat({
         className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-400"
         title="Live updates paused — reconnecting automatically."
       >
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
-        Reconnecting…
+        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber-500" />
+        <span className="hidden sm:inline">Reconnecting…</span>
       </span>
     ) : (
       <span
         className="inline-flex items-center gap-1.5 rounded-full border border-card-border bg-card px-2.5 py-1 text-[11px] font-medium text-muted"
         title="Connecting to live updates."
       >
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted" />
-        Connecting…
+        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-muted" />
+        <span className="hidden sm:inline">Connecting…</span>
       </span>
     );
 
   return (
     <section
       className={cn(
-        "relative flex h-[min(72vh,44rem)] min-h-[30rem] flex-col overflow-hidden rounded-3xl border border-card-border bg-card shadow-[0_1px_0_rgba(20,20,20,0.04)]",
+        "relative flex min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-card-border bg-card shadow-[0_1px_0_rgba(20,20,20,0.04)] sm:rounded-3xl",
         className,
       )}
-      aria-label={`Messages for project ${projectNumber}`}
+      aria-label={`Messages for ${projectNumber}`}
     >
       {/* Header — project context is always visible here. */}
       <div className="flex items-center gap-3 border-b border-card-border bg-card px-3 py-3 sm:px-4">
         <Link
           href={backHref}
-          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-card-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:border-accent/40 hover:text-accent"
+          aria-label={`${backLabel} — ${projectNumber}`}
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-card-border bg-background text-base text-foreground transition-colors hover:border-accent/40 hover:text-accent sm:w-auto sm:gap-1.5 sm:px-3 sm:text-xs"
         >
           <span aria-hidden>&larr;</span>
-          {backLabel}
+          <span className="hidden sm:inline">{backLabel}</span>
         </Link>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[11px] font-semibold tracking-wider text-accent uppercase">
@@ -694,7 +723,7 @@ export function ProjectChat({
                     ) : null}
                     <div
                       className={cn(
-                        "max-w-[86%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 sm:max-w-[75%]",
+                        "max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-6 sm:max-w-[70%] sm:text-sm",
                         isMine
                           ? "self-end rounded-br-md bg-accent text-accent-foreground"
                           : "self-start rounded-bl-md border border-card-border bg-background text-foreground",
@@ -731,9 +760,9 @@ export function ProjectChat({
       </div>
 
       {/* Composer */}
-      <div className="border-t border-card-border bg-card px-3 py-3 sm:px-4">
+      <div className="border-t border-card-border bg-card px-2.5 py-2.5 sm:px-4 sm:py-3">
         {!allowSendMessages ? (
-          <div className="flex items-center gap-3 px-1 py-2">
+          <div className="flex items-center gap-3 px-2 py-2">
             <span className="text-sm text-muted" role="status">
               This project was cancelled — new messages can&apos;t be sent. The
               history above remains available.
@@ -742,39 +771,47 @@ export function ProjectChat({
         ) : (
           <>
             {sendError ? (
-              <p className="mb-2 px-1 text-xs text-red-600" role="alert">
+              <p className="mb-2 px-2 text-xs text-red-600" role="alert">
                 {sendError}
               </p>
             ) : null}
-        <form onSubmit={handleSubmit} className="flex items-end gap-2">
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(event) => handleDraftChange(event.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            maxLength={MAX_MESSAGE_LENGTH}
-            disabled={!viewer || sending}
-            placeholder={
-              viewer ? "Write a message… (Enter to send)" : "Sign in to send a message…"
-            }
-            aria-label="Message"
-            className="max-h-42 min-h-11 w-full resize-none rounded-2xl border border-card-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent/50 disabled:opacity-60"
-          />
-          <button
-            type="submit"
-            disabled={!canSend}
-            className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-foreground px-5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
-          >
-            {sending ? "Sending…" : "Send"}
-          </button>
-          </form>
-          <p className="mt-1.5 px-1 text-[11px] text-muted">
-            Shift + Enter for a new line · {draft.length}/{MAX_MESSAGE_LENGTH}
-          </p>
+            <form onSubmit={handleSubmit} className="flex items-end gap-2">
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={(event) => handleDraftChange(event.target.value)}
+                onKeyDown={handleKeyDown}
+                rows={1}
+                maxLength={MAX_MESSAGE_LENGTH}
+                disabled={!viewer || sending}
+                placeholder={
+                  viewer ? "Write a message… (Enter to send)" : "Sign in to send a message…"
+                }
+                aria-label="Message"
+                className="min-h-12 w-full resize-none rounded-2xl border border-card-border bg-background px-4 py-3 text-base text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent/50 disabled:opacity-60 sm:min-h-11 sm:py-2.5 sm:text-sm"
+              />
+              <button
+                type="submit"
+                disabled={!canSend}
+                aria-label={sending ? "Sending message" : "Send message"}
+                className="inline-flex h-12 shrink-0 items-center justify-center rounded-full bg-foreground px-6 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40 sm:h-11 sm:px-5"
+              >
+                {sending ? "Sending…" : "Send"}
+              </button>
+            </form>
+            <p className="mt-1.5 hidden px-1 text-[11px] text-muted sm:block">
+              Shift + Enter for a new line · {draft.length}/{MAX_MESSAGE_LENGTH}
+            </p>
           </>
         )}
       </div>
+
+      {/* Keyboard spacer — keeps the composer above the mobile keyboard. */}
+      <div
+        aria-hidden="true"
+        className="shrink-0 bg-card transition-[height] duration-150 ease-out"
+        style={{ height: keyboardOffset }}
+      />
 
       {/* Jump to newest when scrolled up and a new message arrives */}
       {showJump ? (
@@ -785,7 +822,12 @@ export function ProjectChat({
             setShowJump(false);
             scrollToBottom();
           }}
-          className="absolute bottom-36 right-4 z-10 rounded-full border border-card-border bg-card px-3 py-1.5 text-xs font-medium text-accent shadow-md transition-colors hover:border-accent/40"
+          style={
+            keyboardOffset > 0
+              ? { bottom: `calc(7rem + ${keyboardOffset}px)` }
+              : undefined
+          }
+          className="absolute right-4 bottom-28 z-10 rounded-full border border-card-border bg-card px-3 py-1.5 text-xs font-medium text-accent shadow-md transition-colors hover:border-accent/40"
         >
           New messages ↓
         </button>
