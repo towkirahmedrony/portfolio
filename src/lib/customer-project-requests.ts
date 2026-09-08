@@ -140,6 +140,7 @@ export type CustomerRequestFile = {
   bucket_name: string;
   storage_path: string;
   uploaded_by?: string | null;
+  form_field_key?: string | null;
 };
 
 export type CustomerProjectRequestItem = {
@@ -470,12 +471,34 @@ export async function getCustomerProjectRequest(
   }
 
   const files: CustomerRequestFile[] = [];
-  const { data: requestFileRows, error: requestFileError } = await supabase
+  let requestFileRows: Array<{
+    id: string;
+    original_name: string;
+    category: string;
+    file_size_bytes: number | null;
+    created_at: string;
+    bucket_name: string;
+    storage_path: string;
+    uploaded_by?: string | null;
+    form_field_key?: string | null;
+  }> | null = null;
+  const withKey = await supabase
     .from("project_files")
-    .select("id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by")
+    .select("id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by, form_field_key")
     .eq("project_request_id", request.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
+  if (withKey.error && isMissingColumn(withKey.error)) {
+    const fallback = await supabase
+      .from("project_files")
+      .select("id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by")
+      .eq("project_request_id", request.id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+    requestFileRows = fallback.data;
+  } else if (!withKey.error) {
+    requestFileRows = withKey.data;
+  }
 
   if (!requestFileError) {
     for (const file of requestFileRows ?? []) {
@@ -488,6 +511,10 @@ export async function getCustomerProjectRequest(
         bucket_name: file.bucket_name,
         storage_path: file.storage_path,
         uploaded_by: file.uploaded_by,
+        form_field_key:
+          "form_field_key" in file
+            ? ((file as { form_field_key?: string | null }).form_field_key ?? null)
+            : null,
       });
     }
   }

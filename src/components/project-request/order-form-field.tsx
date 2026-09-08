@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   CheckboxGroup,
   ChoiceGroup,
@@ -28,6 +29,7 @@ type Props = {
   errors: ProjectRequestErrors;
   config: OrderFormConfig;
   onChange: (fieldKey: string, value: string | string[]) => void;
+  extra?: ReactNode;
 };
 
 function autoCompleteFor(field: OrderFormFieldConfig): string | undefined {
@@ -69,6 +71,7 @@ export function OrderFormFieldControl({
   errors,
   config,
   onChange,
+  extra,
 }: Props) {
   const error = errors[field.fieldKey];
   const otherKey = otherValueKey(field.fieldKey);
@@ -246,6 +249,7 @@ export function OrderFormFieldControl({
           </Field>
         </div>
       ) : null}
+      {extra ? <div className="mt-5">{extra}</div> : null}
     </div>
   );
 }

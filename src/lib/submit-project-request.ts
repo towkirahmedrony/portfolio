@@ -6,6 +6,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   generateRequestNumber,
   toProjectRequestInsert,
+  validateProjectRequest,
 } from "@/lib/project-request";
 import type { OrderFormConfig, ProjectRequest } from "@/types/project-request";
 
@@ -50,12 +51,27 @@ export async function submitProjectRequest(
     };
   }
 
+  const errors = validateProjectRequest(data, config);
+  if (Object.keys(errors).length > 0) {
+    return {
+      ok: false,
+      error: errors.phone ?? "Please complete the required fields before submitting.",
+    };
+  }
+
   const payload = toProjectRequestInsert(
     data,
     generateRequestNumber(),
     config,
     serviceId,
   );
+
+  if (!payload.phone || payload.phone.trim().length === 0) {
+    return {
+      ok: false,
+      error: "Please enter your phone number.",
+    };
+  }
 
   // TEMP DEBUG: remove once the submit error is found.
   console.error("submitProjectRequest payload:", JSON.stringify(payload, null, 2));

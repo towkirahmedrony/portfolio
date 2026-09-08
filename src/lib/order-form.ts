@@ -23,6 +23,7 @@ const INPUT_TYPES = new Set<OrderFormInputType>([
   "radio",
   "checkbox_group",
   "select",
+  "file",
 ]);
 
 export const BOOLEAN_OPTIONS: OrderFormOption[] = [
@@ -127,7 +128,7 @@ export function emptyProjectRequest(config: OrderFormConfig): ProjectRequest {
 }
 
 export function defaultFieldValue(field: OrderFormFieldConfig): ProjectRequestValue {
-  if (field.inputType === "checkbox_group") {
+  if (field.inputType === "checkbox_group" || field.inputType === "file") {
     if (Array.isArray(field.defaultValue)) {
       return field.defaultValue.map((item) => String(item));
     }
@@ -155,6 +156,68 @@ export function defaultFieldValue(field: OrderFormFieldConfig): ProjectRequestVa
 
 export function otherValueKey(fieldKey: string): string {
   return `${fieldKey}__other`;
+}
+
+export function isFileField(field: Pick<OrderFormFieldConfig, "inputType">): boolean {
+  return field.inputType === "file";
+}
+
+function asUnknownRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+export function fieldDependsOn(field: OrderFormFieldConfig): string | null {
+  const conditional = field.conditional;
+  const showWhen = asUnknownRecord(conditional.show_when);
+  const hideWhen = asUnknownRecord(conditional.hide_when);
+  return (
+    conditionFieldKey(showWhen) ??
+    conditionFieldKey(hideWhen) ??
+    conditionFieldKey(conditional) ??
+    Object.keys(conditional).find(
+      (key) =>
+        ![
+          "field",
+          "field_key",
+          "key",
+          "equals",
+          "value",
+          "in",
+          "values",
+          "not",
+          "show_when",
+          "hide_when",
+          "op",
+        ].includes(key),
+    ) ??
+    null
+  );
+}
+
+export function fileFieldMaxFiles(field: OrderFormFieldConfig): number {
+  const raw = field.constraints.max_files ?? field.constraints.maxFiles;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return Math.floor(raw);
+  }
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return 1;
+}
+
+export function fileFieldCategory(field: OrderFormFieldConfig): string {
+  const raw = field.constraints.category;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : "attachment";
+}
+
+export function fileFieldKeys(config: OrderFormConfig): string[] {
+  return config.fields.filter((field) => field.inputType === "file").map((field) => field.fieldKey);
 }
 
 export function getStringValue(
@@ -449,9 +512,185 @@ export function buildOrderFormConfig(
     };
   });
 
-  return {
-    steps: stepConfigs,
-    fields: fieldConfigs,
-    optionsByGroup,
+  return ensureConditionalUploadFields(
+    ensureRequiredPhoneField({
+      steps: stepConfigs,
+      fields: fieldConfigs,
+      optionsByGroup,
+    }),
+  );
+}
+
+function ensureRequiredPhoneField(config: OrderFormConfig): OrderFormConfig {
+  const existing = config.fields.find((field) => field.fieldKey === "phone");
+  if (existing) {
+    const fields = config.fields.map((field) =>
+      field.fieldKey === "phone"
+        ? { ...field, required: true, visible: true, inputType: "tel" as const }
+        : field,
+    );
+    return {
+      ...config,
+      fields,
+      steps: config.steps.map((step) => ({
+        ...step,
+        fields: step.fields.map((field) =>
+          field.fieldKey === "phone"
+            ? { ...field, required: true, visible: true, inputType: "tel" as const }
+            : field,
+        ),
+      })),
+    };
+  }
+
+  const host = config.steps.find((step) => !step.isReview && step.fields.length > 0);
+  if (!host) {
+    return config;
+  }
+
+  const phoneField: OrderFormFieldConfig = {
+    id: "runtime-phone",
+    fieldKey: "phone",
+    stepId: host.id,
+    inputType: "tel",
+    label: "Phone Number",
+    hint: "Required so we can reach you about this request.",
+    placeholder: "Your phone number",
+    optionsGroup: null,
+    required: true,
+    visible: true,
+    sortOrder: (host.fields.find((field) => field.fieldKey === "email")?.sortOrder ?? 0) + 1,
+    conditional: {},
+    constraints: { span: "full" },
+    defaultValue: null,
+    options: [],
   };
+
+  return appendFields(config, [phoneField]);
+}
+
+function appendFields(
+  config: OrderFormConfig,
+  extras: OrderFormFieldConfig[],
+): OrderFormConfig {
+  if (extras.length === 0) {
+    return config;
+  }
+  const byStep = new Map<string, OrderFormFieldConfig[]>();
+  for (const field of extras) {
+    const list = byStep.get(field.stepId) ?? [];
+    list.push(field);
+    byStep.set(field.stepId, list);
+  }
+  return {
+    ...config,
+    fields: [...config.fields, ...extras],
+    steps: config.steps.map((step) => {
+      const extra = byStep.get(step.id);
+      return extra ? { ...step, fields: [...step.fields, ...extra] } : step;
+    }),
+  };
+}
+
+function ensureConditionalUploadFields(config: OrderFormConfig): OrderFormConfig {
+  const extras: OrderFormFieldConfig[] = [];
+  const hasField = (key: string) =>
+    config.fields.some((field) => field.fieldKey === key) ||
+    extras.some((field) => field.fieldKey === key);
+
+  const logoParent = config.fields.find(
+    (field) => field.fieldKey === "has_logo" || field.fieldKey === "hasLogo",
+  );
+  if (logoParent && !hasField("logo_file")) {
+    extras.push({
+      id: "runtime-logo-file",
+      fieldKey: "logo_file",
+      stepId: logoParent.stepId,
+      inputType: "file",
+      label: "Upload Logo",
+      hint: "Optional. JPG, PNG, WEBP, SVG, PDF, or ZIP.",
+      placeholder: null,
+      optionsGroup: null,
+      required: false,
+      visible: true,
+      sortOrder: logoParent.sortOrder + 1,
+      conditional: {
+        show_when: { field: logoParent.fieldKey, in: ["yes", "true", "1"] },
+      },
+      constraints: { category: "logo", max_files: 1, span: "full" },
+      defaultValue: null,
+      options: [],
+    });
+  }
+
+  const websiteParent = config.fields.find(
+    (field) =>
+      field.fieldKey === "website_status" || field.fieldKey === "websiteStatus",
+  );
+  if (websiteParent) {
+    const redesignSlugs = websiteParent.options
+      .filter(
+        (option) =>
+          /redesign/i.test(option.slug) || /redesign/i.test(option.label),
+      )
+      .map((option) => option.slug);
+    const slugs = redesignSlugs.length > 0 ? redesignSlugs : ["redesign"];
+    const showWhen = {
+      show_when: { field: websiteParent.fieldKey, in: slugs },
+    };
+
+    if (!hasField("reference_urls") && !hasField("referenceUrls")) {
+      extras.push({
+        id: "runtime-reference-urls",
+        fieldKey: "reference_urls",
+        stepId: websiteParent.stepId,
+        inputType: "text",
+        label: "Website/Reference URL",
+        hint: "Optional. Paste a current site or inspiration link.",
+        placeholder: "https://",
+        optionsGroup: null,
+        required: false,
+        visible: true,
+        sortOrder: websiteParent.sortOrder + 1,
+        conditional: showWhen,
+        constraints: { span: "full" },
+        defaultValue: null,
+        options: [],
+      });
+    } else {
+      const existing = config.fields.find(
+        (field) =>
+          field.fieldKey === "reference_urls" || field.fieldKey === "referenceUrls",
+      );
+      if (existing && Object.keys(existing.conditional).length === 0) {
+        existing.conditional = showWhen;
+      }
+    }
+
+    if (!hasField("website_reference_file")) {
+      const reference = [...config.fields, ...extras].find(
+        (field) =>
+          field.fieldKey === "reference_urls" || field.fieldKey === "referenceUrls",
+      );
+      extras.push({
+        id: "runtime-website-reference-file",
+        fieldKey: "website_reference_file",
+        stepId: websiteParent.stepId,
+        inputType: "file",
+        label: "Reference photo or file",
+        hint: "Optional. Independent from the URL — you can add a file, a link, both, or neither.",
+        placeholder: null,
+        optionsGroup: null,
+        required: false,
+        visible: true,
+        sortOrder: (reference?.sortOrder ?? websiteParent.sortOrder) + 1,
+        conditional: showWhen,
+        constraints: { category: "attachment", max_files: 3, span: "full" },
+        defaultValue: null,
+        options: [],
+      });
+    }
+  }
+
+  return appendFields(config, extras);
 }

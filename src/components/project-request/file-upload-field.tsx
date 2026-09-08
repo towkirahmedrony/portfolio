@@ -13,6 +13,7 @@ import {
 export type PendingProjectRequestFile = {
   id: string;
   file: File;
+  fieldKey: string;
 };
 
 type Props = {
@@ -23,6 +24,12 @@ type Props = {
   uploading?: boolean;
   uploadingLabel?: string | null;
   error?: string | null;
+  label?: string;
+  hint?: string;
+  required?: boolean;
+  maxFiles?: number;
+  multiple?: boolean;
+  compact?: boolean;
   onAddFiles: (files: File[]) => void;
   onRemovePending: (id: string) => void;
   onRemoveExisting: (file: ProjectRequestFileSummary) => void;
@@ -49,6 +56,12 @@ export function ProjectRequestFileUploadField({
   uploading = false,
   uploadingLabel,
   error,
+  label = "Attachments",
+  hint,
+  required = false,
+  maxFiles = PROJECT_REQUEST_MAX_FILES,
+  multiple = true,
+  compact = false,
   onAddFiles,
   onRemovePending,
   onRemoveExisting,
@@ -56,7 +69,10 @@ export function ProjectRequestFileUploadField({
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const totalSelected = existingFiles.length + pendingFiles.length;
-  const remaining = Math.max(PROJECT_REQUEST_MAX_FILES - totalSelected, 0);
+  const remaining = Math.max(maxFiles - totalSelected, 0);
+  const helper =
+    hint ??
+    `Optional. JPG, PNG, WEBP, SVG, PDF, or ZIP. Up to ${Math.round(PROJECT_REQUEST_MAX_FILE_BYTES / 1024 / 1024)} MB each, ${maxFiles} ${maxFiles === 1 ? "file" : "files"} total.`;
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -67,18 +83,20 @@ export function ProjectRequestFileUploadField({
   }
 
   return (
-    <div className="sm:col-span-2">
+    <div className={compact ? undefined : "sm:col-span-2"}>
       <div className="grid gap-3 rounded-2xl border border-card-border bg-background p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <label htmlFor={inputId} className="text-sm font-medium">
-              Attachments
+              {label}
+              {required ? (
+                <span className="text-accent" aria-hidden="true">
+                  {" "}
+                  *
+                </span>
+              ) : null}
             </label>
-            <p className="mt-1 text-xs leading-5 text-muted">
-              Optional. JPG, PNG, WEBP, SVG, PDF, or ZIP. Up to{" "}
-              {Math.round(PROJECT_REQUEST_MAX_FILE_BYTES / 1024 / 1024)} MB each,
-              {` ${PROJECT_REQUEST_MAX_FILES} files total.`}
-            </p>
+            <p className="mt-1 text-xs leading-5 text-muted">{helper}</p>
           </div>
           <Button
             variant="secondary"
@@ -86,7 +104,7 @@ export function ProjectRequestFileUploadField({
             disabled={disabled || uploading || remaining === 0}
             onClick={() => inputRef.current?.click()}
           >
-            Add files
+            {maxFiles === 1 ? "Choose file" : "Add files"}
           </Button>
         </div>
 
@@ -94,7 +112,7 @@ export function ProjectRequestFileUploadField({
           ref={inputRef}
           id={inputId}
           type="file"
-          multiple
+          multiple={multiple && maxFiles > 1}
           accept={PROJECT_REQUEST_FILE_ACCEPT}
           className="sr-only"
           disabled={disabled || uploading || remaining === 0}

@@ -184,7 +184,7 @@ One row per input on a step.
 | id | uuid PK | |
 | field_key | text | unique |
 | step_id | uuid FK → order_form_steps.id | on delete cascade |
-| input_type | text | one of: text, email, tel, textarea, date, radio, checkbox_group, select |
+| input_type | text | one of: text, email, tel, textarea, date, radio, checkbox_group, select, file |
 | label | text | not null |
 | hint | text | |
 | placeholder | text | |

@@ -17,6 +17,7 @@ export const ORDER_FORM_INPUT_TYPES: OrderFormInputType[] = [
   "radio",
   "checkbox_group",
   "select",
+  "file",
 ];
 
 export const SELECTABLE_INPUT_TYPES: OrderFormInputType[] = [
@@ -93,6 +94,8 @@ export function inputTypeLabel(type: string): string {
       return "Checkboxes";
     case "select":
       return "Select";
+    case "file":
+      return "File";
     default:
       return type;
   }

@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { canClientEditRequest } from "@/lib/admin-project-request-constants";
+import { fileFieldCategory, fileFieldMaxFiles } from "@/lib/order-form";
+import { getOrderFormConfig } from "@/lib/order-form-server";
 import {
   buildProjectRequestObjectPath,
   isValidProjectRequestFile,
@@ -60,6 +62,7 @@ function toSummary(row: {
   bucket_name: string;
   storage_path: string;
   uploaded_by?: string | null;
+  form_field_key?: string | null;
 }): ProjectRequestFileSummary {
   return {
     id: row.id,
@@ -70,6 +73,7 @@ function toSummary(row: {
     bucket_name: row.bucket_name,
     storage_path: row.storage_path,
     uploaded_by: row.uploaded_by ?? null,
+    form_field_key: row.form_field_key ?? null,
   };
 }
 
@@ -125,14 +129,27 @@ export async function listOwnProjectRequestFiles(
     return owned;
   }
 
-  const { data, error } = await owned.supabase
+  const withKey = await owned.supabase
     .from("project_files")
     .select(
-      "id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by, project_request_id",
+      "id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by, project_request_id, form_field_key",
     )
     .eq("project_request_id", owned.request.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
+
+  const result = withKey.error && isMissingColumn(withKey.error)
+    ? await owned.supabase
+        .from("project_files")
+        .select(
+          "id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by, project_request_id",
+        )
+        .eq("project_request_id", owned.request.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : withKey;
+
+  const { data, error } = result;
 
   if (error) {
     if (isMissingColumn(error)) {
@@ -170,20 +187,41 @@ export async function uploadProjectRequestFile(
     return { ok: false, error: fileError };
   }
 
-  const { count, error: countError } = await owned.supabase
+  const fieldKey = asString(formData.get("fieldKey"));
+  let categoryHint: string | null = asString(formData.get("category")) || null;
+  let fieldLimit = PROJECT_REQUEST_MAX_FILES;
+  if (fieldKey) {
+    const configResult = await getOrderFormConfig();
+    if (configResult.status === "ok") {
+      const field = configResult.data.fields.find((item) => item.fieldKey === fieldKey);
+      if (field?.inputType === "file") {
+        categoryHint = fileFieldCategory(field);
+        fieldLimit = fileFieldMaxFiles(field);
+      }
+    }
+  }
+
+  let countQuery = owned.supabase
     .from("project_files")
     .select("id", { count: "exact", head: true })
     .eq("project_request_id", owned.request.id)
     .eq("uploaded_by", owned.user.id)
     .is("deleted_at", null);
+  if (fieldKey) {
+    countQuery = countQuery.eq("form_field_key", fieldKey);
+  }
+  const { count, error: countError } = await countQuery;
 
   if (countError && !isMissingColumn(countError)) {
     return { ok: false, error: countError.message };
   }
-  if ((count ?? 0) >= PROJECT_REQUEST_MAX_FILES) {
+  if ((count ?? 0) >= fieldLimit) {
     return {
       ok: false,
-      error: `You can attach up to ${PROJECT_REQUEST_MAX_FILES} files.`,
+      error:
+        fieldLimit === 1
+          ? "You can attach 1 file here."
+          : `You can attach up to ${fieldLimit} files here.`,
     };
   }
 
@@ -208,25 +246,43 @@ export async function uploadProjectRequestFile(
     };
   }
 
-  const insertPayload = {
+  const insertPayload: Record<string, unknown> = {
     bucket_name: PROJECT_REQUEST_FILE_BUCKET,
     storage_path: storagePath,
     original_name: file.name,
     mime_type: mimeType || null,
     file_size_bytes: file.size,
-    category: projectRequestFileCategory(mimeType),
+    category: projectRequestFileCategory(mimeType, categoryHint),
     uploaded_by: owned.user.id,
     project_request_id: owned.request.id,
     is_public: true,
   };
+  if (fieldKey) {
+    insertPayload.form_field_key = fieldKey;
+  }
 
   const { data: inserted, error: insertError } = await owned.supabase
     .from("project_files")
     .insert(insertPayload)
     .select(
-      "id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by",
+      "id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by, form_field_key",
     )
     .single();
+
+  if (insertError && isMissingColumn(insertError) && fieldKey) {
+    delete insertPayload.form_field_key;
+    const retry = await owned.supabase
+      .from("project_files")
+      .insert(insertPayload)
+      .select(
+        "id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by",
+      )
+      .single();
+    if (!retry.error && retry.data) {
+      revalidateRequest(owned.request.id);
+      return { ok: true, file: toSummary(retry.data) };
+    }
+  }
 
   if (insertError) {
     await owned.supabase.storage

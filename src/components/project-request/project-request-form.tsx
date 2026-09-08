@@ -32,7 +32,11 @@ import {
   getPlaceOrderReturnPath,
   persistAuthReturnTo,
 } from "@/lib/auth";
-import { emptyProjectRequest } from "@/lib/order-form";
+import {
+  emptyProjectRequest,
+  fileFieldMaxFiles,
+  isFieldVisible,
+} from "@/lib/order-form";
 import {
   firstInvalidStep,
   getNormalizedProjectRequest,
@@ -292,43 +296,56 @@ function ProjectRequestFormInner({
     };
   }, [focusSubmitSection, hasSteps, step, submitted, totalSteps]);
 
+  const fileFields = useMemo(
+    () => config.fields.filter((field) => field.inputType === "file"),
+    [config.fields],
+  );
+
   const filesStep = useMemo(() => {
-    const preferred = config.steps.findIndex(
-      (item) =>
-        !item.isReview &&
-        (item.stepKey === "design" ||
-          item.stepKey === "requirements" ||
-          item.title.toLowerCase().includes("design")),
-    );
-    if (preferred >= 0) {
-      return preferred + 1;
-    }
-    for (let index = config.steps.length - 1; index >= 0; index -= 1) {
-      if (!config.steps[index]?.isReview) {
+    const firstFileField = fileFields[0];
+    if (firstFileField) {
+      const index = config.steps.findIndex((item) => item.id === firstFileField.stepId);
+      if (index >= 0) {
         return index + 1;
       }
     }
     return 1;
-  }, [config.steps]);
+  }, [config.steps, fileFields]);
 
-  function addSelectedFiles(files: File[]) {
+  function filesForField(fieldKey: string) {
+    return {
+      existing: existingFiles.filter((file) => (file.form_field_key ?? "") === fieldKey),
+      pending: pendingFiles.filter((item) => item.fieldKey === fieldKey),
+    };
+  }
+
+  function addSelectedFiles(fieldKey: string, files: File[]) {
     setFileError(null);
     setFormError(null);
     const nextErrors: string[] = [];
     const accepted: PendingProjectRequestFile[] = [];
+    const field = config.fields.find((item) => item.fieldKey === fieldKey);
+    const fieldLimit = field ? fileFieldMaxFiles(field) : PROJECT_REQUEST_MAX_FILES;
 
     setPendingFiles((current) => {
-      const remaining = Math.max(
-        PROJECT_REQUEST_MAX_FILES - existingFiles.length - current.length,
-        0,
-      );
+      const existingForField = existingFiles.filter(
+        (file) => (file.form_field_key ?? "") === fieldKey,
+      ).length;
+      const pendingForField = current.filter((item) => item.fieldKey === fieldKey).length;
+      const remaining = Math.max(fieldLimit - existingForField - pendingForField, 0);
       const seen = new Set(
-        current.map((item) => `${item.file.name}:${item.file.size}:${item.file.lastModified}`),
+        current
+          .filter((item) => item.fieldKey === fieldKey)
+          .map((item) => `${item.file.name}:${item.file.size}:${item.file.lastModified}`),
       );
 
       for (const file of files) {
         if (accepted.length >= remaining) {
-          nextErrors.push(`You can attach up to ${PROJECT_REQUEST_MAX_FILES} files.`);
+          nextErrors.push(
+            fieldLimit === 1
+              ? "You can attach 1 file here."
+              : `You can attach up to ${fieldLimit} files here.`,
+          );
           break;
         }
         const key = `${file.name}:${file.size}:${file.lastModified}`;
@@ -347,6 +364,7 @@ function ProjectRequestFormInner({
               ? crypto.randomUUID()
               : `${file.name}-${file.size}-${file.lastModified}`,
           file,
+          fieldKey,
         });
       }
 
@@ -396,6 +414,7 @@ function ProjectRequestFormInner({
       const data = new FormData();
       data.set("requestId", targetRequestId);
       data.set("file", item.file);
+      data.set("fieldKey", item.fieldKey);
       const result = await uploadProjectRequestFile(data);
       if (!result.ok) {
         remaining.push(item);
@@ -699,22 +718,33 @@ function ProjectRequestFormInner({
               data={data}
               errors={errors}
               onChange={updateField}
-              extra={
-                step === filesStep ? (
+              renderFieldControl={(field) => {
+                if (field.inputType !== "file" || !isFieldVisible(field, data)) {
+                  return null;
+                }
+                const scoped = filesForField(field.fieldKey);
+                const maxFiles = fileFieldMaxFiles(field);
+                return (
                   <ProjectRequestFileUploadField
-                    existingFiles={existingFiles}
-                    pendingFiles={pendingFiles}
+                    existingFiles={scoped.existing}
+                    pendingFiles={scoped.pending}
                     currentUserId={currentUserId}
                     disabled={submitting}
                     uploading={Boolean(uploadingLabel)}
                     uploadingLabel={uploadingLabel}
                     error={fileError}
-                    onAddFiles={addSelectedFiles}
+                    label={field.label}
+                    hint={field.hint ?? undefined}
+                    required={field.required}
+                    maxFiles={maxFiles}
+                    multiple={maxFiles > 1}
+                    compact
+                    onAddFiles={(files) => addSelectedFiles(field.fieldKey, files)}
                     onRemovePending={removePendingFile}
                     onRemoveExisting={removeExistingFile}
                   />
-                ) : null
-              }
+                );
+              }}
             />
           ) : null}
         </div>

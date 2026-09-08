@@ -8,7 +8,8 @@ export type OrderFormInputType =
   | "date"
   | "radio"
   | "checkbox_group"
-  | "select";
+  | "select"
+  | "file";
 
 export type OrderFormOption = {
   id: string;

@@ -107,14 +107,43 @@ export function StepReview({
             step={index + 1}
             onEdit={onEdit}
           >
-            {visibleFields.map((field) => (
-              <Item
-                key={field.id}
-                label={field.label}
-                value={displayFieldValue(field, data)}
-                wide={isWideField(step, field.fieldKey)}
-              />
-            ))}
+            {visibleFields.map((field) => {
+              if (field.inputType === "file") {
+                const names = [
+                  ...existingFiles
+                    .filter((file) => (file.form_field_key ?? "") === field.fieldKey)
+                    .map(
+                      (file) =>
+                        `${file.original_name} (${formatFileSize(file.file_size_bytes)})`,
+                    ),
+                  ...pendingFiles
+                    .filter((item) => item.fieldKey === field.fieldKey)
+                    .map(
+                      (item) =>
+                        `${item.file.name} (${formatFileSize(item.file.size)})`,
+                    ),
+                ];
+                if (names.length === 0) {
+                  return null;
+                }
+                return (
+                  <Item
+                    key={field.id}
+                    label={field.label}
+                    value={names.join("\n")}
+                    wide
+                  />
+                );
+              }
+              return (
+                <Item
+                  key={field.id}
+                  label={field.label}
+                  value={displayFieldValue(field, data)}
+                  wide={isWideField(step, field.fieldKey)}
+                />
+              );
+            })}
             {referralCode ? (
               <Item
                 label="Verification"
@@ -124,7 +153,8 @@ export function StepReview({
           </ReviewBlock>
         );
       })}
-      {existingFiles.length > 0 || pendingFiles.length > 0 ? (
+      {existingFiles.some((file) => !file.form_field_key) ||
+      pendingFiles.some((item) => !item.fieldKey) ? (
         <ReviewBlock
           title="Attachments"
           step={filesStep}
@@ -134,14 +164,18 @@ export function StepReview({
             label="Files"
             wide
             value={[
-              ...existingFiles.map(
-                (file) =>
-                  `${file.original_name} (${formatFileSize(file.file_size_bytes)})`,
-              ),
-              ...pendingFiles.map(
-                (item) =>
-                  `${item.file.name} (${formatFileSize(item.file.size)})`,
-              ),
+              ...existingFiles
+                .filter((file) => !file.form_field_key)
+                .map(
+                  (file) =>
+                    `${file.original_name} (${formatFileSize(file.file_size_bytes)})`,
+                ),
+              ...pendingFiles
+                .filter((item) => !item.fieldKey)
+                .map(
+                  (item) =>
+                    `${item.file.name} (${formatFileSize(item.file.size)})`,
+                ),
             ].join("\n")}
           />
         </ReviewBlock>

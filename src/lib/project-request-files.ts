@@ -53,6 +53,7 @@ export type ProjectRequestFileSummary = {
   bucket_name: string;
   storage_path: string;
   uploaded_by?: string | null;
+  form_field_key?: string | null;
 };
 
 export function fileExtension(name: string): string {
@@ -72,9 +73,25 @@ export function resolveProjectRequestFileMime(file: Pick<File, "name" | "type">)
   return MIME_BY_EXTENSION[fileExtension(file.name)] ?? mime;
 }
 
-export function projectRequestFileCategory(mimeType: string): FileCategory {
+export function projectRequestFileCategory(
+  mimeType: string,
+  preferred?: string | null,
+): FileCategory {
+  if (preferred === "logo") {
+    return "logo";
+  }
+  if (
+    preferred === "design" ||
+    preferred === "content" ||
+    preferred === "document" ||
+    preferred === "attachment" ||
+    preferred === "deliverable" ||
+    preferred === "other"
+  ) {
+    return preferred;
+  }
   if (mimeType === "image/svg+xml" || mimeType.startsWith("image/")) {
-    return "design";
+    return preferred === "attachment" ? "attachment" : "design";
   }
   if (mimeType === "application/pdf") {
     return "document";

@@ -338,6 +338,12 @@ export function requiredMessage(field: OrderFormFieldConfig): string {
   if (field.fieldKey === "email") {
     return "Please enter your email address.";
   }
+  if (field.fieldKey === "phone") {
+    return "Please enter your phone number.";
+  }
+  if (field.inputType === "file") {
+    return `Please upload ${field.label.toLowerCase()}.`;
+  }
   if (field.fieldKey === "description") {
     return "Please describe what you need.";
   }
@@ -365,14 +371,18 @@ export function validateStep(
   const errors: ProjectRequestErrors = {};
 
   for (const field of visibleFieldsForStep(current, data)) {
+    if (field.inputType === "file") {
+      continue;
+    }
+    const required = field.required || field.fieldKey === "phone";
     if (field.inputType === "checkbox_group") {
       const values = getListValue(data, field.fieldKey);
-      if (field.required && values.length === 0) {
+      if (required && values.length === 0) {
         errors[field.fieldKey] = requiredMessage(field);
       }
     } else {
       const value = getStringValue(data, field.fieldKey);
-      if (field.required && isBlank(value)) {
+      if (required && isBlank(value)) {
         errors[field.fieldKey] = requiredMessage(field);
       } else if (
         field.inputType === "email" &&
@@ -380,6 +390,13 @@ export function validateStep(
         !EMAIL_PATTERN.test(value.trim())
       ) {
         errors[field.fieldKey] = "Please enter a valid email address.";
+      } else if (
+        (field.fieldKey === "phone" || field.inputType === "tel") &&
+        required &&
+        !isBlank(value) &&
+        value.replace(/\D/g, "").length < 7
+      ) {
+        errors[field.fieldKey] = "Please enter a valid phone number.";
       }
 
       const minLength = asNumber(field.constraints.minLength ?? field.constraints.min_length);
@@ -438,9 +455,23 @@ export function validateProjectRequest(
   data: ProjectRequest,
   config: OrderFormConfig,
 ): ProjectRequestErrors {
-  return config.steps.reduce<ProjectRequestErrors>((errors, _step, index) => {
-    return { ...errors, ...validateStep(index + 1, data, config) };
+  const errors = config.steps.reduce<ProjectRequestErrors>((next, _step, index) => {
+    return { ...next, ...validateStep(index + 1, data, config) };
   }, {});
+
+  const phoneField = fieldByKeys(config, COLUMN_ALIASES.phone);
+  const phoneValue = firstString(
+    data,
+    phoneField ? [phoneField.fieldKey] : COLUMN_ALIASES.phone,
+  );
+  if (isBlank(phoneValue)) {
+    errors[phoneField?.fieldKey ?? "phone"] =
+      phoneField ? requiredMessage({ ...phoneField, required: true }) : "Please enter your phone number.";
+  } else if (phoneValue.replace(/\D/g, "").length < 7) {
+    errors[phoneField?.fieldKey ?? "phone"] = "Please enter a valid phone number.";
+  }
+
+  return errors;
 }
 
 export function stepHasErrors(
@@ -500,6 +531,10 @@ export function displayFieldValue(
   field: OrderFormFieldConfig,
   data: ProjectRequest,
 ): string {
+  if (field.inputType === "file") {
+    return "Selected at upload";
+  }
+
   if (field.inputType === "checkbox_group") {
     const values = getListValue(data, field.fieldKey);
     if (values.length === 0) {
@@ -581,7 +616,7 @@ export function buildFormSnapshot(
         constraints: field.constraints,
         options: field.options.map(snapshotOption),
         value:
-          field.inputType === "checkbox_group"
+          field.inputType === "checkbox_group" || field.inputType === "file"
             ? getListValue(data, field.fieldKey)
             : getStringValue(data, field.fieldKey),
         other_value: fieldNeedsOtherInput(field, data)
