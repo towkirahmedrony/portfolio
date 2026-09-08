@@ -137,10 +137,16 @@ function friendlyError(error: { message?: string; code?: string } | null): strin
   const code = error.code ?? "";
   const message = (error.message ?? "").toLowerCase();
   if (code === "PGRST202" || message.includes("could not find the function")) {
-    // The RPC (send_project_message / mark_project_messages_read) is not in
-    // the PostgREST schema cache — the migration has not been applied yet or
-    // the schema cache has not reloaded since it was.
-    return "Messaging is not set up in this database yet — apply the project_chat_realtime migration (or reload the schema), then retry.";
+    // The RPC (send_project_message / mark_project_messages_read /
+    // send_request_message / mark_request_messages_read) is not in the
+    // PostgREST schema cache — the migration has not been applied yet or the
+    // schema cache has not reloaded since it was.
+    return "Messaging is not set up in this database yet — apply the project_chat_realtime migration (and request_messaging_conversation_continuity for request chats), then reload the schema.";
+  }
+  if (code === "42703" || /column .* does not exist/.test(message)) {
+    // e.g. project_messages.request_id — the request-stage messaging migration
+    // (request_id column, request-scope RLS, trigger, request RPCs) is missing.
+    return "Request-stage messaging is not set up in this database yet — apply the request_messaging_conversation_continuity migration, then retry.";
   }
   if (
     code === "42P01" ||
