@@ -47,6 +47,34 @@ export type AdminDashboardData = {
   quoteResponses: DashboardQueryState<ClientQuoteResponseItem[]>;
 };
 
+/**
+ * Loads the recent client quote responses section. Runs inside the dashboard's
+ * parallel query batch (Promise.all) so its serial sub-queries start at the
+ * same time as the metric queries instead of after them.
+ */
+async function loadRecentQuoteResponses(): Promise<
+  DashboardQueryState<ClientQuoteResponseItem[]>
+> {
+  try {
+    const responseResult = await getRecentClientQuoteResponses(8);
+    if (responseResult.status === "ok") {
+      return { status: "ok", data: responseResult.items };
+    }
+    if (responseResult.status === "empty") {
+      return { status: "empty", data: [] };
+    }
+    return { status: responseResult.status, message: responseResult.message };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Could not load client quote responses.",
+    };
+  }
+}
+
 const ACTIVE_PROJECT_STATUSES = [
   "pending",
   "approved",
@@ -240,12 +268,10 @@ function actionFromCount(
   };
 }
 
-export async function getAdminDashboardData(): Promise<AdminDashboardData> {
+export async function getAdminDashboardData(
+  adminUserId: string,
+): Promise<AdminDashboardData> {
   const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const adminUserId = user?.id ?? "";
   const todayStart = startOfUtcDay();
   const monthStart = startOfUtcMonth();
 
@@ -258,6 +284,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     messagesResult,
     rewardsResult,
     activityResult,
+    quoteResponsesResult,
   ] = await Promise.all([
     supabase
       .from("project_requests")
@@ -294,6 +321,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
       .select("id, actor_id, action, entity_type, entity_id, created_at")
       .order("created_at", { ascending: false })
       .limit(ACTIVITY_LIMIT),
+    loadRecentQuoteResponses(),
   ]);
 
   const leadsState = toCountState(leadsResult as CountResult, "project_requests");
@@ -408,28 +436,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
         : { status: "ok", data: items };
   }
 
-  let quoteResponses: DashboardQueryState<ClientQuoteResponseItem[]>;
-  try {
-    const responseResult = await getRecentClientQuoteResponses(8);
-    if (responseResult.status === "ok") {
-      quoteResponses = { status: "ok", data: responseResult.items };
-    } else if (responseResult.status === "empty") {
-      quoteResponses = { status: "empty", data: [] };
-    } else {
-      quoteResponses = {
-        status: responseResult.status,
-        message: responseResult.message,
-      };
-    }
-  } catch (error) {
-    quoteResponses = {
-      status: "error",
-      message:
-        error instanceof Error
-          ? error.message
-          : "Could not load client quote responses.",
-    };
-  }
+  const quoteResponses = quoteResponsesResult;
 
   return {
     metrics: [

@@ -29,6 +29,58 @@ import {
 } from "@/lib/admin-projects";
 import { getProjectQuoteChangeRequests } from "@/lib/admin-quote-responses";
 import { requireAdmin } from "@/lib/require-admin";
+import type { ReactNode } from "react";
+
+/**
+ * Loads the active tab's data. Each tab getter only needs the project id (the
+ * route param), never the project header row — so it can run concurrently
+ * with getAdminProject() instead of waiting for it.
+ */
+async function loadTabContent(tab: string, projectId: string): Promise<ReactNode> {
+  switch (tab) {
+    case "requirements":
+      return (
+        <ProjectRequirementsTab
+          projectId={projectId}
+          result={await getProjectRequirements(projectId)}
+        />
+      );
+    case "milestones":
+      return (
+        <ProjectMilestonesTab
+          projectId={projectId}
+          result={await getProjectMilestones(projectId)}
+        />
+      );
+    case "files":
+      return <ProjectFilesTab projectId={projectId} result={await getProjectFiles(projectId)} />;
+    case "notes":
+      return <ProjectNotesTab projectId={projectId} result={await getProjectNotes(projectId)} />;
+    case "messages": {
+      // The message thread and the open quote-change-request context are two
+      // independent reads — fetch them together.
+      const [messages, changeRequests] = await Promise.all([
+        getProjectMessages(projectId),
+        getProjectQuoteChangeRequests(projectId),
+      ]);
+      return (
+        <ProjectMessagesTab
+          projectId={projectId}
+          result={messages}
+          changeRequests={changeRequests}
+        />
+      );
+    }
+    case "financial": {
+      const financials = await getProjectFinancials(projectId);
+      return <ProjectFinancialTab {...financials} />;
+    }
+    case "history":
+      return <ProjectHistoryTab result={await getProjectStatusHistory(projectId)} />;
+    default:
+      return null;
+  }
+}
 
 export default async function AdminProjectDetailPage({
   params,
@@ -41,7 +93,11 @@ export default async function AdminProjectDetailPage({
   const { id } = await params;
   const { tab: tabParam } = await searchParams;
   const tab = tabParam && isProjectDetailTab(tabParam) ? tabParam : "overview";
-  const projectResult = await getAdminProject(id);
+
+  const [projectResult, tabContent] = await Promise.all([
+    getAdminProject(id),
+    loadTabContent(tab, id),
+  ]);
 
   if (projectResult.status === "empty") {
     notFound();
@@ -60,43 +116,6 @@ export default async function AdminProjectDetailPage({
   }
 
   const project = projectResult.data;
-  let tabContent = <ProjectOverviewTab project={project} />;
-
-  if (tab === "requirements") {
-    tabContent = (
-      <ProjectRequirementsTab
-        projectId={project.id}
-        result={await getProjectRequirements(project.id)}
-      />
-    );
-  } else if (tab === "milestones") {
-    tabContent = (
-      <ProjectMilestonesTab
-        projectId={project.id}
-        result={await getProjectMilestones(project.id)}
-      />
-    );
-  } else if (tab === "files") {
-    tabContent = (
-      <ProjectFilesTab projectId={project.id} result={await getProjectFiles(project.id)} />
-    );
-  } else if (tab === "notes") {
-    tabContent = (
-      <ProjectNotesTab projectId={project.id} result={await getProjectNotes(project.id)} />
-    );
-  } else if (tab === "messages") {
-    tabContent = (
-      <ProjectMessagesTab
-        projectId={project.id}
-        result={await getProjectMessages(project.id)}
-        changeRequests={await getProjectQuoteChangeRequests(project.id)}
-      />
-    );
-  } else if (tab === "financial") {
-    tabContent = <ProjectFinancialTab {...await getProjectFinancials(project.id)} />;
-  } else if (tab === "history") {
-    tabContent = <ProjectHistoryTab result={await getProjectStatusHistory(project.id)} />;
-  }
 
   return (
     <AdminPage
@@ -122,7 +141,7 @@ export default async function AdminProjectDetailPage({
         <span className="text-sm text-muted">{clientDisplayName(project.client)}</span>
       </div>
       <ProjectTabs projectId={project.id} active={tab} />
-      {tabContent}
+      {tab === "overview" ? <ProjectOverviewTab project={project} /> : tabContent}
     </AdminPage>
   );
 }

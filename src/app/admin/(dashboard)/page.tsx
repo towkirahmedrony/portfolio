@@ -9,9 +9,11 @@ import {
   StatCardGrid,
 } from "@/components/admin/dashboard";
 import { getAdminDashboardData } from "@/lib/admin-dashboard";
+import { requireAdmin } from "@/lib/require-admin";
 
 async function AdminDashboardContent() {
-  const dashboard = await getAdminDashboardData();
+  const user = await requireAdmin();
+  const dashboard = await getAdminDashboardData(user.id);
 
   return (
     <div className="space-y-10">

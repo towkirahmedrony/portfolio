@@ -118,46 +118,56 @@ export async function getAdminProjectRequest(
   }
 
   const request = data as ProjectRequestRow;
-  let client: ProjectClient | null = null;
-  let serviceName: string | null = null;
-  let referralCode: RequestReferralCode | null = null;
-  let linkedProject: LinkedProjectSummary | null = null;
 
-  if (request.client_id) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, full_name, display_name, company_name, avatar_url")
-      .eq("id", request.client_id)
-      .maybeSingle();
-    client = profile ?? null;
-  }
+  // The client, service, referral-code and linked-project lookups are
+  // independent of each other — run them concurrently instead of in series.
+  const clientPromise = request.client_id
+    ? supabase
+        .from("profiles")
+        .select("id, full_name, display_name, company_name, avatar_url")
+        .eq("id", request.client_id)
+        .maybeSingle()
+        .then(({ data: profile }) => (profile as ProjectClient | null) ?? null)
+    : Promise.resolve(null);
 
-  if (request.service_id) {
-    const { data: service } = await supabase
-      .from("services")
-      .select("id, name")
-      .eq("id", request.service_id)
-      .maybeSingle();
-    serviceName = (service as Pick<ServiceRow, "id" | "name"> | null)?.name ?? null;
-  }
+  const servicePromise = request.service_id
+    ? supabase
+        .from("services")
+        .select("id, name")
+        .eq("id", request.service_id)
+        .maybeSingle()
+        .then(
+          ({ data: service }) =>
+            (service as Pick<ServiceRow, "id" | "name"> | null)?.name ?? null,
+        )
+    : Promise.resolve(null);
 
-  if (request.referral_code_id) {
-    const { data: code } = await supabase
-      .from("referral_codes")
-      .select("id, code, is_active")
-      .eq("id", request.referral_code_id)
-      .maybeSingle();
-    referralCode = (code as RequestReferralCode | null) ?? null;
-  }
+  const referralPromise = request.referral_code_id
+    ? supabase
+        .from("referral_codes")
+        .select("id, code, is_active")
+        .eq("id", request.referral_code_id)
+        .maybeSingle()
+        .then(({ data: code }) => (code as RequestReferralCode | null) ?? null)
+    : Promise.resolve(null);
 
-  const { data: projectRows } = await supabase
+  const linkedProjectPromise = supabase
     .from("projects")
     .select("id, project_number, title, status, created_at")
     .eq("request_id", request.id)
     .order("created_at", { ascending: true })
-    .limit(1);
+    .limit(1)
+    .then(
+      ({ data: projectRows }) =>
+        (projectRows?.[0] as LinkedProjectSummary | undefined) ?? null,
+    );
 
-  linkedProject = (projectRows?.[0] as LinkedProjectSummary | undefined) ?? null;
+  const [client, serviceName, referralCode, linkedProject] = await Promise.all([
+    clientPromise,
+    servicePromise,
+    referralPromise,
+    linkedProjectPromise,
+  ]);
 
   return {
     status: "ok",

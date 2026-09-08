@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { decideAdminAccess } from "@/lib/admin-access";
@@ -20,10 +21,15 @@ async function getRequestedAdminPath(): Promise<string> {
   return "/admin";
 }
 
-export async function requireAdmin(): Promise<AdminSessionUser> {
-  if (!isSupabaseConfigured()) {
-    redirect(getAdminLoginRedirectPath(await getRequestedAdminPath()));
-  }
+// Every admin page calls requireAdmin() (route layout + page). Memoize per
+// request so the 4-step auth check (session user, session sync, admin RPC,
+// profile row) runs ONCE per page render instead of once per caller, which
+// previously doubled the auth round-trips on every admin page.
+export const requireAdmin = cache(
+  async function requireAdmin(): Promise<AdminSessionUser> {
+    if (!isSupabaseConfigured()) {
+      redirect(getAdminLoginRedirectPath(await getRequestedAdminPath()));
+    }
 
   const supabase = await createServerSupabaseClient();
   const {
@@ -61,10 +67,11 @@ export async function requireAdmin(): Promise<AdminSessionUser> {
     redirect("/profile");
   }
 
-  return {
-    id: user.id,
-    email: user.email ?? "",
-    displayName: profile?.display_name || profile?.full_name || user.email || "Admin",
-    role: "admin",
-  };
-}
+    return {
+      id: user.id,
+      email: user.email ?? "",
+      displayName: profile?.display_name || profile?.full_name || user.email || "Admin",
+      role: "admin",
+    };
+  },
+);

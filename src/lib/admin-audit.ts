@@ -80,37 +80,25 @@ async function fetchActorNames(
 export async function getAuditFacets(): Promise<AuditFacets> {
   const supabase = await createServerSupabaseClient();
 
-  const [actorRows, actionRows, entityRows] = await Promise.all([
-    supabase
-      .from("audit_logs")
-      .select("actor_id")
-      .not("actor_id", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1000),
-    supabase
-      .from("audit_logs")
-      .select("action")
-      .order("created_at", { ascending: false })
-      .limit(1000),
-    supabase
-      .from("audit_logs")
-      .select("entity_type")
-      .order("created_at", { ascending: false })
-      .limit(1000),
-  ]);
+  // One bounded read of the recent rows instead of three scans of the same
+  // table: actor/action/entity facets are derived from the same 1000 rows.
+  const { data: rows, error } = await supabase
+    .from("audit_logs")
+    .select("actor_id, action, entity_type")
+    .order("created_at", { ascending: false })
+    .limit(1000);
 
-  if (actorRows.error || actionRows.error || entityRows.error) {
-    const error = actorRows.error ?? actionRows.error ?? entityRows.error;
-    const base = toQueryResult<AuditActorOption[]>([], error, "audit_logs", true);
+  if (error) {
     return {
-      actors: base as QueryResult<AuditActorOption[]>,
+      actors: toQueryResult([], error, "audit_logs", true) as QueryResult<AuditActorOption[]>,
       actions: toQueryResult([], error, "audit_logs", true) as QueryResult<string[]>,
       entities: toQueryResult([], error, "audit_logs", true) as QueryResult<string[]>,
     };
   }
 
+  const latest = rows ?? [];
   const actorIds = [
-    ...new Set((actorRows.data ?? []).map((row) => row.actor_id).filter((v): v is string => Boolean(v))),
+    ...new Set(latest.map((row) => row.actor_id).filter((v): v is string => Boolean(v))),
   ];
   const names = await fetchActorNames(supabase, actorIds);
   const actors: AuditActorOption[] = actorIds
@@ -118,10 +106,10 @@ export async function getAuditFacets(): Promise<AuditFacets> {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const actions = [
-    ...new Set((actionRows.data ?? []).map((row) => row.action)),
+    ...new Set(latest.map((row) => row.action)),
   ].sort((a, b) => a.localeCompare(b));
   const entities = [
-    ...new Set((entityRows.data ?? []).map((row) => row.entity_type)),
+    ...new Set(latest.map((row) => row.entity_type)),
   ].sort((a, b) => a.localeCompare(b));
 
   return {
@@ -157,20 +145,7 @@ export async function getAuditLogs(
   if (from) countQuery = countQuery.gte("created_at", `${from}T00:00:00.000Z`);
   if (to) countQuery = countQuery.lte("created_at", `${to}T23:59:59.999Z`);
 
-  const { count, error: countError } = await countQuery;
-  if (countError) {
-    return toQueryResult(
-      { items: [], total: 0, page: 1, totalPages: 1 },
-      countError,
-      "audit_logs",
-      true,
-    );
-  }
-
-  const total = count ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / AUDIT_LOG_PAGE_SIZE));
-  const page = Math.min(requestedPage, totalPages);
-  const fromRow = (page - 1) * AUDIT_LOG_PAGE_SIZE;
+  const fromRow = (requestedPage - 1) * AUDIT_LOG_PAGE_SIZE;
   const toRow = fromRow + AUDIT_LOG_PAGE_SIZE - 1;
 
   let dataQuery = supabase
@@ -189,7 +164,25 @@ export async function getAuditLogs(
   if (to) dataQuery = dataQuery.lte("created_at", `${to}T23:59:59.999Z`);
   dataQuery = dataQuery.range(fromRow, toRow);
 
-  const { data, error } = await dataQuery;
+  // Count and page data are independent — run them concurrently instead of
+  // waiting for the total before fetching the page.
+  const [{ count, error: countError }, { data, error }] = await Promise.all([
+    countQuery,
+    dataQuery,
+  ]);
+
+  if (countError) {
+    return toQueryResult(
+      { items: [], total: 0, page: 1, totalPages: 1 },
+      countError,
+      "audit_logs",
+      true,
+    );
+  }
+
+  const total = count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / AUDIT_LOG_PAGE_SIZE));
+
   if (error) {
     return toQueryResult(
       { items: [], total: 0, page: 1, totalPages: 1 },
@@ -199,7 +192,17 @@ export async function getAuditLogs(
     );
   }
 
-  const rows = (data ?? []) as AuditLogRow[];
+  // A hand-edited ?page= beyond the last page: the parallel data query above
+  // used the raw requested page, so re-fetch with the clamped range.
+  let rows = (data ?? []) as AuditLogRow[];
+  if (requestedPage > totalPages) {
+    const clampedFromRow = (totalPages - 1) * AUDIT_LOG_PAGE_SIZE;
+    const clampedToRow = clampedFromRow + AUDIT_LOG_PAGE_SIZE - 1;
+    const { data: clampedData } = await dataQuery.range(clampedFromRow, clampedToRow);
+    rows = (clampedData ?? []) as AuditLogRow[];
+  }
+  const page = Math.min(requestedPage, totalPages);
+
   const actorIds = [
     ...new Set(rows.map((row) => row.actor_id).filter((v): v is string => Boolean(v))),
   ];

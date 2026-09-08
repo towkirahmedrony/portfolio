@@ -16,11 +16,13 @@ import { createInvoiceFromQuote } from "@/lib/admin-invoice-actions";
 export function QuotesListTable({ quotes }: { quotes: AdminQuoteListItem[] }) {
   // Latest version per scope (request/project) — change-request markers on
   // superseded versions are historical and not shown as needing action.
+  // Built in a single pass (O(n)) instead of a find() inside the loop (O(n^2)).
+  const versionById = new Map(quotes.map((quote) => [quote.id, quote.version]));
   const latestByScope = new Map<string, string>();
   for (const quote of quotes) {
     const key = quote.project_request_id ?? quote.project_id ?? quote.id;
     const current = latestByScope.get(key);
-    if (!current || quote.version > (quotes.find((q) => q.id === current)?.version ?? 0)) {
+    if (!current || quote.version > (versionById.get(current) ?? 0)) {
       latestByScope.set(key, quote.id);
     }
   }
