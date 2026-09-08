@@ -19,14 +19,14 @@ async function AdminDashboardContent() {
     <div className="space-y-10">
       <DashboardSection
         title="Today's Snapshot"
-        description="Live counts from project requests, projects, invoices, and payments."
+        description="Live counts from project requests, projects, invoices, and payments. Open a card to jump to that list."
       >
         <StatCardGrid metrics={dashboard.metrics} />
       </DashboardSection>
 
       <DashboardSection
         title="Action Needed"
-        description="Queues that still need an admin response. Detail pages will be added later."
+        description="Queues that still need an admin response. Open a card to jump to that list."
       >
         <ActionItemGrid items={dashboard.actions} />
       </DashboardSection>
@@ -34,6 +34,8 @@ async function AdminDashboardContent() {
       <DashboardSection
         title="Client Quote Responses"
         description="Quote Accepted, Quote Rejected, and Quote Change Requested decisions from clients, with the project (PJ-...) or request (PR-...) they belong to. Unanswered change requests are flagged and open the exact project or quote."
+        href="/admin/quotes"
+        actionLabel="View all"
       >
         <ClientQuoteResponses responses={dashboard.quoteResponses} />
       </DashboardSection>
@@ -41,6 +43,8 @@ async function AdminDashboardContent() {
       <DashboardSection
         title="Recent Activity"
         description="Latest rows from audit_logs, showing actor, action, entity, and time."
+        href="/admin/audit-logs"
+        actionLabel="View all"
       >
         <ActivityFeed activity={dashboard.activity} />
       </DashboardSection>

@@ -169,7 +169,7 @@ export function ClientQuoteResponses({
                 <div className="sm:text-right">
                   <Link
                     href={responseHref(item)}
-                    className="inline-flex items-center gap-1 rounded-xl border border-card-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:border-foreground/30"
+                    className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-card-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:border-foreground/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   >
                     {responseActionLabel(item)}
                   </Link>
