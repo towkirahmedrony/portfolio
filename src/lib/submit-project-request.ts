@@ -73,9 +73,6 @@ export async function submitProjectRequest(
     };
   }
 
-  // TEMP DEBUG: remove once the submit error is found.
-  console.error("submitProjectRequest payload:", JSON.stringify(payload, null, 2));
-
   for (let attempt = 0; attempt < MAX_REQUEST_NUMBER_ATTEMPTS; attempt += 1) {
     const insertPayload =
       attempt === 0
@@ -96,15 +93,6 @@ export async function submitProjectRequest(
         requestId: inserted.id,
         requestNumber: inserted.request_number ?? insertPayload.request_number ?? generateRequestNumber(),
       };
-    }
-
-    if (error) {
-      console.error("submitProjectRequest insert failed:", {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-      });
     }
 
     if (error && uniqueViolation(error) && attempt < MAX_REQUEST_NUMBER_ATTEMPTS - 1) {

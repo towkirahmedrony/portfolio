@@ -482,6 +482,7 @@ export async function getCustomerProjectRequest(
     uploaded_by?: string | null;
     form_field_key?: string | null;
   }> | null = null;
+  let requestFileError: { message: string } | null = null;
   const withKey = await supabase
     .from("project_files")
     .select("id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by, form_field_key")
@@ -489,6 +490,8 @@ export async function getCustomerProjectRequest(
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (withKey.error && isMissingColumn(withKey.error)) {
+    // The form_field_key column does not exist in this database yet — retry
+    // without it so request files still load on the older schema.
     const fallback = await supabase
       .from("project_files")
       .select("id, original_name, category, file_size_bytes, created_at, bucket_name, storage_path, uploaded_by")
@@ -496,8 +499,10 @@ export async function getCustomerProjectRequest(
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
     requestFileRows = fallback.data;
-  } else if (!withKey.error) {
+    requestFileError = fallback.error;
+  } else {
     requestFileRows = withKey.data;
+    requestFileError = withKey.error;
   }
 
   if (!requestFileError) {

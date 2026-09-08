@@ -15,7 +15,11 @@ import {
 } from "@/lib/project-request-files";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { FileCategory, RequestStatus } from "@/types/database";
+import type {
+  FileCategory,
+  ProjectFileInsert,
+  RequestStatus,
+} from "@/types/database";
 
 export type ProjectRequestFileActionResult =
   | { ok: true; file: ProjectRequestFileSummary }
@@ -246,7 +250,7 @@ export async function uploadProjectRequestFile(
     };
   }
 
-  const insertPayload: Record<string, unknown> = {
+  const insertPayload: ProjectFileInsert = {
     bucket_name: PROJECT_REQUEST_FILE_BUCKET,
     storage_path: storagePath,
     original_name: file.name,
