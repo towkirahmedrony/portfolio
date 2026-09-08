@@ -124,17 +124,19 @@ export function ProjectTracking({
                       >
                         {isQuoteAwaitingClient(item.quote) ? "Review Quote" : "View Details"}
                       </Link>
-                      <Link
-                        href={`/profile/projects/${project.id}/messages`}
-                        className="inline-flex w-fit items-center justify-center gap-2 rounded-md border border-card-border bg-background px-4 py-2 text-xs font-bold text-foreground transition-colors hover:border-accent/40 hover:text-accent"
-                      >
-                        Messages
-                        {unreadByProject[project.id] ? (
-                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
-                            {unreadByProject[project.id]}
-                          </span>
-                        ) : null}
-                      </Link>
+                      {project.status !== "cancelled" ? (
+                        <Link
+                          href={`/profile/projects/${project.id}/messages`}
+                          className="inline-flex w-fit items-center justify-center gap-2 rounded-md border border-card-border bg-background px-4 py-2 text-xs font-bold text-foreground transition-colors hover:border-accent/40 hover:text-accent"
+                        >
+                          Messages
+                          {unreadByProject[project.id] ? (
+                            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
+                              {unreadByProject[project.id]}
+                            </span>
+                          ) : null}
+                        </Link>
+                      ) : null}
                     </div>
                   </div>
                 </div>

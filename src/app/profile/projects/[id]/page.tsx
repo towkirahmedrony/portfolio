@@ -111,20 +111,39 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
         </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <ButtonLink href={`/profile/projects/${project.id}/messages`} variant="secondary" size="md">
-          Chat with Admin &rarr;
-        </ButtonLink>
-        {unreadMessages > 0 ? (
-          <span className="inline-flex items-center rounded-full bg-accent/10 px-3 py-1.5 text-xs font-bold text-accent">
-            {unreadMessages} new {unreadMessages === 1 ? "message" : "messages"}
-          </span>
-        ) : (
+      {project.status === "cancelled" ? (
+        <div className="mt-6 flex flex-wrap items-center gap-3">
           <span className="text-xs text-muted">
-            Live conversation about this project with the team
+            This project was cancelled, so new messages can&apos;t be sent. Past
+            messages remain available.
           </span>
-        )}
-      </div>
+          <Link
+            href={`/profile/projects/${project.id}/messages`}
+            className="inline-flex items-center justify-center rounded-full border border-card-border bg-background px-4 py-2 text-xs font-medium text-foreground transition-colors hover:border-accent/40 hover:text-accent"
+          >
+            View past messages
+          </Link>
+        </div>
+      ) : (
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <ButtonLink
+            href={`/profile/projects/${project.id}/messages`}
+            variant="secondary"
+            size="md"
+          >
+            Chat with Admin &rarr;
+          </ButtonLink>
+          {unreadMessages > 0 ? (
+            <span className="inline-flex items-center rounded-full bg-accent/10 px-3 py-1.5 text-xs font-bold text-accent">
+              {unreadMessages} new {unreadMessages === 1 ? "message" : "messages"}
+            </span>
+          ) : (
+            <span className="text-xs text-muted">
+              Live conversation about this project with the team
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <Card className="hover:translate-y-0 flex flex-col justify-between">

@@ -29,7 +29,7 @@ export default async function ProjectMessagesPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, project_number, title, client_id")
+    .select("id, project_number, title, client_id, status")
     .eq("id", projectId)
     .eq("client_id", user.id)
     .maybeSingle();
@@ -70,6 +70,7 @@ export default async function ProjectMessagesPage({
         clientName={clientName}
         backHref={`/profile/projects/${project.id}`}
         backLabel="Project details"
+        allowSendMessages={project.status !== "cancelled"}
       />
     </div>
   );

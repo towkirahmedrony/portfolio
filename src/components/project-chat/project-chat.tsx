@@ -52,6 +52,13 @@ type ProjectChatProps = {
   backHref: string;
   backLabel?: string;
   className?: string;
+  /**
+   * Whether this viewer may send new messages. The client chat page passes
+   * false for cancelled projects (read-only history); Admin usage stays
+   * enabled by default. The database RPC independently rejects client sends
+   * on cancelled projects.
+   */
+  allowSendMessages?: boolean;
 };
 
 function asMessageRow(value: unknown): ProjectMessageRow | null {
@@ -155,6 +162,7 @@ export function ProjectChat({
   backHref,
   backLabel = "Back to project",
   className,
+  allowSendMessages = true,
 }: ProjectChatProps) {
   const [messages, setMessages] = useState<ProjectMessageRow[]>([]);
   const [viewer, setViewer] = useState<Viewer | null>(null);
@@ -350,7 +358,7 @@ export function ProjectChat({
   const send = useCallback(async () => {
     const currentViewer = viewerRef.current;
     const body = draft.trim();
-    if (!client || !currentViewer || sending || !body) {
+    if (!client || !currentViewer || sending || !body || !allowSendMessages) {
       return;
     }
     if (body.length > MAX_MESSAGE_LENGTH) {
@@ -387,7 +395,7 @@ export function ProjectChat({
     } finally {
       setSending(false);
     }
-  }, [client, draft, sending, projectId, updateMessages, scrollToBottom, loadLatest]);
+  }, [client, draft, sending, projectId, allowSendMessages, updateMessages, scrollToBottom, loadLatest]);
 
   const handleSubmit = useCallback(
     (event: FormEvent) => {
@@ -604,8 +612,9 @@ export function ProjectChat({
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
             <p className="text-sm font-medium text-foreground">No messages yet</p>
             <p className="max-w-xs text-xs leading-5 text-muted">
-              This conversation is attached to {projectNumber}. Messages you send
-              appear instantly for the other side.
+              {allowSendMessages
+                ? `This conversation is attached to ${projectNumber}. Messages you send appear instantly for the other side.`
+                : `This project was cancelled before any messages were exchanged, so new messages can't be sent.`}
             </p>
           </div>
         ) : (
@@ -694,11 +703,20 @@ export function ProjectChat({
 
       {/* Composer */}
       <div className="border-t border-card-border bg-card px-3 py-3 sm:px-4">
-        {sendError ? (
-          <p className="mb-2 px-1 text-xs text-red-600" role="alert">
-            {sendError}
-          </p>
-        ) : null}
+        {!allowSendMessages ? (
+          <div className="flex items-center gap-3 px-1 py-2">
+            <span className="text-sm text-muted" role="status">
+              This project was cancelled — new messages can&apos;t be sent. The
+              history above remains available.
+            </span>
+          </div>
+        ) : (
+          <>
+            {sendError ? (
+              <p className="mb-2 px-1 text-xs text-red-600" role="alert">
+                {sendError}
+              </p>
+            ) : null}
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
           <textarea
             ref={textareaRef}
@@ -721,10 +739,12 @@ export function ProjectChat({
           >
             {sending ? "Sending…" : "Send"}
           </button>
-        </form>
-        <p className="mt-1.5 px-1 text-[11px] text-muted">
-          Shift + Enter for a new line · {draft.length}/{MAX_MESSAGE_LENGTH}
-        </p>
+          </form>
+          <p className="mt-1.5 px-1 text-[11px] text-muted">
+            Shift + Enter for a new line · {draft.length}/{MAX_MESSAGE_LENGTH}
+          </p>
+          </>
+        )}
       </div>
 
       {/* Jump to newest when scrolled up and a new message arrives */}
