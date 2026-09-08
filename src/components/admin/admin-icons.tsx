@@ -299,6 +299,28 @@ function FilesIcon(props: IconProps) {
   );
 }
 
+function FormIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect
+        x="5"
+        y="4"
+        width="14"
+        height="16"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M8 8h8M8 12h8M8 16h5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </Icon>
+  );
+}
+
 function AuditIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -360,6 +382,7 @@ const navIcons: Record<
   reviews: ReviewsIcon,
   files: FilesIcon,
   audit: AuditIcon,
+  form: FormIcon,
 };
 
 export function AdminNavIcon({

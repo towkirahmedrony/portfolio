@@ -51,6 +51,7 @@ export async function getOrderFormConfig(): Promise<
         .from("order_form_fields")
         .select("*")
         .eq("is_active", true)
+        .eq("visible", true)
         .order("sort_order", { ascending: true })
         .order("id", { ascending: true }),
       supabase
@@ -79,7 +80,7 @@ export async function getOrderFormConfig(): Promise<
     const activeStepIds = new Set(steps.map((step) => step.id));
     const config = buildOrderFormConfig(
       steps,
-      fields.filter((field) => activeStepIds.has(field.step_id)),
+      fields.filter((field) => activeStepIds.has(field.step_id) && field.visible !== false),
       options,
     );
 

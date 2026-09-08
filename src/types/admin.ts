@@ -17,7 +17,8 @@ export type AdminNavIcon =
   | "services"
   | "reviews"
   | "files"
-  | "audit";
+  | "audit"
+  | "form";
 
 export type AdminNavItem = {
   id: string;
