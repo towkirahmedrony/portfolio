@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { CustomerProfile } from "@/components/profile/customer-profile";
@@ -111,12 +112,42 @@ export default async function ProfilePage() {
     );
   }
 
+  const totalUnreadMessages = Object.values(unreadByProject).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+
   return (
     <section className="py-12 sm:py-16 mt-8 sm:mt-12">
       <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
         <div className="grid gap-5">
           {unviewedQuote ? <NewQuoteReceivedModal alert={unviewedQuote} /> : null}
           <CustomerProfile initialProfile={mapped.profile} initialAccount={mapped.account} />
+          <Link
+            href="/profile/messages"
+            className="flex items-center justify-between gap-4 rounded-3xl border border-card-border bg-card p-5 transition-colors hover:border-accent/30 sm:p-6"
+          >
+            <div>
+              <p className="flex items-center gap-2 font-display text-lg font-medium tracking-tight text-foreground">
+                Messages
+                {totalUnreadMessages > 0 ? (
+                  <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-accent px-2 text-xs font-bold text-accent-foreground">
+                    {totalUnreadMessages}
+                  </span>
+                ) : null}
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                {totalUnreadMessages > 0
+                  ? `You have ${totalUnreadMessages} unread ${
+                      totalUnreadMessages === 1 ? "message" : "messages"
+                    } from the team.`
+                  : "Chat with the team about your projects."}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-accent/10 px-4 py-2 text-xs font-bold text-accent">
+              {totalUnreadMessages > 0 ? "Open messages" : "Start a chat"} &rarr;
+            </span>
+          </Link>
           <QuoteActionBanner alerts={quoteAlerts} />
           <CustomerRequests items={requestItems} />
           <ProjectTracking items={requestItems} unreadByProject={unreadByProject} />

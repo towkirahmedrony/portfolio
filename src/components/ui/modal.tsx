@@ -8,15 +8,24 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@/lib/utils";
 
 type ModalProps = {
   title: string;
   description?: string;
   onClose: () => void;
   children: ReactNode;
+  /** "bottom" = bottom sheet on mobile, centered from sm up (default, existing behavior). "center" = always centered in the viewport. */
+  align?: "bottom" | "center";
 };
 
-export function Modal({ title, description, onClose, children }: ModalProps) {
+export function Modal({
+  title,
+  description,
+  onClose,
+  children,
+  align = "bottom",
+}: ModalProps) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -77,7 +86,12 @@ export function Modal({ title, description, onClose, children }: ModalProps) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-end justify-center p-4 sm:items-center">
+    <div
+      className={cn(
+        "fixed inset-0 z-[80] flex justify-center p-4",
+        align === "center" ? "items-center" : "items-end sm:items-center",
+      )}
+    >
       <button
         type="button"
         className="absolute inset-0 bg-foreground/45 backdrop-blur-[2px]"
