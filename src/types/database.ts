@@ -1422,6 +1422,8 @@ export type Database = {
       quotes: {
         Row: {
           accepted_at: string | null
+          client_change_message: string | null
+          client_change_requested_at: string | null
           created_at: string
           currency: string | null
           discount_total: number
@@ -1442,6 +1444,8 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          client_change_message?: string | null
+          client_change_requested_at?: string | null
           created_at?: string
           currency?: string | null
           discount_total?: number
@@ -1462,6 +1466,8 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          client_change_message?: string | null
+          client_change_requested_at?: string | null
           created_at?: string
           currency?: string | null
           discount_total?: number

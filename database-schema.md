@@ -395,6 +395,7 @@ Quotes attach to a project request and may exist before any project. Multiple ve
 | status | quote_status | default `draft` |
 | valid_until | timestamptz | |
 | sent_at / accepted_at / rejected_at | timestamptz | |
+| client_change_requested_at / client_change_message | timestamptz / text | set by `client_respond_to_quote('request_changes')` so the change request is as visible as accept/reject on the quote row (added 20260908160000) |
 | created_at / updated_at | timestamptz | |
 
 ### `quote_items`

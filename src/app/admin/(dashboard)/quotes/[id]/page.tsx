@@ -5,6 +5,9 @@ import { QueryStateNotice, StatusPill } from "@/components/admin/projects/query-
 import { QuoteActions } from "@/components/admin/quotes/quote-actions";
 import { QuoteEditor } from "@/components/admin/quotes/quote-editor";
 import { QuoteVersionHistory } from "@/components/admin/quotes/quote-version-history";
+import {
+  isQuoteChangeRequestPending,
+} from "@/lib/admin-quote-responses";
 import { clientDisplayName, formatDateTime } from "@/lib/admin-projects";
 import {
   canEditQuote,
@@ -43,6 +46,16 @@ export default async function AdminQuoteDetailPage({
   const { quote, items, project, request, client, versions, invoice } = quoteResult.data;
   const editable = canEditQuote(quote.status);
 
+  const hasClientChangeRequest = Boolean(quote.client_change_requested_at);
+  const changeRequestOpen =
+    hasClientChangeRequest &&
+    isQuoteChangeRequestPending(
+      { status: quote.status, createdAt: quote.client_change_requested_at ?? quote.created_at },
+      versions
+        .filter((version) => version.id !== quote.id)
+        .map((version) => ({ status: version.status, createdAt: version.created_at })),
+    );
+
   return (
     <AdminPage
       title={quoteDisplayId(quote)}
@@ -72,7 +85,36 @@ export default async function AdminQuoteDetailPage({
         ) : (
           <span className="text-sm text-muted">Created {formatDateTime(quote.created_at)}</span>
         )}
+        {hasClientChangeRequest ? (
+          <StatusPill
+            label="Changes requested"
+            className="bg-amber-500/10 text-amber-700 border-amber-500/25 dark:text-amber-400"
+          />
+        ) : null}
       </div>
+      {hasClientChangeRequest && quote.client_change_message ? (
+        <div
+          className={`mb-6 rounded-2xl border px-5 py-4 ${
+            changeRequestOpen
+              ? "border-amber-500/30 bg-amber-500/10"
+              : "border-card-border bg-card"
+          }`}
+        >
+          <p className="text-sm font-medium text-foreground">
+            {changeRequestOpen ? "Client is waiting on a revised quote" : "Client requested changes (later revised)"}
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted">
+            {quote.client_change_message}
+          </p>
+          <p className="mt-2 text-xs text-muted">
+            Requested {formatDateTime(quote.client_change_requested_at)} on Quote v
+            {quote.version}.{" "}
+            {changeRequestOpen
+              ? "Create a new version from the Actions panel and send it to revise this quote."
+              : "A newer quote version has already been sent or accepted."}
+          </p>
+        </div>
+      ) : null}
       {editable ? null : (
         <p className="mb-6 text-sm text-muted">
           This version is {formatQuoteStatusLabel(quote.status).toLowerCase()} and cannot be overwritten. Create a new version to make changes.

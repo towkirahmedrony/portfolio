@@ -4,6 +4,7 @@ import { StatusPill } from "@/components/admin/projects/query-state";
 import { formatMoney } from "@/lib/admin-dashboard";
 import { clientDisplayName, formatDateTime } from "@/lib/admin-projects";
 import { sendQuoteToClient } from "@/lib/admin-quote-actions";
+import { PENDING_CHANGE_REQUEST_STATUSES } from "@/lib/admin-quote-responses";
 import {
   formatQuoteStatusLabel,
   getQuoteStatusStyle,
@@ -13,6 +14,27 @@ import {
 import { createInvoiceFromQuote } from "@/lib/admin-invoice-actions";
 
 export function QuotesListTable({ quotes }: { quotes: AdminQuoteListItem[] }) {
+  // Latest version per scope (request/project) — change-request markers on
+  // superseded versions are historical and not shown as needing action.
+  const latestByScope = new Map<string, string>();
+  for (const quote of quotes) {
+    const key = quote.project_request_id ?? quote.project_id ?? quote.id;
+    const current = latestByScope.get(key);
+    if (!current || quote.version > (quotes.find((q) => q.id === current)?.version ?? 0)) {
+      latestByScope.set(key, quote.id);
+    }
+  }
+
+  function pendingChangeRequest(quote: AdminQuoteListItem): boolean {
+    if (
+      !quote.client_change_requested_at ||
+      !PENDING_CHANGE_REQUEST_STATUSES.includes(quote.status)
+    ) {
+      return false;
+    }
+    return latestByScope.get(quote.project_request_id ?? quote.project_id ?? quote.id) === quote.id;
+  }
+
   return (
     <div className="overflow-x-auto rounded-3xl border border-card-border bg-card">
       <table className="w-full min-w-[86rem] text-left text-sm">
@@ -90,6 +112,14 @@ export function QuotesListTable({ quotes }: { quotes: AdminQuoteListItem[] }) {
                   label={formatQuoteStatusLabel(quote.status)}
                   className={getQuoteStatusStyle(quote.status)}
                 />
+                {pendingChangeRequest(quote) ? (
+                  <div className="mt-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+                      Client requested changes
+                    </span>
+                  </div>
+                ) : null}
               </td>
               <td className="px-4 py-3 text-muted">
                 <div>{formatDateTime(quote.created_at)}</div>
@@ -99,6 +129,14 @@ export function QuotesListTable({ quotes }: { quotes: AdminQuoteListItem[] }) {
               </td>
               <td className="px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
+                  {pendingChangeRequest(quote) ? (
+                    <Link
+                      href={`/admin/quotes/${quote.id}`}
+                      className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"
+                    >
+                      Review change request
+                    </Link>
+                  ) : null}
                   {quote.status === "draft" ? (
                     <>
                       <Link

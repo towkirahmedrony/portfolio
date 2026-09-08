@@ -27,6 +27,7 @@ import {
   getStatusStyle,
   isProjectDetailTab,
 } from "@/lib/admin-projects";
+import { getProjectQuoteChangeRequests } from "@/lib/admin-quote-responses";
 import { requireAdmin } from "@/lib/require-admin";
 
 export default async function AdminProjectDetailPage({
@@ -88,6 +89,7 @@ export default async function AdminProjectDetailPage({
       <ProjectMessagesTab
         projectId={project.id}
         result={await getProjectMessages(project.id)}
+        changeRequests={await getProjectQuoteChangeRequests(project.id)}
       />
     );
   } else if (tab === "financial") {

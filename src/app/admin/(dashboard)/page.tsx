@@ -31,7 +31,7 @@ async function AdminDashboardContent() {
 
       <DashboardSection
         title="Client Quote Responses"
-        description="Recent accept, reject, and change-request decisions, identified by quote request (PR-...) or project (PJ-...)."
+        description="Quote Accepted, Quote Rejected, and Quote Change Requested decisions from clients, with the project (PJ-...) or request (PR-...) they belong to. Unanswered change requests are flagged and open the exact project or quote."
       >
         <ClientQuoteResponses responses={dashboard.quoteResponses} />
       </DashboardSection>
