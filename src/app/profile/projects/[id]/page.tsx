@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ClientQuoteSection } from "@/components/profile/client-quote-section";
 import { FileDownloader } from "@/components/profile/file-downloader";
@@ -56,14 +57,16 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
   }
 
   const project = detail.project;
-  const [ { data: milestones }, { data: invoices }, { data: reqData }, { data: files }, { data: history }, { data: discounts } ] = await Promise.all([
+  const [ { data: milestones }, { data: invoices }, { data: reqData }, { data: files }, { data: history }, { data: discounts }, { count: unreadMessageCount } ] = await Promise.all([
     supabase.from("project_milestones").select("*").eq("project_id", projectId).order("sort_order"),
     supabase.from("invoices").select("*").eq("project_id", projectId),
     supabase.from("project_requirements").select("*").eq("project_id", projectId),
     supabase.from("project_files").select("*").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("project_status_history").select("*").eq("project_id", projectId).order("created_at", { ascending: false }),
-    supabase.from("project_discounts").select("*").eq("project_id", projectId)
+    supabase.from("project_discounts").select("*").eq("project_id", projectId),
+    supabase.from("project_messages").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("is_read", false).neq("sender_id", user.id)
   ]);
+  const unreadMessages = unreadMessageCount ?? 0;
 
   const totalPaid = (invoices as InvoiceRow[])?.reduce((sum, inv) => sum + Number(inv.amount_paid || 0), 0) || 0;
   const totalDue = (invoices as InvoiceRow[])?.reduce((sum, inv) => sum + Number(inv.amount_due || 0), 0) || 0;
@@ -106,6 +109,21 @@ export default async function ProjectDetailsPage({ params }: { params: Promise<{
           <h1 className="font-display mt-2 text-3xl tracking-tight sm:text-4xl">{project.title}</h1>
           {project.description && <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">{project.description}</p>}
         </div>
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <ButtonLink href={`/profile/projects/${project.id}/messages`} variant="secondary" size="md">
+          Chat with Admin &rarr;
+        </ButtonLink>
+        {unreadMessages > 0 ? (
+          <span className="inline-flex items-center rounded-full bg-accent/10 px-3 py-1.5 text-xs font-bold text-accent">
+            {unreadMessages} new {unreadMessages === 1 ? "message" : "messages"}
+          </span>
+        ) : (
+          <span className="text-xs text-muted">
+            Live conversation about this project with the team
+          </span>
+        )}
       </div>
 
       <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

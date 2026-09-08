@@ -1,20 +1,16 @@
 import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/admin/projects/action-form";
 import { AdminPanel, QueryStateNotice } from "@/components/admin/projects/query-state";
+import { ProjectChat } from "@/components/project-chat/project-chat";
 import { sendProjectMessage } from "@/lib/admin-project-actions";
 import {
   clientDisplayName,
-  formatDateTime,
-  type ProjectClient,
-  type QueryResult,
+  type AdminProjectListItem,
 } from "@/lib/admin-projects";
 import type { ProjectQuoteChangeRequestsResult } from "@/lib/admin-quote-responses";
-import type { ProjectMessageRow } from "@/types/database";
 
 const fieldClass =
   "w-full rounded-xl border border-card-border bg-background px-3 py-2 text-sm text-foreground";
-
-type MessageWithSender = ProjectMessageRow & { sender: ProjectClient | null };
 
 function QuoteChangeRequestsPanel({
   projectId,
@@ -33,7 +29,7 @@ function QuoteChangeRequestsPanel({
   return (
     <AdminPanel
       title="Client requested quote changes"
-      description="Open change requests on quotes for this project. Reply below — the message is sent to the client on this project's thread."
+      description="Open change requests on quotes for this project. Reply below — the message is sent to the client on this project's conversation."
     >
       <div className="grid gap-4">
         {changeRequests.items.map((request) => {
@@ -50,26 +46,18 @@ function QuoteChangeRequestsPanel({
                   Quote v{request.quoteVersion}
                   {reference ? <span className="text-muted"> · {reference}</span> : null}
                 </p>
-                <span className="text-xs text-muted">
-                  {formatDateTime(request.changeRequestedAt)}
-                </span>
-              </div>
-              {request.message ? (
-                <p className="mt-2 whitespace-pre-line rounded-xl bg-background/70 px-3 py-2 text-sm leading-6 text-foreground">
-                  {request.message}
-                </p>
-              ) : null}
-              <div className="mt-3 flex flex-wrap items-center gap-3">
                 <Link
                   href={`/admin/quotes/${request.quoteId}`}
                   className="text-xs font-medium text-amber-700 hover:underline dark:text-amber-400"
                 >
                   Open quote v{request.quoteVersion}
                 </Link>
-                <span className="text-xs text-muted">
-                  Client is waiting — revise the quote or reply below.
-                </span>
               </div>
+              {request.message ? (
+                <p className="mt-2 whitespace-pre-line rounded-xl bg-background/70 px-3 py-2 text-sm leading-6 text-foreground">
+                  {request.message}
+                </p>
+              ) : null}
               <ActionForm
                 action={sendProjectMessage}
                 className="mt-3 grid gap-2"
@@ -98,88 +86,50 @@ function QuoteChangeRequestsPanel({
   );
 }
 
+/**
+ * Admin view of the project conversation (tab on the Admin project details
+ * page). The thread itself is the realtime ProjectChat component shared with
+ * the client — every message written here goes through send_project_message
+ * (auth.uid() = sender, is_active_admin() enforced in the database) and is
+ * streamed to the client over Supabase Realtime.
+ */
 export function ProjectMessagesTab({
-  projectId,
-  result,
+  project,
   changeRequests,
 }: {
-  projectId: string;
-  result: QueryResult<MessageWithSender[]>;
+  project: AdminProjectListItem;
   changeRequests?: ProjectQuoteChangeRequestsResult;
 }) {
-  if (result.status === "error" || result.status === "unavailable") {
-    return <QueryStateNotice result={result} />;
-  }
-
-  const messages = result.status === "empty" ? [] : result.data;
-  const byId = new Map(messages.map((message) => [message.id, message]));
+  const clientId = project.client_id;
+  const clientName = clientDisplayName(project.client);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="min-w-0 space-y-6">
-        {changeRequests ? (
-          <QuoteChangeRequestsPanel projectId={projectId} changeRequests={changeRequests} />
-        ) : null}
-        <AdminPanel
-          title="Message thread"
-          description="Client and admin messages from project_messages."
-        >
-          {messages.length === 0 ? (
-            <QueryStateNotice
-              result={{ status: "empty", data: [] }}
-              emptyMessage="No messages yet."
-            />
-          ) : (
-            <div className="space-y-3">
-              {messages.map((message) => {
-                const replyTo = message.reply_to_id ? byId.get(message.reply_to_id) : null;
-                return (
-                  <article
-                    key={message.id}
-                    className="rounded-2xl border border-card-border bg-background p-4"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-                      <span className="font-medium text-foreground">
-                        {clientDisplayName(message.sender)}
-                      </span>
-                      <span>{formatDateTime(message.created_at)}</span>
-                    </div>
-                    {replyTo ? (
-                      <p className="mt-2 rounded-xl bg-card px-3 py-2 text-xs text-muted">
-                        Replying to {clientDisplayName(replyTo.sender)}: {replyTo.message}
-                      </p>
-                    ) : null}
-                    <p className="mt-2 whitespace-pre-line text-sm text-foreground">{message.message}</p>
-                    <ActionForm action={sendProjectMessage} className="mt-3 grid gap-2">
-                      <input type="hidden" name="projectId" value={projectId} />
-                      <input type="hidden" name="replyToId" value={message.id} />
-                      <input
-                        name="message"
-                        required
-                        placeholder={`Reply to ${clientDisplayName(message.sender)}`}
-                        className={fieldClass}
-                      />
-                      <SubmitButton variant="secondary">Reply</SubmitButton>
-                    </ActionForm>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </AdminPanel>
+      <div className="min-w-0">
+        <ProjectChat
+          projectId={project.id}
+          projectNumber={project.project_number}
+          projectTitle={project.title}
+          clientId={clientId}
+          clientName={clientName}
+          backHref={`/admin/projects/${project.id}?tab=overview`}
+          backLabel="Project overview"
+          className="h-[min(78vh,46rem)] min-h-[30rem]"
+        />
       </div>
 
-      <AdminPanel title="Send message">
-        <ActionForm
-          action={sendProjectMessage}
-          className="grid gap-3"
-          successMessage="Message sent."
-        >
-          <input type="hidden" name="projectId" value={projectId} />
-          <textarea name="message" required rows={6} placeholder="Write a message" className={fieldClass} />
-          <SubmitButton>Send</SubmitButton>
-        </ActionForm>
-      </AdminPanel>
+      <div className="min-w-0 space-y-6">
+        {changeRequests ? (
+          <QuoteChangeRequestsPanel projectId={project.id} changeRequests={changeRequests} />
+        ) : null}
+        <AdminPanel title="About this conversation">
+          <p className="text-sm leading-6 text-muted">
+            This conversation is attached to {project.project_number} and belongs to{" "}
+            <span className="font-medium text-foreground">{clientName}</span>. Messages
+            appear in real time on the client&apos;s project page — no refresh needed.
+          </p>
+        </AdminPanel>
+      </div>
     </div>
   );
 }

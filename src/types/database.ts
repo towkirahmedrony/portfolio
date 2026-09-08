@@ -1985,6 +1985,11 @@ export type Database = {
       generate_request_number: { Args: never; Returns: string }
       is_active_admin: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
+      mark_project_messages_read: { Args: { p_project_id: string }; Returns: number }
+      send_project_message: {
+        Args: { p_message: string; p_project_id: string; p_reply_to_id?: string }
+        Returns: Json
+      }
       sync_customer_session: { Args: never; Returns: undefined }
     }
     Enums: {

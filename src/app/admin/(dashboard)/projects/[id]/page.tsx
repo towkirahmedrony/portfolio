@@ -18,7 +18,6 @@ import {
   getAdminProject,
   getProjectFiles,
   getProjectFinancials,
-  getProjectMessages,
   getProjectMilestones,
   getProjectNotes,
   getProjectRequirements,
@@ -26,6 +25,9 @@ import {
   getPriorityStyle,
   getStatusStyle,
   isProjectDetailTab,
+  type AdminProjectListItem,
+  type ProjectDetailTab,
+  type QueryResult,
 } from "@/lib/admin-projects";
 import { getProjectQuoteChangeRequests } from "@/lib/admin-quote-responses";
 import { requireAdmin } from "@/lib/require-admin";
@@ -34,7 +36,9 @@ import type { ReactNode } from "react";
 /**
  * Loads the active tab's data. Each tab getter only needs the project id (the
  * route param), never the project header row — so it can run concurrently
- * with getAdminProject() instead of waiting for it.
+ * with getAdminProject() instead of waiting for it. The messages tab is the
+ * exception: it renders the realtime chat, which needs the project header
+ * (reference + client) fetched above, and loads its own history client-side.
  */
 async function loadTabContent(tab: string, projectId: string): Promise<ReactNode> {
   switch (tab) {
@@ -56,21 +60,6 @@ async function loadTabContent(tab: string, projectId: string): Promise<ReactNode
       return <ProjectFilesTab projectId={projectId} result={await getProjectFiles(projectId)} />;
     case "notes":
       return <ProjectNotesTab projectId={projectId} result={await getProjectNotes(projectId)} />;
-    case "messages": {
-      // The message thread and the open quote-change-request context are two
-      // independent reads — fetch them together.
-      const [messages, changeRequests] = await Promise.all([
-        getProjectMessages(projectId),
-        getProjectQuoteChangeRequests(projectId),
-      ]);
-      return (
-        <ProjectMessagesTab
-          projectId={projectId}
-          result={messages}
-          changeRequests={changeRequests}
-        />
-      );
-    }
     case "financial": {
       const financials = await getProjectFinancials(projectId);
       return <ProjectFinancialTab {...financials} />;
@@ -82,23 +71,11 @@ async function loadTabContent(tab: string, projectId: string): Promise<ReactNode
   }
 }
 
-export default async function AdminProjectDetailPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
-}) {
-  await requireAdmin();
-  const { id } = await params;
-  const { tab: tabParam } = await searchParams;
-  const tab = tabParam && isProjectDetailTab(tabParam) ? tabParam : "overview";
-
-  const [projectResult, tabContent] = await Promise.all([
-    getAdminProject(id),
-    loadTabContent(tab, id),
-  ]);
-
+function renderProjectShell(
+  projectResult: QueryResult<AdminProjectListItem>,
+  content: (project: AdminProjectListItem) => ReactNode,
+  activeTab: ProjectDetailTab,
+) {
   if (projectResult.status === "empty") {
     notFound();
   }
@@ -140,8 +117,51 @@ export default async function AdminProjectDetailPage({
         />
         <span className="text-sm text-muted">{clientDisplayName(project.client)}</span>
       </div>
-      <ProjectTabs projectId={project.id} active={tab} />
-      {tab === "overview" ? <ProjectOverviewTab project={project} /> : tabContent}
+      <ProjectTabs projectId={project.id} active={activeTab} />
+      {content(project)}
     </AdminPage>
+  );
+}
+
+export default async function AdminProjectDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  await requireAdmin();
+  const { id } = await params;
+  const { tab: tabParam } = await searchParams;
+  const tab: ProjectDetailTab =
+    tabParam && isProjectDetailTab(tabParam) ? tabParam : "overview";
+
+  if (tab === "messages") {
+    // The realtime chat needs the project header row (number/title/client).
+    const [projectResult, changeRequests] = await Promise.all([
+      getAdminProject(id),
+      getProjectQuoteChangeRequests(id),
+    ]);
+    return renderProjectShell(
+      projectResult,
+      (project) => <ProjectMessagesTab project={project} changeRequests={changeRequests} />,
+      tab,
+    );
+  }
+
+  const [projectResult, tabContent] = await Promise.all([
+    getAdminProject(id),
+    loadTabContent(tab, id),
+  ]);
+
+  return renderProjectShell(
+    projectResult,
+    (project) =>
+      tab === "overview" ? (
+        <ProjectOverviewTab project={project} />
+      ) : (
+        (tabContent as ReactNode)
+      ),
+    tab,
   );
 }
