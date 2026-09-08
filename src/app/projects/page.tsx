@@ -9,7 +9,10 @@ import {
 import { PageHero, Section } from "@/components/ui/section";
 import { getPublicProjects } from "@/lib/public-content";
 
-export const dynamic = "force-dynamic";
+// Public marketing page: published portfolio projects change rarely. Serve
+// from the Next.js cache (ISR) with a one-hour fallback TTL; admin portfolio
+// mutations revalidate "/" and "/projects" on demand.
+export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: "Projects",

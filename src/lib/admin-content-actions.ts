@@ -217,6 +217,9 @@ export async function setPortfolioFlag(formData: FormData): Promise<ActionResult
 
   revalidatePath("/admin/portfolio");
   revalidatePath(`/admin/portfolio/${id}`);
+  // Publish/unpublish (and featured) changes what public pages show.
+  revalidatePath("/");
+  revalidatePath("/projects");
   return { ok: true };
 }
 
@@ -265,6 +268,9 @@ export async function reorderPortfolioProject(formData: FormData): Promise<Actio
   }
 
   revalidatePath("/admin/portfolio");
+  // Sort order determines the public projects listing and homepage order.
+  revalidatePath("/");
+  revalidatePath("/projects");
   return { ok: true };
 }
 
@@ -301,6 +307,9 @@ export async function deletePortfolioProject(formData: FormData): Promise<Action
   }
 
   revalidatePath("/admin/portfolio");
+  // Deleting a published project must refresh the public listing + homepage.
+  revalidatePath("/");
+  revalidatePath("/projects");
   return { ok: true };
 }
 

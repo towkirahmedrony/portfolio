@@ -20,7 +20,12 @@ import {
 } from "@/lib/public-content";
 import type { Service } from "@/types";
 
-export const dynamic = "force-dynamic";
+// Public marketing page: projects & services are CMS-published, rarely
+// changing content. Serve from the Next.js cache (ISR) with a one-hour
+// fallback TTL; admin content mutations revalidate "/", "/projects" and
+// "/services" on demand (see src/lib/admin-content-actions.ts), so edits
+// appear immediately without a per-visitor Supabase round-trip.
+export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: `${site.name} — Freelance Web Developer`,

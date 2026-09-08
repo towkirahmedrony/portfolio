@@ -11,7 +11,10 @@ import { PageHero, Section } from "@/components/ui/section";
 import { getPublicServices } from "@/lib/public-content";
 import type { Service } from "@/types";
 
-export const dynamic = "force-dynamic";
+// Public marketing page: published services change rarely. Serve from the
+// Next.js cache (ISR) with a one-hour fallback TTL; admin service mutations
+// revalidate "/" and "/services" on demand.
+export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: "Services",
