@@ -74,6 +74,12 @@ type ProjectChatProps = {
    * points at the current (non-obsolete) details page.
    */
   detailsHref?: string;
+  /**
+   * When the server page already resolved the authenticated viewer (client
+   * chat pages do), pass it here to skip the client-side auth + profile
+   * round-trips — the first messages render sooner.
+   */
+  knownViewer?: { id: string; isAdmin: boolean } | null;
 };
 
 function asMessageRow(value: unknown): ProjectMessageRow | null {
@@ -183,6 +189,7 @@ export function ProjectChat({
   allowSendMessages = true,
   requestId,
   detailsHref,
+  knownViewer,
 }: ProjectChatProps) {
   // A conversation lives on a project OR on a project request (pre-project).
   // Both scopes share the same table, component, realtime and read-state.
@@ -469,30 +476,42 @@ export function ProjectChat({
       : `project-chat:${projectId}`;
 
     void (async () => {
-      const {
-        data: { user },
-      } = await client.auth.getUser();
-      if (!active) {
-        return;
-      }
-      if (!user) {
-        setInitialError("Sign in to view this conversation.");
-        setInitialLoading(false);
-        return;
-      }
+      if (!knownViewer) {
+        // Fallback path (e.g. embedded admin views): resolve the session and
+        // the profile role on the client.
+        const {
+          data: { user },
+        } = await client.auth.getUser();
+        if (!active) {
+          return;
+        }
+        if (!user) {
+          setInitialError("Sign in to view this conversation.");
+          setInitialLoading(false);
+          return;
+        }
 
-      const { data: profile } = await client
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (!active) {
-        return;
-      }
-      applyViewer({ id: user.id, isAdmin: profile?.role === "admin" });
-      await loadLatest();
-      if (!active) {
-        return;
+        const { data: profile } = await client
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (!active) {
+          return;
+        }
+        applyViewer({ id: user.id, isAdmin: profile?.role === "admin" });
+        await loadLatest();
+        if (!active) {
+          return;
+        }
+      } else {
+        // The server page already authenticated this viewer — render history
+        // immediately, then open realtime. No extra auth/profile round-trips.
+        applyViewer(knownViewer);
+        await loadLatest();
+        if (!active) {
+          return;
+        }
       }
 
       // Single subscription filtered to this conversation. Cleaned up on
@@ -545,7 +564,7 @@ export function ProjectChat({
       channelRef.current?.remove();
       channelRef.current = null;
     };
-  }, [client, projectId, requestId, contextColumn, contextId, loadLatest, applyViewer, handleIncomingRow, markIncomingRead]);
+  }, [client, projectId, requestId, knownViewer, contextColumn, contextId, loadLatest, applyViewer, handleIncomingRow, markIncomingRead]);
 
   // Keep the list pinned to the newest message unless the user scrolled up.
   useEffect(() => {

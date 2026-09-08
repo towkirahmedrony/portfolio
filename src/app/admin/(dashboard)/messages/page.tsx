@@ -39,7 +39,7 @@ export default async function AdminMessagesPage() {
     .from("project_messages")
     .select("id, project_id, sender_id, message, is_read, created_at")
     .order("created_at", { ascending: false })
-    .limit(500);
+    .limit(300);
 
   const messages = (rows ?? []) as ProjectMessageRow[];
 

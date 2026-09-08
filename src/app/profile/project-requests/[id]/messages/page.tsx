@@ -85,6 +85,7 @@ export default async function ProjectRequestMessagesPage({
         backLabel="Back"
         detailsHref={`/profile/project-requests/${request.id}`}
         allowSendMessages={canClientMessageRequest(request.status)}
+        knownViewer={{ id: user.id, isAdmin: false }}
         className="h-[calc(100dvh_-_4.5rem)] min-h-[22rem] sm:h-[min(76vh,44rem)] sm:min-h-[30rem]"
       />
     </div>

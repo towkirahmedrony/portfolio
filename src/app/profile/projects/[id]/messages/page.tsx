@@ -27,23 +27,28 @@ export default async function ProjectMessagesPage({
 
   if (!user) redirect("/login");
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, project_number, title, client_id, status")
-    .eq("id", projectId)
-    .eq("client_id", user.id)
-    .maybeSingle();
+  // Project + profile loads run in parallel — nothing depends on the other.
+  const [projectResult, profileResult] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, project_number, title, client_id, status")
+      .eq("id", projectId)
+      .eq("client_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("full_name, display_name")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
+
+  const project = projectResult.data;
 
   if (!project || project.client_id !== user.id) {
     notFound();
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, display_name")
-    .eq("id", user.id)
-    .maybeSingle();
-
+  const profile = profileResult.data;
   const clientName = profile?.display_name || profile?.full_name || "Client";
 
   return (
@@ -74,6 +79,7 @@ export default async function ProjectMessagesPage({
         backLabel="Back"
         detailsHref={`/profile/projects/${project.id}`}
         allowSendMessages={project.status !== "cancelled"}
+        knownViewer={{ id: user.id, isAdmin: false }}
         className="h-[calc(100dvh_-_4.5rem)] min-h-[22rem] sm:h-[min(76vh,44rem)] sm:min-h-[30rem]"
       />
     </div>

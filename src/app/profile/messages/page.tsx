@@ -68,52 +68,63 @@ export default async function ProfileMessagesPage() {
     redirect("/login");
   }
 
-  const { data: projects, error: projectsError } = await supabase
-    .from("projects")
-    .select("id, project_number, title")
-    .eq("client_id", user.id)
-    .order("created_at", { ascending: false });
+  // Own contexts (projects + requests) load in parallel.
+  const [projectsResult, requestsResult] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, project_number, title")
+      .eq("client_id", user.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("project_requests")
+      .select("id, request_number, project_type")
+      .eq("client_id", user.id)
+      .order("created_at", { ascending: false }),
+  ]);
 
-  if (projectsError) {
+  if (projectsResult.error) {
     notFound();
   }
 
-  const { data: requests } = await supabase
-    .from("project_requests")
-    .select("id, request_number, project_type")
-    .eq("client_id", user.id)
-    .order("created_at", { ascending: false });
-
-  const projectList = projects ?? [];
-  const requestList = requests ?? [];
+  const projectList = projectsResult.data ?? [];
+  const requestList = requestsResult.data ?? [];
   const projectById = new Map(projectList.map((project) => [project.id, project]));
   const requestById = new Map(requestList.map((request) => [request.id, request]));
 
   const projectIds = projectList.map((project) => project.id);
   const requestIds = requestList.map((request) => request.id);
 
-  const { data: projectMessages } = projectIds.length
-    ? await supabase
-        .from("project_messages")
-        .select("id, project_id, sender_id, message, is_read, created_at")
-        .in("project_id", projectIds)
-        .order("created_at", { ascending: false })
-        .limit(300)
-    : { data: [] };
+  // Latest messages per context — one page per source, fetched in parallel.
+  let projectMessages: RawMessage[] = [];
+  let requestMessages: RawMessage[] = [];
+  await Promise.all([
+    projectIds.length
+      ? supabase
+          .from("project_messages")
+          .select("id, project_id, sender_id, message, is_read, created_at")
+          .in("project_id", projectIds)
+          .order("created_at", { ascending: false })
+          .limit(150)
+          .then(({ data }) => {
+            projectMessages = (data ?? []) as unknown as RawMessage[];
+          })
+      : Promise.resolve(),
+    requestIds.length
+      ? supabase
+          .from("project_messages")
+          .select("id, request_id, sender_id, message, is_read, created_at")
+          .in("request_id", requestIds)
+          .order("created_at", { ascending: false })
+          .limit(150)
+          .then(({ data }) => {
+            requestMessages = (data ?? []) as unknown as RawMessage[];
+          })
+      : Promise.resolve(),
+  ]);
 
-  const { data: requestMessages } = requestIds.length
-    ? await supabase
-        .from("project_messages")
-        .select("id, request_id, sender_id, message, is_read, created_at")
-        .in("request_id", requestIds)
-        .order("created_at", { ascending: false })
-        .limit(300)
-    : { data: [] };
-
-  const allMessages = [
-    ...((projectMessages ?? []) as unknown as RawMessage[]),
-    ...((requestMessages ?? []) as unknown as RawMessage[]),
-  ].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const allMessages = [...projectMessages, ...requestMessages].sort((a, b) =>
+    a.created_at < b.created_at ? 1 : -1,
+  );
 
   const groups = new Map<string, Conversation>();
   for (const message of allMessages) {
