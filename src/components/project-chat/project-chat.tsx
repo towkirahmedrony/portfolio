@@ -200,8 +200,13 @@ export function ProjectChat({
   const [channelState, setChannelState] = useState<ChannelState>("connecting");
   const [showJump, setShowJump] = useState(false);
   const [loadedAll, setLoadedAll] = useState(false);
-  // Height of the area covered by the mobile soft keyboard (visual viewport).
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  // On mobile, the chat container is sized to the LIVE visual viewport so the
+  // composer always ends exactly at the keyboard's top edge — no gap, no
+  // hardcoded vh, no spacer that double-counts browser auto-pan.
+  const [liveHeight, setLiveHeight] = useState<number | null>(null);
+  // Vertical offset between the top of the layout viewport and the top of the
+  // chat container (fixed navbar 64px + mobile wrapper padding ~4px).
+  const CHAT_TOP_OFFSET = 68;
 
   const [client] = useState<ReturnType<typeof createBrowserSupabaseClient> | null>(() => {
     if (!isSupabaseConfigured()) {
@@ -549,31 +554,39 @@ export function ProjectChat({
     }
   }, [messages.length, scrollToBottom]);
 
-  // Mobile: keep the composer above the soft keyboard. The visual viewport
-  // shrinks when the keyboard opens; we add that overlap as bottom padding so
-  // the input is never covered (no hardcoded vh assumptions).
+  // Mobile: size the chat to the live visual viewport. When the keyboard
+  // opens, the visual viewport shrinks by exactly the keyboard's height, so
+  // the composer's bottom edge lands precisely on the keyboard's top edge —
+  // no blank space in between, and no fixed-vh traps.
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) {
       return;
     }
     const update = () => {
-      const overlap = Math.max(0, window.innerHeight - viewport.height);
-      setKeyboardOffset((prev) => (Math.abs(prev - overlap) < 2 ? prev : overlap));
+      if (window.innerWidth >= 640) {
+        setLiveHeight(null);
+        return;
+      }
+      const height = Math.max(0, Math.round(viewport.height - CHAT_TOP_OFFSET));
+      setLiveHeight((prev) => (prev === height ? prev : height));
     };
     viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
     window.addEventListener("resize", update);
+    update();
     return () => {
       viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
     };
   }, []);
 
   useEffect(() => {
-    if (keyboardOffset > 0) {
+    if (liveHeight !== null) {
       scrollToBottom();
     }
-  }, [keyboardOffset, scrollToBottom]);
+  }, [liveHeight, scrollToBottom]);
 
   // Auto-resize the composer textarea (bounded).
   const handleDraftChange = useCallback((value: string) => {
@@ -617,6 +630,7 @@ export function ProjectChat({
         "relative flex min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-card-border bg-card shadow-[0_1px_0_rgba(20,20,20,0.04)] sm:rounded-3xl",
         className,
       )}
+      style={liveHeight !== null ? { height: liveHeight } : undefined}
       aria-label={`Messages for ${projectNumber}`}
     >
       {/* Header — project context is always visible here. */}
@@ -824,13 +838,6 @@ export function ProjectChat({
         )}
       </div>
 
-      {/* Keyboard spacer — keeps the composer above the mobile keyboard. */}
-      <div
-        aria-hidden="true"
-        className="shrink-0 bg-card transition-[height] duration-150 ease-out"
-        style={{ height: keyboardOffset }}
-      />
-
       {/* Jump to newest when scrolled up and a new message arrives */}
       {showJump ? (
         <button
@@ -840,11 +847,6 @@ export function ProjectChat({
             setShowJump(false);
             scrollToBottom();
           }}
-          style={
-            keyboardOffset > 0
-              ? { bottom: `calc(7rem + ${keyboardOffset}px)` }
-              : undefined
-          }
           className="absolute right-4 bottom-28 z-10 rounded-full border border-card-border bg-card px-3 py-1.5 text-xs font-medium text-accent shadow-md transition-colors hover:border-accent/40"
         >
           New messages ↓

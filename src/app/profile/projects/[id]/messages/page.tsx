@@ -47,7 +47,7 @@ export default async function ProjectMessagesPage({
   const clientName = profile?.display_name || profile?.full_name || "Client";
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col px-2 pt-[4.25rem] pb-2 sm:px-8 sm:pt-28 sm:pb-10">
+    <div className="mx-auto flex w-full max-w-4xl flex-col px-2 pt-[4.25rem] pb-0 sm:px-8 sm:pt-28 sm:pb-10">
       {/* Slim context line on desktop only — on mobile the chat header (back,
           reference + title) provides the full app-like context. */}
       <div className="mb-4 hidden items-end justify-between gap-3 sm:flex">
