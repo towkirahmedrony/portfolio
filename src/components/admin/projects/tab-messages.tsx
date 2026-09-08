@@ -114,6 +114,7 @@ export function ProjectMessagesTab({
           clientName={clientName}
           backHref={`/admin/projects/${project.id}?tab=overview`}
           backLabel="Project overview"
+          detailsHref={`/admin/projects/${project.id}`}
           className="h-[min(78vh,46rem)] min-h-[30rem]"
         />
       </div>

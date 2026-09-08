@@ -144,7 +144,7 @@ export default async function AdminMessagesPage() {
           {conversations.map((conversation) => (
             <Link
               key={conversation.projectId}
-              href={`/admin/projects/${conversation.projectId}?tab=messages`}
+              href={`/admin/projects/${conversation.projectId}/messages`}
               className="flex items-center gap-4 rounded-2xl border border-card-border bg-card p-4 transition-colors hover:border-accent/30 sm:p-5"
             >
               <div className="min-w-0 flex-1">

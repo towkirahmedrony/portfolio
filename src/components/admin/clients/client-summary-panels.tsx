@@ -357,7 +357,7 @@ function MessageRows({
         return (
           <RowItem
             key={row.id}
-            href={project && row.project_id ? `/admin/projects/${row.project_id}?tab=messages` : undefined}
+            href={row.project_id ? `/admin/projects/${row.project_id}/messages` : undefined}
             title={
               <span className="flex items-center gap-2">
                 {row.is_read ? null : (

@@ -11,7 +11,21 @@ export function PublicChrome({ children }: { children: ReactNode }) {
   const isAdminRoute = pathname.startsWith("/admin");
 
   if (isAdminRoute) {
-    return <div className="flex-1">{children}</div>;
+    const isAdminChatRoute =
+      /^\/admin\/(?:projects\/[^/]+\/messages|project-requests\/[^/]+\/messages)$/.test(
+        pathname,
+      );
+    return (
+      <div
+        className={
+          isAdminChatRoute
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+            : "flex-1"
+        }
+      >
+        {children}
+      </div>
+    );
   }
 
   // Chat routes behave like a dedicated messaging screen: the portfolio

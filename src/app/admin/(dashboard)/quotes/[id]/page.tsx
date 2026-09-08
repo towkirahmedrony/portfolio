@@ -93,7 +93,7 @@ export default async function AdminQuoteDetailPage({
         ) : null}
         {project ? (
           <Link
-            href={`/admin/projects/${project.id}?tab=messages`}
+            href={`/admin/projects/${project.id}/messages`}
             className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-card-border bg-card px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent/40 hover:text-accent"
           >
             Chat with Client

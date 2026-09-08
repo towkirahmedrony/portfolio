@@ -63,7 +63,7 @@ function preview(message: string): string {
 
 function chatPathFor(kind: "project" | "request", id: string): string {
   return kind === "project"
-    ? `/admin/projects/${id}?tab=messages`
+    ? `/admin/projects/${id}/messages`
     : `/admin/project-requests/${id}/messages`;
 }
 
@@ -218,7 +218,10 @@ export function AdminMessagingProvider({
       if (
         pathnameRef.current === chatPath ||
         (kind === "project" &&
-          pathnameRef.current === `/admin/projects/${contextId}`)
+          (pathnameRef.current === `/admin/projects/${contextId}` ||
+            pathnameRef.current === `/admin/projects/${contextId}/messages`)) ||
+        (kind === "request" &&
+          pathnameRef.current === `/admin/project-requests/${contextId}/messages`)
       ) {
         return;
       }

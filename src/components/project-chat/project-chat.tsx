@@ -80,6 +80,12 @@ type ProjectChatProps = {
    * round-trips — the first messages render sooner.
    */
   knownViewer?: { id: string; isAdmin: boolean } | null;
+  /**
+   * Dedicated Chat routes pass true so the conversation owns the viewport
+   * (no surrounding page chrome). In-page embeds (e.g. the Admin project
+   * Messages tab) leave this unset.
+   */
+  fillViewport?: boolean;
 };
 
 function asMessageRow(value: unknown): ProjectMessageRow | null {
@@ -196,13 +202,14 @@ export function ProjectChat({
   requestId,
   detailsHref,
   knownViewer,
+  fillViewport = false,
 }: ProjectChatProps) {
   // A conversation lives on a project OR on a project request (pre-project).
   // Both scopes share the same table, component, realtime and read-state.
   const contextColumn = requestId ? "request_id" : "project_id";
   const contextId = requestId ?? projectId ?? "";
   const [messages, setMessages] = useState<ProjectMessageRow[]>([]);
-  const [viewer, setViewer] = useState<Viewer | null>(null);
+  const [viewer, setViewer] = useState<Viewer | null>(knownViewer ?? null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialError, setInitialError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -217,9 +224,6 @@ export function ProjectChat({
   // composer always ends exactly at the keyboard's top edge — no gap, no
   // hardcoded vh, no spacer that double-counts browser auto-pan.
   const [liveHeight, setLiveHeight] = useState<number | null>(null);
-  // Vertical offset between the top of the layout viewport and the top of the
-  // chat container (fixed navbar 64px + mobile wrapper padding ~4px).
-  const CHAT_TOP_OFFSET = 68;
 
   const [client] = useState<ReturnType<typeof createBrowserSupabaseClient> | null>(() => {
     if (!isSupabaseConfigured()) {
@@ -233,7 +237,7 @@ export function ProjectChat({
   });
   const channelRef = useRef<{ remove: () => void } | null>(null);
   const messagesRef = useRef<ProjectMessageRow[]>([]);
-  const viewerRef = useRef<Viewer | null>(null);
+  const viewerRef = useRef<Viewer | null>(knownViewer ?? null);
   const unreadPendingRef = useRef(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -593,7 +597,10 @@ export function ProjectChat({
         setLiveHeight(null);
         return;
       }
-      const height = Math.max(0, Math.round(viewport.height - CHAT_TOP_OFFSET));
+      // Dedicated Chat routes sit flush with the viewport; client profile
+      // chat still sits below the public navbar (~68px).
+      const topOffset = fillViewport ? 0 : 68;
+      const height = Math.max(0, Math.round(viewport.height - topOffset));
       setLiveHeight((prev) => (prev === height ? prev : height));
     };
     viewport.addEventListener("resize", update);
@@ -605,7 +612,7 @@ export function ProjectChat({
       viewport.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
     };
-  }, []);
+  }, [fillViewport]);
 
   useEffect(() => {
     if (liveHeight !== null) {
@@ -652,14 +659,22 @@ export function ProjectChat({
   return (
     <section
       className={cn(
-        "relative flex min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-card-border bg-card shadow-[0_1px_0_rgba(20,20,20,0.04)] sm:rounded-3xl",
+        "relative flex min-h-0 w-full flex-col overflow-hidden bg-card",
+        fillViewport
+          ? "h-full min-h-0 flex-1 rounded-none border-0 shadow-none"
+          : "rounded-2xl border border-card-border shadow-[0_1px_0_rgba(20,20,20,0.04)] sm:rounded-3xl",
         className,
       )}
       style={liveHeight !== null ? { height: liveHeight } : undefined}
       aria-label={`Messages for ${projectNumber}`}
     >
       {/* Header — project context is always visible here. */}
-      <div className="flex items-center gap-3 border-b border-card-border bg-card px-3 py-3 sm:px-4">
+      <div
+        className={cn(
+          "flex items-center gap-3 border-b border-card-border bg-card px-3 sm:px-4",
+          fillViewport ? "py-2.5" : "py-3",
+        )}
+      >
         <Link
           href={backHref}
           aria-label={`${backLabel} — ${projectNumber}`}
@@ -670,10 +685,12 @@ export function ProjectChat({
         </Link>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[11px] font-semibold tracking-wider text-accent uppercase">
-            {projectNumber} · Messages
+            {projectNumber}
           </p>
           <h2 className="truncate font-display text-sm font-medium tracking-tight text-foreground sm:text-base">
-            {projectTitle}
+            {viewer?.isAdmin || knownViewer?.isAdmin
+              ? clientName || "Client"
+              : projectTitle}
           </h2>
         </div>
         {detailsHref ? (
