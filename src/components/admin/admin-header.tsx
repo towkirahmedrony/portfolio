@@ -1,6 +1,7 @@
 "use client";
 
 import { CloseIcon, MenuIcon } from "@/components/admin/admin-icons";
+import { AdminMessagesNavItem } from "@/components/admin/admin-messaging";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ButtonLink } from "@/components/ui/button";
 import type { AdminSessionUser } from "@/types/admin";
@@ -39,8 +40,9 @@ export function AdminHeader({
             </h1>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <p className="hidden truncate text-sm text-muted sm:block">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <AdminMessagesNavItem />
+          <p className="hidden truncate text-sm text-muted lg:block">
             {user.displayName}
           </p>
           <ThemeToggle />

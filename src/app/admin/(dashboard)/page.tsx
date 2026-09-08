@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { AdminPage } from "@/components/admin/admin-page";
+import { AdminMessagesSummaryCard } from "@/components/admin/admin-messaging";
 import {
   ActionItemGrid,
   ActivityFeed,
@@ -22,6 +23,15 @@ async function AdminDashboardContent() {
         description="Live counts from project requests, projects, invoices, and payments. Open a card to jump to that list."
       >
         <StatCardGrid metrics={dashboard.metrics} />
+      </DashboardSection>
+
+      <DashboardSection
+        title="Messages"
+        description="Unread client messages across projects and project requests. The count updates live — no refresh needed."
+        href="/admin/messages"
+        actionLabel="View Messages"
+      >
+        <AdminMessagesSummaryCard />
       </DashboardSection>
 
       <DashboardSection

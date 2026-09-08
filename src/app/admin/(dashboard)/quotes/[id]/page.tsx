@@ -91,6 +91,23 @@ export default async function AdminQuoteDetailPage({
             className="bg-amber-500/10 text-amber-700 border-amber-500/25 dark:text-amber-400"
           />
         ) : null}
+        {project ? (
+          <Link
+            href={`/admin/projects/${project.id}?tab=messages`}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-card-border bg-card px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent/40 hover:text-accent"
+          >
+            Chat with Client
+            <span aria-hidden>&rarr;</span>
+          </Link>
+        ) : request ? (
+          <Link
+            href={`/admin/project-requests/${request.id}/messages`}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-card-border bg-card px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent/40 hover:text-accent"
+          >
+            Chat with Client
+            <span aria-hidden>&rarr;</span>
+          </Link>
+        ) : null}
       </div>
       {hasClientChangeRequest && quote.client_change_message ? (
         <div

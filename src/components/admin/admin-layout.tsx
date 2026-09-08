@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AdminHeader } from "@/components/admin/admin-header";
+import { AdminMessagingProvider } from "@/components/admin/admin-messaging";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { findAdminNavItem } from "@/lib/admin";
 import type { AdminNavSection, AdminSessionUser } from "@/types/admin";
@@ -50,7 +51,8 @@ export function AdminLayout({
   }, [menuOpen]);
 
   return (
-    <div className="min-h-svh bg-background">
+    <AdminMessagingProvider userId={user.id}>
+      <div className="min-h-svh bg-background">
       <div className="lg:grid lg:grid-cols-[16.5rem_minmax(0,1fr)]">
         <aside className="sticky top-0 hidden h-svh border-r border-card-border bg-card lg:block">
           <AdminSidebar sections={sections} />
@@ -86,6 +88,7 @@ export function AdminLayout({
           </aside>
         </div>
       ) : null}
-    </div>
+      </div>
+    </AdminMessagingProvider>
   );
 }
