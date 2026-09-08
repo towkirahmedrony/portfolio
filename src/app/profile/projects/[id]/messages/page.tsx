@@ -70,8 +70,9 @@ export default async function ProjectMessagesPage({
         projectTitle={project.title}
         clientId={user.id}
         clientName={clientName}
-        backHref={`/profile/projects/${project.id}`}
-        backLabel="Project details"
+        backHref="/profile/messages"
+        backLabel="Back"
+        detailsHref={`/profile/projects/${project.id}`}
         allowSendMessages={project.status !== "cancelled"}
         className="h-[calc(100dvh_-_4.5rem)] min-h-[22rem] sm:h-[min(76vh,44rem)] sm:min-h-[30rem]"
       />

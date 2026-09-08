@@ -81,8 +81,9 @@ export default async function ProjectRequestMessagesPage({
         projectTitle={request.project_type || "Project request"}
         clientId={user.id}
         clientName="Client"
-        backHref={`/profile/project-requests/${request.id}`}
-        backLabel="Request details"
+        backHref="/profile/messages"
+        backLabel="Back"
+        detailsHref={`/profile/project-requests/${request.id}`}
         allowSendMessages={canClientMessageRequest(request.status)}
         className="h-[calc(100dvh_-_4.5rem)] min-h-[22rem] sm:h-[min(76vh,44rem)] sm:min-h-[30rem]"
       />

@@ -67,6 +67,13 @@ type ProjectChatProps = {
    * same history keeps showing in the project chat.
    */
   requestId?: string;
+  /**
+   * Context-aware "Details" destination: project chat -> the project's
+   * details page; request chat -> the request's details page. After a request
+   * converts, the request chat redirects to the project chat, so this always
+   * points at the current (non-obsolete) details page.
+   */
+  detailsHref?: string;
 };
 
 function asMessageRow(value: unknown): ProjectMessageRow | null {
@@ -175,6 +182,7 @@ export function ProjectChat({
   className,
   allowSendMessages = true,
   requestId,
+  detailsHref,
 }: ProjectChatProps) {
   // A conversation lives on a project OR on a project request (pre-project).
   // Both scopes share the same table, component, realtime and read-state.
@@ -629,6 +637,16 @@ export function ProjectChat({
             {projectTitle}
           </h2>
         </div>
+        {detailsHref ? (
+          <Link
+            href={detailsHref}
+            aria-label={`Open details for ${projectNumber}`}
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-card-border bg-background px-3.5 text-xs font-semibold text-foreground transition-colors hover:border-accent/40 hover:text-accent sm:px-4"
+          >
+            Details
+            <span aria-hidden>&rarr;</span>
+          </Link>
+        ) : null}
         <div className="shrink-0">{channelPill}</div>
       </div>
 

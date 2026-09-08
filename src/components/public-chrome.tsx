@@ -14,11 +14,18 @@ export function PublicChrome({ children }: { children: ReactNode }) {
     return <div className="flex-1">{children}</div>;
   }
 
+  // Chat routes behave like a dedicated messaging screen: the portfolio
+  // footer is hidden so the conversation owns the full viewport height.
+  const isChatRoute =
+    /^\/profile\/(?:projects\/[^/]+\/messages|project-requests\/[^/]+\/messages)$/.test(
+      pathname,
+    );
+
   return (
     <>
       <Navbar />
       <main className="flex-1">{children}</main>
-      <Footer />
+      {!isChatRoute ? <Footer /> : null}
       {/* Invisible for everyone unless an Admin message arrives for the
           signed-in Client — then it shows ONE centered modal. */}
       <ClientMessageNotifier />
