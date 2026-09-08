@@ -41,9 +41,10 @@ export function Footer() {
             <li>
               <a
                 href={`mailto:${site.email}`}
-                className="text-sm text-foreground/85 transition-colors hover:text-foreground"
+                className="rounded-sm text-sm text-foreground/85 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                aria-label="Send me an email"
               >
-                {site.email}
+                Email Me
               </a>
             </li>
             {socialLinks.map((item) => (
