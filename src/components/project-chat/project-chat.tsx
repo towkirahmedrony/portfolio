@@ -105,6 +105,12 @@ function friendlyError(error: { message?: string; code?: string } | null): strin
   }
   const code = error.code ?? "";
   const message = (error.message ?? "").toLowerCase();
+  if (code === "PGRST202" || message.includes("could not find the function")) {
+    // The RPC (send_project_message / mark_project_messages_read) is not in
+    // the PostgREST schema cache — the migration has not been applied yet or
+    // the schema cache has not reloaded since it was.
+    return "Messaging is not set up in this database yet — apply the project_chat_realtime migration (or reload the schema), then retry.";
+  }
   if (
     code === "42P01" ||
     code === "PGRST205" ||
@@ -113,7 +119,7 @@ function friendlyError(error: { message?: string; code?: string } | null): strin
     message.includes("could not find the table") ||
     message.includes("schema cache")
   ) {
-    return "Messaging is not available in the current database schema yet.";
+    return "Messaging is not available in the current database schema yet — apply the project_chat_realtime migration, then retry.";
   }
   if (
     code === "42501" ||
