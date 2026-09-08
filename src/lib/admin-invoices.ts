@@ -198,12 +198,21 @@ export async function getAdminInvoice(
     );
   }
 
-  const projects = await loadProjectsByIds([invoice.project_id]);
-  const project = projects.get(invoice.project_id) ?? null;
-  const clients = await loadClientsByIds([
-    invoice.client_id,
-    ...(project ? [project.client_id] : []),
+  // The project and the invoice's own client are independent of each other —
+  // fetch them concurrently instead of serially.
+  const [projects, invoiceClient] = await Promise.all([
+    loadProjectsByIds([invoice.project_id]),
+    loadClientsByIds([invoice.client_id]),
   ]);
+  const project = projects.get(invoice.project_id) ?? null;
+  const projectClientId =
+    project?.client_id && project.client_id !== invoice.client_id
+      ? project.client_id
+      : null;
+  const projectClient = projectClientId
+    ? await loadClientsByIds([projectClientId])
+    : new Map<string, InvoiceClient>();
+  const clients = new Map([...invoiceClient, ...projectClient]);
 
   return {
     status: "ok",
@@ -220,11 +229,18 @@ export async function getAdminInvoice(
 
 export async function getAcceptedQuoteOptions(): Promise<QueryResult<AcceptedQuoteOption[]>> {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("quotes")
-    .select("id, project_id, project_request_id, version, total, currency, status")
-    .eq("status", "accepted")
-    .order("accepted_at", { ascending: false });
+
+  // Accepted quotes and already-invoiced quotes are independent scans — run
+  // them concurrently instead of in series.
+  const [{ data, error }, { data: existingInvoices, error: existingError }] =
+    await Promise.all([
+      supabase
+        .from("quotes")
+        .select("id, project_id, project_request_id, version, total, currency, status")
+        .eq("status", "accepted")
+        .order("accepted_at", { ascending: false }),
+      supabase.from("invoices").select("quote_id").not("quote_id", "is", null),
+    ]);
 
   if (error) {
     return toQueryResult([], error, "quotes", true);
@@ -233,11 +249,6 @@ export async function getAcceptedQuoteOptions(): Promise<QueryResult<AcceptedQuo
   const quotes = (data ?? []) as Array<
     Pick<QuoteRow, "id" | "project_id" | "project_request_id" | "version" | "total" | "currency" | "status">
   >;
-
-  const { data: existingInvoices, error: existingError } = await supabase
-    .from("invoices")
-    .select("quote_id")
-    .not("quote_id", "is", null);
 
   if (existingError && !isMissingRelation(existingError)) {
     return toQueryResult([], existingError, "invoices", true);

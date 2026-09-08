@@ -71,7 +71,7 @@ export const QUOTABLE_REQUEST_STATUSES: RequestStatus[] = ["reviewing", "quoted"
 
 export type QuoteRequestLink = Pick<
   ProjectRequestRow,
-  "id" | "request_number" | "project_type"
+  "id" | "request_number" | "project_type" | "client_id"
 >;
 
 export type QuoteInvoiceLink = Pick<InvoiceRow, "id" | "invoice_number" | "status">;

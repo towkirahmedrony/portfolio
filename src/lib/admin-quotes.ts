@@ -116,7 +116,7 @@ async function loadRequestsByIds(
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase
     .from("project_requests")
-    .select("id, request_number, project_type")
+    .select("id, request_number, project_type, client_id")
     .in("id", uniqueIds);
 
   for (const row of data ?? []) {
@@ -178,38 +178,38 @@ export async function getAdminQuotes(
   }
 
   const rows = (data ?? []) as QuoteRow[];
-  const projects = await loadProjectsByIds(
-    rows.map((row) => row.project_id).filter((id): id is string => Boolean(id)),
-  );
-  const requestIds = [
-    ...rows.map((row) => row.project_request_id),
-    ...[...projects.values()].map((project) => project.request_id),
-  ].filter((id): id is string => Boolean(id));
-  const uniqueRequestIds = [...new Set(requestIds)];
+
+  // Independent lookups first: projects + invoices for the visible rows.
+  const [projects, invoices] = await Promise.all([
+    loadProjectsByIds(
+      rows.map((row) => row.project_id).filter((id): id is string => Boolean(id)),
+    ),
+    loadInvoicesByQuoteIds(rows.map((row) => row.id)),
+  ]);
+
+  // Requests carry client_id, so no separate owner query is needed.
+  const uniqueRequestIds = [
+    ...new Set(
+      [
+        ...rows.map((row) => row.project_request_id),
+        ...[...projects.values()].map((project) => project.request_id),
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  ];
   const requests = await loadRequestsByIds(uniqueRequestIds);
-  const invoices = await loadInvoicesByQuoteIds(rows.map((row) => row.id));
-  const requestOwnerIds = new Map<string, string>();
-  if (uniqueRequestIds.length > 0) {
-    const { data: ownerRows } = await supabase
-      .from("project_requests")
-      .select("id, client_id")
-      .in("id", uniqueRequestIds);
-    for (const row of ownerRows ?? []) {
-      if (row.client_id) {
-        requestOwnerIds.set(row.id, row.client_id);
-      }
-    }
-  }
+
   const clients = await loadClientsByIds([
     ...[...projects.values()].map((project) => project.client_id),
-    ...[...requestOwnerIds.values()],
+    ...[...requests.values()]
+      .map((request) => request.client_id)
+      .filter((id): id is string => Boolean(id)),
   ]);
 
   const items: AdminQuoteListItem[] = rows.map((row) => {
     const project = row.project_id ? projects.get(row.project_id) ?? null : null;
     const requestId = row.project_request_id || project?.request_id || null;
     const request = requestId ? requests.get(requestId) ?? null : null;
-    const clientId = project?.client_id || (requestId ? requestOwnerIds.get(requestId) : undefined);
+    const clientId = project?.client_id || request?.client_id || null;
     return {
       ...row,
       project,
@@ -299,15 +299,8 @@ export async function getAdminQuote(
   const requestId = quote.project_request_id || project?.request_id || null;
   const requests = await loadRequestsByIds(requestId ? [requestId] : []);
   const request = requestId ? requests.get(requestId) ?? null : null;
-  let clientId = project?.client_id ?? null;
-  if (!clientId && requestId) {
-    const { data: requestOwner } = await supabase
-      .from("project_requests")
-      .select("client_id")
-      .eq("id", requestId)
-      .maybeSingle();
-    clientId = requestOwner?.client_id ?? null;
-  }
+  // Requests now carry client_id — no separate owner lookup round-trip.
+  const clientId = project?.client_id ?? request?.client_id ?? null;
   const clients = await loadClientsByIds(clientId ? [clientId] : []);
 
   return {

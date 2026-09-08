@@ -107,59 +107,81 @@ async function enrichReferralRows(
   ];
 
   const allProfileIds = [...new Set([...referrerIds, ...referredIds])];
-  const profiles = new Map<string, ReferralPersonRef>();
-  if (allProfileIds.length > 0) {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, full_name, display_name, company_name, avatar_url")
-      .in("id", allProfileIds);
-    for (const profile of data ?? []) {
-      const ref = toPersonRef(profile);
-      if (ref) {
-        profiles.set(profile.id, ref);
+
+  // All four lookups depend only on the referral rows already loaded — fetch
+  // them concurrently instead of four sequential round-trips.
+  const loadProfiles = (async () => {
+    const map = new Map<string, ReferralPersonRef>();
+    if (allProfileIds.length > 0) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, display_name, company_name, avatar_url")
+        .in("id", allProfileIds);
+      for (const profile of data ?? []) {
+        const ref = toPersonRef(profile);
+        if (ref) {
+          map.set(profile.id, ref);
+        }
       }
     }
-  }
+    return map;
+  })();
 
-  const codes = new Map<string, string>();
-  if (codeIds.length > 0) {
-    const { data } = await supabase
-      .from("referral_codes")
-      .select("id, code")
-      .in("id", codeIds);
-    for (const code of (data ?? []) as Pick<ReferralCodeRow, "id" | "code">[]) {
-      codes.set(code.id, code.code);
+  const loadCodes = (async () => {
+    const map = new Map<string, string>();
+    if (codeIds.length > 0) {
+      const { data } = await supabase
+        .from("referral_codes")
+        .select("id, code")
+        .in("id", codeIds);
+      for (const code of (data ?? []) as Pick<ReferralCodeRow, "id" | "code">[]) {
+        map.set(code.id, code.code);
+      }
     }
-  }
+    return map;
+  })();
 
-  const requests = new Map<string, string>();
-  if (requestIds.length > 0) {
-    const { data } = await supabase
-      .from("project_requests")
-      .select("id, request_number")
-      .in("id", requestIds);
-    for (const row of (data ?? []) as Array<{ id: string; request_number: string }>) {
-      requests.set(row.id, row.request_number);
+  const loadRequests = (async () => {
+    const map = new Map<string, string>();
+    if (requestIds.length > 0) {
+      const { data } = await supabase
+        .from("project_requests")
+        .select("id, request_number")
+        .in("id", requestIds);
+      for (const row of (data ?? []) as Array<{ id: string; request_number: string }>) {
+        map.set(row.id, row.request_number);
+      }
     }
-  }
+    return map;
+  })();
 
-  const projects = new Map<string, { project_number: string; title: string }>();
-  if (projectIds.length > 0) {
-    const { data } = await supabase
-      .from("projects")
-      .select("id, project_number, title")
-      .in("id", projectIds);
-    for (const row of (data ?? []) as Array<{
-      id: string;
-      project_number: string;
-      title: string;
-    }>) {
-      projects.set(row.id, {
-        project_number: row.project_number,
-        title: row.title,
-      });
+  const loadProjects = (async () => {
+    const map = new Map<string, { project_number: string; title: string }>();
+    if (projectIds.length > 0) {
+      const { data } = await supabase
+        .from("projects")
+        .select("id, project_number, title")
+        .in("id", projectIds);
+      for (const row of (data ?? []) as Array<{
+        id: string;
+        project_number: string;
+        title: string;
+      }>) {
+        map.set(row.id, {
+          project_number: row.project_number,
+          title: row.title,
+        });
+      }
     }
-  }
+    return map;
+  })();
+
+  const [profiles, codes, requests, projects] = await Promise.all([
+    loadProfiles,
+    loadCodes,
+    loadRequests,
+    loadProjects,
+  ]);
 
   return rows.map((row) => {
     const project = row.first_project_id ? projects.get(row.first_project_id) : undefined;
