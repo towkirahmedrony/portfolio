@@ -103,19 +103,29 @@ export default async function ProfilePage() {
       .eq("is_read", false)
       .neq("sender_id", user.id)
       .in("project_id", projectIds);
-    unreadByProject = (unreadRows ?? []).reduce<Record<string, number>>(
-      (acc, row) => {
+    unreadByProject = (unreadRows ?? [])
+      .filter((row): row is { project_id: string } => row.project_id !== null)
+      .reduce<Record<string, number>>((acc, row) => {
         acc[row.project_id] = (acc[row.project_id] ?? 0) + 1;
         return acc;
-      },
-      {},
-    );
+      }, {});
   }
 
-  const totalUnreadMessages = Object.values(unreadByProject).reduce(
-    (sum, count) => sum + count,
-    0,
-  );
+  // Unread messages that belong to active project requests (pre-project
+  // conversations) count toward the same Messages entry.
+  let requestUnreadMessages = 0;
+  {
+    const { count } = await supabase
+      .from("project_messages")
+      .select("*", { count: "exact", head: true })
+      .is("project_id", null)
+      .eq("is_read", false)
+      .neq("sender_id", user.id);
+    requestUnreadMessages = count ?? 0;
+  }
+  const totalUnreadMessages =
+    Object.values(unreadByProject).reduce((sum, count) => sum + count, 0) +
+    requestUnreadMessages;
 
   return (
     <section className="py-12 sm:py-16 mt-8 sm:mt-12">

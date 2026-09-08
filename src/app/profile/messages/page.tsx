@@ -6,9 +6,10 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type Conversation = {
-  projectId: string;
-  projectNumber: string;
-  projectTitle: string;
+  key: string;
+  href: string;
+  number: string;
+  title: string;
   latest: string;
   latestAt: string;
   unread: number;
@@ -42,10 +43,20 @@ function whenLabel(iso: string): string {
   });
 }
 
+type RawMessage = {
+  project_id: string | null;
+  request_id: string | null;
+  sender_id: string | null;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+};
+
 /**
- * Client Messages hub — one conversation per project, using only the client's
- * own projects (RLS-scoped to projects.client_id = current user). Every row
- * opens the project's existing chat route; no duplicate messaging store.
+ * Client Messages hub — one conversation per context (project, or project
+ * request before it converts). When a request becomes a project the database
+ * relinks the same rows, so a conversation can never appear twice: request
+ * rows vanish here and reappear as the project conversation automatically.
  */
 export default async function ProfileMessagesPage() {
   const supabase = await createServerSupabaseClient();
@@ -66,11 +77,22 @@ export default async function ProfileMessagesPage() {
   if (projectsError) {
     notFound();
   }
-  const projectList = projects ?? [];
-  const projectIds = projectList.map((project) => project.id);
-  const projectById = new Map(projectList.map((project) => [project.id, project]));
 
-  const { data: messageRows } = projectIds.length
+  const { data: requests } = await supabase
+    .from("project_requests")
+    .select("id, request_number, project_type")
+    .eq("client_id", user.id)
+    .order("created_at", { ascending: false });
+
+  const projectList = projects ?? [];
+  const requestList = requests ?? [];
+  const projectById = new Map(projectList.map((project) => [project.id, project]));
+  const requestById = new Map(requestList.map((request) => [request.id, request]));
+
+  const projectIds = projectList.map((project) => project.id);
+  const requestIds = requestList.map((request) => request.id);
+
+  const { data: projectMessages } = projectIds.length
     ? await supabase
         .from("project_messages")
         .select("id, project_id, sender_id, message, is_read, created_at")
@@ -79,23 +101,53 @@ export default async function ProfileMessagesPage() {
         .limit(300)
     : { data: [] };
 
-  const messages = messageRows ?? [];
+  const { data: requestMessages } = requestIds.length
+    ? await supabase
+        .from("project_messages")
+        .select("id, request_id, sender_id, message, is_read, created_at")
+        .in("request_id", requestIds)
+        .order("created_at", { ascending: false })
+        .limit(300)
+    : { data: [] };
+
+  const allMessages = [
+    ...((projectMessages ?? []) as unknown as RawMessage[]),
+    ...((requestMessages ?? []) as unknown as RawMessage[]),
+  ].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
   const groups = new Map<string, Conversation>();
-  for (const message of messages) {
-    const project = projectById.get(message.project_id);
-    if (!project) {
+  for (const message of allMessages) {
+    let key: string | null = null;
+    let href = "";
+    let number = "";
+    let title = "";
+    if (message.project_id && projectById.has(message.project_id)) {
+      const project = projectById.get(message.project_id);
+      key = `project:${message.project_id}`;
+      href = `/profile/projects/${message.project_id}/messages`;
+      number = project?.project_number ?? "";
+      title = project?.title ?? "";
+    } else if (message.request_id && requestById.has(message.request_id)) {
+      const request = requestById.get(message.request_id);
+      key = `request:${message.request_id}`;
+      href = `/profile/project-requests/${message.request_id}/messages`;
+      number = request?.request_number ?? "";
+      title = request?.project_type || "Project request";
+    }
+    if (!key) {
       continue;
     }
-    const existing = groups.get(message.project_id);
+    const existing = groups.get(key);
     if (existing) {
       if (!message.is_read && message.sender_id !== user.id) {
         existing.unread += 1;
       }
     } else {
-      groups.set(message.project_id, {
-        projectId: project.id,
-        projectNumber: project.project_number,
-        projectTitle: project.title,
+      groups.set(key, {
+        key,
+        href,
+        number,
+        title,
         latest: preview(message.message),
         latestAt: message.created_at,
         unread: !message.is_read && message.sender_id !== user.id ? 1 : 0,
@@ -123,7 +175,7 @@ export default async function ProfileMessagesPage() {
             Messages
           </p>
           <h1 className="font-display mt-1 text-2xl tracking-tight sm:text-3xl">
-            Your project messages
+            Your messages
           </h1>
         </div>
         <p className="text-xs text-muted">
@@ -136,12 +188,11 @@ export default async function ProfileMessagesPage() {
       {conversations.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-card-border bg-card p-10 text-center">
           <p className="text-sm font-medium text-foreground">
-            No project conversations yet
+            No conversations yet
           </p>
           <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-muted">
-            When you or the team send a message on a project, it appears here.
-            You can also open any of your active projects and use its Messages
-            chat.
+            When you or the team message about a project request or a project,
+            it appears here as one continuous conversation.
           </p>
           <Link
             href="/profile"
@@ -154,14 +205,14 @@ export default async function ProfileMessagesPage() {
         <div className="grid gap-3">
           {conversations.map((conversation) => (
             <Link
-              key={conversation.projectId}
-              href={`/profile/projects/${conversation.projectId}/messages`}
+              key={conversation.key}
+              href={conversation.href}
               className="flex items-center gap-4 rounded-2xl border border-card-border bg-card p-4 transition-colors hover:border-accent/30 sm:p-5"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-semibold tracking-wider text-accent uppercase">
-                    {conversation.projectNumber}
+                    {conversation.number}
                   </span>
                   {conversation.unread > 0 ? (
                     <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-accent-foreground">
@@ -173,7 +224,7 @@ export default async function ProfileMessagesPage() {
                   </span>
                 </div>
                 <h2 className="mt-1 truncate font-display text-base font-medium tracking-tight text-foreground">
-                  {conversation.projectTitle}
+                  {conversation.title}
                 </h2>
                 <p className="mt-1 truncate text-sm text-muted">
                   {conversation.latest}

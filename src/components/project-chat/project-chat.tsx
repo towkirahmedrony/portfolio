@@ -41,7 +41,7 @@ type Viewer = {
 type ChannelState = "connecting" | "live" | "degraded";
 
 type ProjectChatProps = {
-  projectId: string;
+  projectId?: string;
   projectNumber: string;
   projectTitle: string;
   /** Owning client's profile id (used to label messages when viewing as admin). */
@@ -59,6 +59,14 @@ type ProjectChatProps = {
    * on cancelled projects.
    */
   allowSendMessages?: boolean;
+  /**
+   * When provided, this renders a REQUEST-stage conversation (before a
+   * Project exists) instead of a project conversation. The same
+   * project_messages rows are used; when the request converts into a project,
+   * the rows are relinked to the project by the database trigger and this
+   * same history keeps showing in the project chat.
+   */
+  requestId?: string;
 };
 
 function asMessageRow(value: unknown): ProjectMessageRow | null {
@@ -66,12 +74,15 @@ function asMessageRow(value: unknown): ProjectMessageRow | null {
     return null;
   }
   const v = value as Record<string, unknown>;
-  if (typeof v.id !== "string" || typeof v.project_id !== "string") {
+  const hasProject = typeof v.project_id === "string" && v.project_id.length > 0;
+  const hasRequest = typeof v.request_id === "string" && v.request_id.length > 0;
+  if (typeof v.id !== "string" || (!hasProject && !hasRequest)) {
     return null;
   }
   return {
     id: v.id,
-    project_id: v.project_id,
+    project_id: hasProject ? (v.project_id as string) : null,
+    request_id: hasRequest ? (v.request_id as string) : null,
     sender_id: typeof v.sender_id === "string" ? v.sender_id : null,
     message: typeof v.message === "string" ? v.message : "",
     reply_to_id: typeof v.reply_to_id === "string" ? v.reply_to_id : null,
@@ -163,7 +174,12 @@ export function ProjectChat({
   backLabel = "Back to project",
   className,
   allowSendMessages = true,
+  requestId,
 }: ProjectChatProps) {
+  // A conversation lives on a project OR on a project request (pre-project).
+  // Both scopes share the same table, component, realtime and read-state.
+  const contextColumn = requestId ? "request_id" : "project_id";
+  const contextId = requestId ?? projectId ?? "";
   const [messages, setMessages] = useState<ProjectMessageRow[]>([]);
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -225,20 +241,24 @@ export function ProjectChat({
       unreadPendingRef.current = false;
       void (async () => {
         try {
-          const { error } = await client.rpc("mark_project_messages_read", {
-            p_project_id: projectId,
-          });
+          const { error } = requestId
+            ? await client.rpc("mark_request_messages_read", {
+                p_request_id: requestId,
+              })
+            : await client.rpc("mark_project_messages_read", {
+                p_project_id: projectId ?? "",
+              });
           if (error) {
             // Read-state is best-effort; never fail the conversation for it.
             unreadPendingRef.current = true;
-            console.error("mark_project_messages_read failed:", error.message);
+            console.error("mark messages read failed:", error.message);
           }
         } catch {
           unreadPendingRef.current = true;
         }
       })();
     }, 300);
-  }, [client, projectId]);
+  }, [client, projectId, requestId]);
 
   const scrollToBottom = useCallback(() => {
     const el = listRef.current;
@@ -272,7 +292,7 @@ export function ProjectChat({
     const { data, error } = await client
       .from("project_messages")
       .select("*")
-      .eq("project_id", projectId)
+      .eq(contextColumn, contextId)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE);
 
@@ -290,7 +310,7 @@ export function ProjectChat({
     pinnedRef.current = true;
     scrollToBottom();
     markIncomingRead();
-  }, [client, projectId, updateMessages, scrollToBottom, markIncomingRead]);
+  }, [client, contextColumn, contextId, updateMessages, scrollToBottom, markIncomingRead]);
 
   /** Load messages older than the earliest one currently in state. */
   const loadOlder = useCallback(async () => {
@@ -308,7 +328,7 @@ export function ProjectChat({
     const { data, error } = await client
       .from("project_messages")
       .select("*")
-      .eq("project_id", projectId)
+      .eq(contextColumn, contextId)
       .lt("created_at", earliest.created_at)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE);
@@ -324,7 +344,7 @@ export function ProjectChat({
       setLoadedAll(true);
     }
     setLoadingOlder(false);
-  }, [client, projectId, updateMessages, loadingOlder, loadedAll]);
+  }, [client, contextColumn, contextId, updateMessages, loadingOlder, loadedAll]);
 
   const handleIncomingRow = useCallback(
     (value: unknown) => {
@@ -368,10 +388,15 @@ export function ProjectChat({
     setSending(true);
     setSendError(null);
     try {
-      const { data, error } = await client.rpc("send_project_message", {
-        p_project_id: projectId,
-        p_message: body,
-      });
+      const { data, error } = requestId
+        ? await client.rpc("send_request_message", {
+            p_request_id: requestId,
+            p_message: body,
+          })
+        : await client.rpc("send_project_message", {
+            p_project_id: projectId ?? "",
+            p_message: body,
+          });
       if (error) {
         setSendError(friendlyError(error));
         return;
@@ -395,7 +420,7 @@ export function ProjectChat({
     } finally {
       setSending(false);
     }
-  }, [client, draft, sending, projectId, allowSendMessages, updateMessages, scrollToBottom, loadLatest]);
+  }, [client, draft, sending, projectId, requestId, allowSendMessages, updateMessages, scrollToBottom, loadLatest]);
 
   const handleSubmit = useCallback(
     (event: FormEvent) => {
@@ -424,7 +449,9 @@ export function ProjectChat({
       return;
     }
     let active = true;
-    const topic = `project-chat:${projectId}`;
+    const topic = requestId
+      ? `request-chat:${requestId}`
+      : `project-chat:${projectId}`;
 
     void (async () => {
       const {
@@ -453,7 +480,9 @@ export function ProjectChat({
         return;
       }
 
-      // Single subscription filtered to this project. Cleaned up on unmount.
+      // Single subscription filtered to this conversation. Cleaned up on
+      // unmount. Request-scoped rows are relinked to the project by the DB
+      // when the request converts; this filter automatically follows the row.
       const channel = client
         .channel(topic)
         .on(
@@ -462,7 +491,7 @@ export function ProjectChat({
             event: "INSERT",
             schema: "public",
             table: "project_messages",
-            filter: `project_id=eq.${projectId}`,
+            filter: `${contextColumn}=eq.${contextId}`,
           },
           (payload) => {
             handleIncomingRow((payload as { new?: unknown }).new);
@@ -501,7 +530,7 @@ export function ProjectChat({
       channelRef.current?.remove();
       channelRef.current = null;
     };
-  }, [client, projectId, loadLatest, applyViewer, handleIncomingRow, markIncomingRead]);
+  }, [client, projectId, requestId, contextColumn, contextId, loadLatest, applyViewer, handleIncomingRow, markIncomingRead]);
 
   // Keep the list pinned to the newest message unless the user scrolled up.
   useEffect(() => {

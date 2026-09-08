@@ -899,9 +899,10 @@ export type Database = {
           id: string
           is_read: boolean
           message: string
-          project_id: string
+          project_id: string | null
           read_at: string | null
           reply_to_id: string | null
+          request_id: string | null
           sender_id: string | null
           updated_at: string
         }
@@ -910,9 +911,10 @@ export type Database = {
           id?: string
           is_read?: boolean
           message: string
-          project_id: string
+          project_id?: string | null
           read_at?: string | null
           reply_to_id?: string | null
+          request_id?: string | null
           sender_id?: string | null
           updated_at?: string
         }
@@ -921,9 +923,10 @@ export type Database = {
           id?: string
           is_read?: boolean
           message?: string
-          project_id?: string
+          project_id?: string | null
           read_at?: string | null
           reply_to_id?: string | null
+          request_id?: string | null
           sender_id?: string | null
           updated_at?: string
         }
@@ -1986,8 +1989,13 @@ export type Database = {
       is_active_admin: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       mark_project_messages_read: { Args: { p_project_id: string }; Returns: number }
+      mark_request_messages_read: { Args: { p_request_id: string }; Returns: number }
       send_project_message: {
         Args: { p_message: string; p_project_id: string; p_reply_to_id?: string }
+        Returns: Json
+      }
+      send_request_message: {
+        Args: { p_message: string; p_reply_to_id?: string; p_request_id: string }
         Returns: Json
       }
       sync_customer_session: { Args: never; Returns: undefined }

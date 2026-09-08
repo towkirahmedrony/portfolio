@@ -352,12 +352,12 @@ function MessageRows({
   return (
     <>
       {rows.map((row) => {
-        const project = projectsById.get(row.project_id);
+        const project = row.project_id ? projectsById.get(row.project_id) : undefined;
         const fromClient = row.sender_id === clientId;
         return (
           <RowItem
             key={row.id}
-            href={project ? `/admin/projects/${row.project_id}?tab=messages` : undefined}
+            href={project && row.project_id ? `/admin/projects/${row.project_id}?tab=messages` : undefined}
             title={
               <span className="flex items-center gap-2">
                 {row.is_read ? null : (

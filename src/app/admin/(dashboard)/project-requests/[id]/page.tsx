@@ -61,10 +61,18 @@ export default async function AdminProjectRequestDetailPage({
         >
           Back to all requests
         </Link>
-        <StatusPill
-          label={formatRequestStatusLabel(request.status)}
-          className={getRequestStatusStyle(request.status)}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href={`/admin/project-requests/${request.id}/messages`}
+            className="text-sm font-medium text-accent hover:underline"
+          >
+            Messages with client &rarr;
+          </Link>
+          <StatusPill
+            label={formatRequestStatusLabel(request.status)}
+            className={getRequestStatusStyle(request.status)}
+          />
+        </div>
       </div>
       <ProjectRequestDetail request={request} quotes={quotes} />
     </AdminPage>

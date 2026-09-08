@@ -43,7 +43,9 @@ export default async function AdminMessagesPage() {
 
   const messages = (rows ?? []) as ProjectMessageRow[];
 
-  const projectIds = [...new Set(messages.map((row) => row.project_id).filter(Boolean))];
+  const projectIds = [
+    ...new Set(messages.map((row) => row.project_id).filter((id): id is string => id !== null)),
+  ];
   const { data: projects } = projectIds.length
     ? await supabase
         .from("projects")
@@ -51,7 +53,13 @@ export default async function AdminMessagesPage() {
         .in("id", projectIds)
     : { data: [] };
 
-  const clientIds = [...new Set((projects ?? []).map((project) => project.client_id))];
+  const clientIds = [
+    ...new Set(
+      (projects ?? [])
+        .map((project) => project.client_id)
+        .filter((id): id is string => id !== null),
+    ),
+  ];
   const { data: profiles } = clientIds.length
     ? await supabase
         .from("profiles")
@@ -64,13 +72,16 @@ export default async function AdminMessagesPage() {
 
   const conversationsByProject = new Map<string, Conversation>();
   for (const message of messages) {
+    if (!message.project_id) {
+      continue;
+    }
     const project = projectById.get(message.project_id);
     if (!project) {
       continue;
     }
     const current = conversationsByProject.get(project.id);
     if (!current) {
-      const profile = profileById.get(project.client_id);
+      const profile = project.client_id ? profileById.get(project.client_id) : undefined;
       conversationsByProject.set(project.id, {
         projectId: project.id,
         projectNumber: project.project_number,
@@ -82,7 +93,7 @@ export default async function AdminMessagesPage() {
           company_name: null,
           avatar_url: null,
         }),
-        clientId: project.client_id,
+        clientId: project.client_id ?? "",
         latestMessage: message.message,
         latestAt: message.created_at,
         unreadCount: 0,

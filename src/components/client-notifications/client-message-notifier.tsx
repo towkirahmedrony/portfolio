@@ -11,28 +11,25 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
  *
  * Renders NO header icons, navigation items or badges — the public portfolio
  * header stays clean. It only exists to surface ONE centered modal when an
- * Admin sends a new project message while the signed-in Client is anywhere on
- * the site (homepage, marketing pages, profile, project pages).
+ * Admin sends a new message while the signed-in Client is anywhere on the
+ * site. The message may belong to a project OR to a project request
+ * (pre-project stage) — both live in the same project_messages table, so both
+ * are handled identically here.
  *
- * Architecture (unchanged): realtime INSERT events on the existing
- * project_messages table are the transient alert source; RLS guarantees a
- * client only ever receives events for projects they own; showing the modal
- * never marks anything read — read state changes only when the client opens
- * the conversation (ProjectChat -> mark_project_messages_read RPC).
+ * Request -> Project continuity: when a request converts, its message rows
+ * are relinked to the project by the database. A request-scoped modal that
+ * was already shown points at the request chat page, which redirects to the
+ * project chat once the project exists — so "Open Chat" always resolves to
+ * the one continuous conversation.
  *
- * Behavior:
- *  - Messages are aggregated per project into a single modal ("You have 3 new
- *    messages") — never stacked popups.
- *  - "Open Chat" -> the exact project chat (or the profile Messages page when
- *    several projects are involved); "Later"/backdrop/Escape -> modal closes,
- *    messages stay unread.
- *  - If the tab is hidden when a message arrives, the modal appears when the
- *    client returns to the tab. Before showing, the database is re-checked so
- *    messages already marked read elsewhere never trigger a misleading modal.
+ * Showing the modal never marks anything read; read state changes only when
+ * the client opens the conversation (existing RPCs). The database is the
+ * source of truth — before showing, unread is re-checked.
  */
 
 type PendingProject = {
-  projectId: string;
+  key: string;
+  chatPath: string;
   number: string;
   title: string;
   count: number;
@@ -44,6 +41,12 @@ type ModalView =
   | { kind: "single"; data: PendingProject }
   | { kind: "multi"; total: number; projectCount: number; names: string[] };
 
+type Meta = {
+  number: string;
+  title: string;
+  chatPath: string;
+};
+
 function preview(message: string): string {
   const singleLine = message.replace(/\s+/g, " ").trim();
   return singleLine.length > 160 ? `${singleLine.slice(0, 160)}…` : singleLine;
@@ -51,7 +54,8 @@ function preview(message: string): string {
 
 type RawRow = {
   id: string;
-  projectId: string;
+  contextKind: "project" | "request";
+  contextId: string;
   message: string;
   createdAt: string;
 };
@@ -71,15 +75,12 @@ export function ClientMessageNotifier() {
     }
   });
 
-  const [viewerId, setViewerId] = useState<string | null>(null);
   const [active, setActive] = useState(false); // signed-in client only
   const [modal, setModal] = useState<ModalView | null>(null);
 
   const viewerIdRef = useRef<string | null>(null);
   const pathnameRef = useRef(pathname);
-  const metaCacheRef = useRef<Map<string, { project_number: string; title: string }>>(
-    new Map(),
-  );
+  const metaCacheRef = useRef<Map<string, Meta>>(new Map());
   const seenIdsRef = useRef<Set<string>>(new Set());
   const pendingRef = useRef<Map<string, PendingProject>>(new Map());
   const queuedRowsRef = useRef<RawRow[]>([]);
@@ -87,8 +88,10 @@ export function ClientMessageNotifier() {
   const openingRef = useRef(false);
   const channelRef = useRef<{ remove: () => void } | null>(null);
 
-  const chatPathFor = useCallback((projectId: string) => {
-    return `/profile/projects/${projectId}/messages`;
+  const chatPathFor = useCallback((kind: "project" | "request", id: string) => {
+    return kind === "project"
+      ? `/profile/projects/${id}/messages`
+      : `/profile/project-requests/${id}/messages`;
   }, []);
 
   const dismissAll = useCallback(() => {
@@ -162,41 +165,67 @@ export function ClientMessageNotifier() {
       if (!currentId) {
         return;
       }
-      // Currently reading this exact conversation — ProjectChat owns the
-      // thread there and will mark the message read. No modal.
-      if (pathnameRef.current === chatPathFor(row.projectId)) {
+      const chatPath = chatPathFor(row.contextKind, row.contextId);
+      // Currently reading this exact conversation — the chat owns the thread
+      // there and will mark the message read. No modal.
+      if (pathnameRef.current === chatPath) {
         return;
       }
 
-      const cached = metaCacheRef.current.get(row.projectId);
-      let resolved: { project_number: string; title: string } | null = cached ?? null;
-      if (!resolved && client) {
+      const cacheKey = `${row.contextKind}:${row.contextId}`;
+      let meta: Meta | null = metaCacheRef.current.get(cacheKey) ?? null;
+      if (!meta && client) {
         try {
-          const { data } = await client
-            .from("projects")
-            .select("project_number, title")
-            .eq("id", row.projectId)
-            .maybeSingle();
-          resolved = data ?? null;
+          if (row.contextKind === "project") {
+            const { data } = await client
+              .from("projects")
+              .select("project_number, title")
+              .eq("id", row.contextId)
+              .maybeSingle();
+            meta = data
+              ? {
+                  number: data.project_number,
+                  title: data.title,
+                  chatPath,
+                }
+              : null;
+          } else {
+            const { data } = await client
+              .from("project_requests")
+              .select("request_number, project_type")
+              .eq("id", row.contextId)
+              .maybeSingle();
+            meta = data
+              ? {
+                  number: data.request_number,
+                  title: data.project_type || "Project request",
+                  chatPath,
+                }
+              : null;
+          }
         } catch {
-          resolved = null;
+          meta = null;
+        }
+        if (meta) {
+          metaCacheRef.current.set(cacheKey, meta);
         }
       }
-      if (!resolved) {
+      if (!meta) {
+        // No access / no such conversation — RLS already hid the row.
         return;
       }
-      metaCacheRef.current.set(row.projectId, resolved);
 
-      const existing = pendingRef.current.get(row.projectId);
+      const existing = pendingRef.current.get(cacheKey);
       if (existing) {
         existing.count += 1;
         existing.latest = preview(row.message);
         existing.latestAt = row.createdAt;
       } else {
-        pendingRef.current.set(row.projectId, {
-          projectId: row.projectId,
-          number: resolved.project_number,
-          title: resolved.title,
+        pendingRef.current.set(cacheKey, {
+          key: cacheKey,
+          chatPath,
+          number: meta.number,
+          title: meta.title,
           count: 1,
           latest: preview(row.message),
           latestAt: row.createdAt,
@@ -233,11 +262,12 @@ export function ClientMessageNotifier() {
       const row = value as {
         id?: unknown;
         project_id?: unknown;
+        request_id?: unknown;
         sender_id?: unknown;
         message?: unknown;
         created_at?: unknown;
       };
-      if (typeof row.id !== "string" || typeof row.project_id !== "string") {
+      if (typeof row.id !== "string") {
         return;
       }
       const id: string = row.id;
@@ -246,9 +276,19 @@ export function ClientMessageNotifier() {
         return;
       }
       seenIdsRef.current.add(id);
+
+      const hasProject = typeof row.project_id === "string" && row.project_id.length > 0;
+      const hasRequest = typeof row.request_id === "string" && row.request_id.length > 0;
+      const contextKind = hasProject ? "project" : hasRequest ? "request" : null;
+      const contextId = hasProject ? (row.project_id as string) : hasRequest ? (row.request_id as string) : "";
+      if (!contextKind) {
+        return;
+      }
+
       const raw: RawRow = {
         id,
-        projectId: row.project_id,
+        contextKind,
+        contextId,
         message: typeof row.message === "string" ? row.message : "",
         createdAt: typeof row.created_at === "string" ? row.created_at : "",
       };
@@ -296,9 +336,10 @@ export function ClientMessageNotifier() {
         return;
       }
       viewerIdRef.current = user.id;
-      setViewerId(user.id);
       setActive(true);
 
+      // One subscription for the whole project_messages table. RLS decides
+      // which rows may reach this client (own projects + own requests).
       const channel = client
         .channel(`client-message-notifier:${user.id}`)
         .on(
@@ -360,14 +401,14 @@ export function ClientMessageNotifier() {
       return;
     }
     if (snapshot.kind === "single") {
-      router.push(chatPathFor(snapshot.data.projectId));
+      router.push(snapshot.data.chatPath);
     } else {
-      // Several projects have new messages — the Messages hub lists them all.
+      // Several conversations have new messages — the Messages hub lists all.
       router.push("/profile/messages");
     }
-  }, [modal, router, chatPathFor]);
+  }, [modal, router]);
 
-  if (!active || !viewerId) {
+  if (!active) {
     return null;
   }
 
@@ -385,7 +426,7 @@ export function ClientMessageNotifier() {
         modal.kind === "single"
           ? "Admin sent you a new message regarding:"
           : `New messages from the team across ${modal.projectCount} ${
-              modal.projectCount === 1 ? "project" : "projects"
+              modal.projectCount === 1 ? "conversation" : "conversations"
             }.`
       }
       onClose={() => dismissAll()}

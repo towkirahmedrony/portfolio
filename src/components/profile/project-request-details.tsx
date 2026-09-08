@@ -24,6 +24,7 @@ import {
   formatClientQuoteStatusLabel,
   getQuoteStatusStyle,
 } from "@/lib/admin-quote-constants";
+import { canClientMessageRequest } from "@/lib/request-messaging";
 import type { CustomerProjectRequestDetail } from "@/lib/customer-project-requests";
 import { formatMoney } from "@/lib/quote-money";
 import type { Json } from "@/types/database";
@@ -207,6 +208,21 @@ export function ProjectRequestDetails({
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {linkedProject && linkedProject.status !== "cancelled" ? (
+            <ButtonLink
+              href={`/profile/projects/${linkedProject.id}/messages`}
+              className="h-10 px-4 text-xs"
+            >
+              Chat with Admin &rarr;
+            </ButtonLink>
+          ) : !linkedProject && canClientMessageRequest(request.status) ? (
+            <ButtonLink
+              href={`/profile/project-requests/${request.id}/messages`}
+              className="h-10 px-4 text-xs"
+            >
+              Message Admin &rarr;
+            </ButtonLink>
+          ) : null}
           {canResubmit ? (
             <ButtonLink href={editHref} className="h-10 px-4 text-xs">
               Edit & Resubmit
