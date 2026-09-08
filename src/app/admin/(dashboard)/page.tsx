@@ -3,6 +3,7 @@ import { AdminPage } from "@/components/admin/admin-page";
 import {
   ActionItemGrid,
   ActivityFeed,
+  ClientQuoteResponses,
   DashboardSection,
   DashboardSkeleton,
   StatCardGrid,
@@ -26,6 +27,13 @@ async function AdminDashboardContent() {
         description="Queues that still need an admin response. Detail pages will be added later."
       >
         <ActionItemGrid items={dashboard.actions} />
+      </DashboardSection>
+
+      <DashboardSection
+        title="Client Quote Responses"
+        description="Recent accept, reject, and change-request decisions, identified by quote request (PR-...) or project (PJ-...)."
+      >
+        <ClientQuoteResponses responses={dashboard.quoteResponses} />
       </DashboardSection>
 
       <DashboardSection

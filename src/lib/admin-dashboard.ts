@@ -1,3 +1,5 @@
+import { getRecentClientQuoteResponses } from "@/lib/admin-quote-responses";
+import type { ClientQuoteResponseItem } from "@/lib/admin-quote-responses";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { InvoiceStatus, QuoteStatus } from "@/types/database";
 
@@ -42,6 +44,7 @@ export type AdminDashboardData = {
   metrics: DashboardMetric[];
   actions: DashboardActionItem[];
   activity: DashboardQueryState<DashboardActivityItem[]>;
+  quoteResponses: DashboardQueryState<ClientQuoteResponseItem[]>;
 };
 
 const ACTIVE_PROJECT_STATUSES = [
@@ -405,6 +408,29 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
         : { status: "ok", data: items };
   }
 
+  let quoteResponses: DashboardQueryState<ClientQuoteResponseItem[]>;
+  try {
+    const responseResult = await getRecentClientQuoteResponses(8);
+    if (responseResult.status === "ok") {
+      quoteResponses = { status: "ok", data: responseResult.items };
+    } else if (responseResult.status === "empty") {
+      quoteResponses = { status: "empty", data: [] };
+    } else {
+      quoteResponses = {
+        status: responseResult.status,
+        message: responseResult.message,
+      };
+    }
+  } catch (error) {
+    quoteResponses = {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Could not load client quote responses.",
+    };
+  }
+
   return {
     metrics: [
       metricFromCount(
@@ -477,5 +503,6 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
       ),
     ],
     activity,
+    quoteResponses,
   };
 }
