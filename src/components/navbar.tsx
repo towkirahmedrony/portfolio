@@ -6,6 +6,7 @@ import { useState } from "react";
 import { navigation, site } from "@/data/site";
 import { cn } from "@/lib/utils";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { ClientMessageAlerts } from "@/components/client-notifications/client-message-alerts";
 import { ButtonLink } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -48,19 +49,18 @@ export function Navbar() {
           })}
         </nav>
 
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <ClientMessageAlerts />
           <ThemeToggle />
-          <SignOutButton />
-          <ButtonLink href="/start-project" size="md">
-            Start a Project
-          </ButtonLink>
-        </div>
-
-        <div className="flex items-center gap-2 md:hidden">
-          <ThemeToggle />
+          <div className="hidden items-center gap-3 md:flex">
+            <SignOutButton />
+            <ButtonLink href="/start-project" size="md">
+              Start a Project
+            </ButtonLink>
+          </div>
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-card-border bg-card"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-card-border bg-card md:hidden"
             aria-expanded={open}
             aria-controls="mobile-nav"
             aria-label={open ? "Close menu" : "Open menu"}

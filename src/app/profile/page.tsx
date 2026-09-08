@@ -89,6 +89,28 @@ export default async function ProfilePage() {
   const quoteAlerts = findQuotesAwaitingClient(requestItems);
   const unviewedQuote = findLatestUnviewedSentQuote(requestItems);
 
+  // Unread incoming message counts per project (RLS-scoped to own projects),
+  // used for the "Messages" entry on each active project card.
+  const projectIds = requestItems
+    .map((item) => item.linkedProject?.id)
+    .filter((id): id is string => Boolean(id));
+  let unreadByProject: Record<string, number> = {};
+  if (projectIds.length > 0) {
+    const { data: unreadRows } = await supabase
+      .from("project_messages")
+      .select("project_id")
+      .eq("is_read", false)
+      .neq("sender_id", user.id)
+      .in("project_id", projectIds);
+    unreadByProject = (unreadRows ?? []).reduce<Record<string, number>>(
+      (acc, row) => {
+        acc[row.project_id] = (acc[row.project_id] ?? 0) + 1;
+        return acc;
+      },
+      {},
+    );
+  }
+
   return (
     <section className="py-12 sm:py-16 mt-8 sm:mt-12">
       <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
@@ -97,7 +119,7 @@ export default async function ProfilePage() {
           <CustomerProfile initialProfile={mapped.profile} initialAccount={mapped.account} />
           <QuoteActionBanner alerts={quoteAlerts} />
           <CustomerRequests items={requestItems} />
-          <ProjectTracking items={requestItems} />
+          <ProjectTracking items={requestItems} unreadByProject={unreadByProject} />
           <ReferralSection referral={referral} />
         </div>
       </div>

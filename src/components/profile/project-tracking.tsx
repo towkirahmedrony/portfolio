@@ -21,7 +21,13 @@ import {
 } from "@/lib/customer-project-requests";
 import { formatMoney } from "@/lib/quote-money";
 
-export function ProjectTracking({ items }: { items: CustomerProjectRequestItem[] }) {
+export function ProjectTracking({
+  items,
+  unreadByProject = {},
+}: {
+  items: CustomerProjectRequestItem[];
+  unreadByProject?: Record<string, number>;
+}) {
   const projects = items.filter((item) => item.linkedProject);
 
   return (
@@ -111,12 +117,25 @@ export function ProjectTracking({ items }: { items: CustomerProjectRequestItem[]
                         </p>
                       </div>
                     </div>
-                    <Link
-                      href={`/profile/projects/${project.id}`}
-                      className="inline-flex w-fit items-center justify-center rounded-md bg-accent/10 px-4 py-2 text-xs font-bold text-accent transition-colors hover:bg-accent hover:text-white"
-                    >
-                      {isQuoteAwaitingClient(item.quote) ? "Review Quote" : "View Details"}
-                    </Link>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Link
+                        href={`/profile/projects/${project.id}`}
+                        className="inline-flex w-fit items-center justify-center rounded-md bg-accent/10 px-4 py-2 text-xs font-bold text-accent transition-colors hover:bg-accent hover:text-white"
+                      >
+                        {isQuoteAwaitingClient(item.quote) ? "Review Quote" : "View Details"}
+                      </Link>
+                      <Link
+                        href={`/profile/projects/${project.id}/messages`}
+                        className="inline-flex w-fit items-center justify-center gap-2 rounded-md border border-card-border bg-background px-4 py-2 text-xs font-bold text-foreground transition-colors hover:border-accent/40 hover:text-accent"
+                      >
+                        Messages
+                        {unreadByProject[project.id] ? (
+                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
+                            {unreadByProject[project.id]}
+                          </span>
+                        ) : null}
+                      </Link>
+                    </div>
                   </div>
                 </div>
               );
