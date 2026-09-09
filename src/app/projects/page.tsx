@@ -17,11 +17,11 @@ export const revalidate = 3600;
 export const metadata: Metadata = {
   title: "Projects",
   description:
-    "Selected freelance web projects including business websites, e-commerce storefronts, landing pages, portfolios, and custom applications.",
+    "Selected websites and web applications, with factual descriptions of what was built and the technologies used.",
   openGraph: {
     title: "Projects",
     description:
-      "Selected freelance web projects including business websites, e-commerce storefronts, landing pages, portfolios, and custom applications.",
+      "Selected websites and web applications, with factual descriptions of what was built and the technologies used.",
   },
 };
 
@@ -53,7 +53,7 @@ export default function ProjectsPage() {
       <PageHero
         eyebrow="Work"
         title="Projects"
-        description="A selection of websites and applications built for studios, brands, and teams. Filter by type if you want to see a specific kind of work."
+        description="A selection of websites and web applications. Each project includes a short description of what was built, the stack, and a live demo when available."
       />
       <Section className="pt-12 sm:pt-16">
         <Suspense fallback={<ProjectGridSkeleton />}>

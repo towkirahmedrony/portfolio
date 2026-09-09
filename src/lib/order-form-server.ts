@@ -1,3 +1,4 @@
+import { isPrimaryPublicService } from "@/data/positioning";
 import { createPublicSupabaseClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { PublicContentResult } from "@/lib/public-content";
@@ -107,7 +108,7 @@ export async function resolveServiceId(
 
     const query = supabase
       .from("services")
-      .select("id")
+      .select("id, slug, name")
       .eq("published", true)
       .limit(1);
 
@@ -116,6 +117,10 @@ export async function resolveServiceId(
       : await query.eq("slug", serviceParam).maybeSingle();
 
     if (error || !data) {
+      return null;
+    }
+
+    if (!isPrimaryPublicService(data.slug, data.name)) {
       return null;
     }
 

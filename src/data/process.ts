@@ -23,7 +23,7 @@ export const processSteps: ProcessStep[] = [
     step: "04",
     title: "Development",
     description:
-      "The site is implemented in Next.js with reusable components, accessible markup, and production-ready performance.",
+      "The website or web app is implemented in Next.js with reusable components, accessible markup, and production-ready performance.",
   },
   {
     step: "05",
@@ -35,6 +35,6 @@ export const processSteps: ProcessStep[] = [
     step: "06",
     title: "Deployment",
     description:
-      "The site ships to a reliable host, analytics are connected, and you receive a clear handover for next steps.",
+      "The project ships to a reliable host and you receive a clear handover for next steps.",
   },
 ];

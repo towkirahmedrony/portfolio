@@ -1,3 +1,4 @@
+import { isDiscontinuedServiceLabel } from "@/data/positioning";
 import type {
   Json,
   OrderFormFieldRow,
@@ -450,6 +451,12 @@ export function buildOrderFormConfig(
 ): OrderFormConfig {
   const optionsByGroup: Record<string, OrderFormOption[]> = {};
   for (const option of options.map(toOption)) {
+    if (
+      isDiscontinuedServiceLabel(option.slug) ||
+      isDiscontinuedServiceLabel(option.label)
+    ) {
+      continue;
+    }
     const list = optionsByGroup[option.group] ?? [];
     list.push(option);
     optionsByGroup[option.group] = list;

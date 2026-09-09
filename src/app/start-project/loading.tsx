@@ -6,7 +6,7 @@ export default function StartProjectLoading() {
     <>
       <PageHero
         eyebrow="Project request"
-        title="Tell me about the website you need"
+        title="Tell me about the website or web app you need"
         description="A short brief, one step at a time. Your answers stay on this page until you submit — nothing is stored or emailed yet."
       />
       <section className="py-12 sm:py-16">

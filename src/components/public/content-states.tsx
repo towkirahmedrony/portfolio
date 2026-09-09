@@ -86,7 +86,7 @@ export function ServiceCardSkeleton() {
   );
 }
 
-export function ServiceListSkeleton({ count = 3 }: { count?: number }) {
+export function ServiceListSkeleton({ count = 2 }: { count?: number }) {
   return (
     <div className="grid gap-6" aria-busy="true" aria-label="Loading services">
       {Array.from({ length: count }).map((_, index) => (
@@ -118,10 +118,10 @@ export function OrderFormSkeleton() {
   );
 }
 
-export function HomeCardSkeleton({ count = 3 }: { count?: number }) {
+export function HomeCardSkeleton({ count = 2 }: { count?: number }) {
   return (
     <div
-      className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
+      className="grid gap-5 sm:grid-cols-2"
       aria-busy="true"
       aria-label="Loading content"
     >

@@ -10,8 +10,8 @@ export function Footer() {
         <div className="md:col-span-2">
           <p className="font-display text-lg tracking-tight">{site.name}</p>
           <p className="mt-3 max-w-sm text-sm leading-6 text-muted">
-            {site.role} building modern websites for businesses that want a
-            clear, professional presence online.
+            {site.role} specializing in website and web application development
+            for businesses and ambitious ideas.
           </p>
         </div>
 

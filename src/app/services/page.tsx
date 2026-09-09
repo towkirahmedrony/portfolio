@@ -19,26 +19,13 @@ export const revalidate = 3600;
 export const metadata: Metadata = {
   title: "Services",
   description:
-    "Freelance web development services including business websites, portfolios, e-commerce, landing pages, and custom web applications.",
+    "Website development and web application development for businesses and ambitious ideas.",
   openGraph: {
     title: "Services",
     description:
-      "Freelance web development services including business websites, portfolios, e-commerce, landing pages, and custom web applications.",
+      "Website development and web application development for businesses and ambitious ideas.",
   },
 };
-
-function formatPrice(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat("en", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    const digits = new Intl.NumberFormat("en").format(amount);
-    return `${currency} ${digits}`.trim();
-  }
-}
 
 function formatDuration(service: Service): string | null {
   const { estimatedDaysMin, estimatedDaysMax } = service;
@@ -56,7 +43,6 @@ function formatDuration(service: Service): string | null {
 
 function ServiceCard({ service }: { service: Service }) {
   const duration = formatDuration(service);
-  const showPricing = service.startingPrice != null || duration != null;
 
   return (
     <Card className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
@@ -98,29 +84,25 @@ function ServiceCard({ service }: { service: Service }) {
             </ul>
           </div>
         ) : null}
-        {showPricing ? (
-          <div>
-            <h3 className="text-xs font-medium tracking-[0.18em] text-muted uppercase">
-              Pricing &amp; timeline
-            </h3>
-            <dl className="mt-3 space-y-2 text-sm leading-6">
-              {service.startingPrice != null ? (
-                <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted">Starting price</dt>
-                  <dd className="font-medium">
-                    {formatPrice(service.startingPrice, service.currency)}
-                  </dd>
-                </div>
-              ) : null}
-              {duration ? (
-                <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted">Timeline</dt>
-                  <dd>{duration}</dd>
-                </div>
-              ) : null}
-            </dl>
-          </div>
-        ) : null}
+        <div>
+          <h3 className="text-xs font-medium tracking-[0.18em] text-muted uppercase">
+            Pricing &amp; timeline
+          </h3>
+          <dl className="mt-3 space-y-3 text-sm leading-6">
+            <div>
+              <dt className="text-muted">Pricing</dt>
+              <dd className="mt-1 font-medium">
+                Custom pricing based on project scope.
+              </dd>
+            </div>
+            {duration ? (
+              <div>
+                <dt className="text-muted">Timeline</dt>
+                <dd className="mt-1">{duration}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
       </div>
     </Card>
   );
@@ -159,8 +141,8 @@ export default function ServicesPage() {
     <>
       <PageHero
         eyebrow="Services"
-        title="What I can build for you"
-        description="Each service is a complete engagement: discovery, design, development, and launch — tailored to the kind of site your business actually needs."
+        title="Website and web application development"
+        description="I specialize in two services: modern websites for businesses, and custom web applications for products, dashboards, and real workflows."
       />
 
       <Section className="pt-12 sm:pt-16">

@@ -54,7 +54,7 @@ export function ProjectCard({ project }: { project: Project }) {
                 variant="secondary"
                 size="md"
               >
-                GitHub
+                  Source Code
               </ButtonLink>
             ) : null}
           </div>

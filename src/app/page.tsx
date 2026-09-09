@@ -29,10 +29,10 @@ export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: `${site.name} — Freelance Web Developer`,
-  description: site.tagline,
+  description: site.description,
   openGraph: {
     title: `${site.name} — Freelance Web Developer`,
-    description: site.tagline,
+    description: site.description,
   },
 };
 
@@ -64,7 +64,7 @@ async function HomeServicesContent() {
 
   if (result.status === "ok") {
     return (
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-5 sm:grid-cols-2">
         {result.data.map((service) => (
           <HomeServiceCard key={service.id} service={service} />
         ))}
@@ -124,11 +124,11 @@ export default function HomePage() {
           <p className="animate-fade-up text-xs font-medium tracking-[0.22em] text-accent uppercase">
             {site.role}
           </p>
-          <h1 className="font-display animate-fade-up mt-4 max-w-3xl text-4xl leading-[1.1] tracking-tight text-balance sm:text-6xl">
-            {site.name}
+          <h1 className="font-display animate-fade-up mt-4 max-w-4xl text-4xl leading-[1.1] tracking-tight text-balance sm:text-6xl">
+            {site.headline}
           </h1>
           <p
-            className="animate-fade-up mt-6 max-w-xl text-lg leading-8 text-muted"
+            className="animate-fade-up mt-6 max-w-2xl text-lg leading-8 text-muted"
             style={{ animationDelay: "80ms" }}
           >
             {site.tagline}
@@ -150,8 +150,8 @@ export default function HomePage() {
       <Section
         id="services"
         eyebrow="Services"
-        title="Websites that look considered and work hard."
-        description="From a first company site to a custom application, each engagement is scoped around clarity, performance, and a result you can stand behind."
+        title="Website and web application development."
+        description="Two focused services: fast, modern websites, and custom web apps built around real workflows and business needs."
       >
         <Suspense fallback={<HomeCardSkeleton />}>
           <HomeServicesContent />
@@ -162,7 +162,7 @@ export default function HomePage() {
         id="work"
         eyebrow="Selected work"
         title="Featured projects"
-        description="A few recent builds across business sites, commerce, landing pages, and product interfaces."
+        description="A selection of websites and web applications, with a short description of what was built and the stack behind each project."
         actions={
           <ButtonLink href="/projects" variant="secondary">
             See all projects
@@ -178,7 +178,7 @@ export default function HomePage() {
         id="why"
         eyebrow="Approach"
         title="Why choose me"
-        description="A small, focused practice — so you work directly with the person designing and shipping the site."
+        description="A small, focused practice — so you work directly with the person designing and shipping the website or web app."
       >
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {reasons.map((reason) => (

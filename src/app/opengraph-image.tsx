@@ -27,9 +27,11 @@ export default function OpenGraphImage() {
           {site.role}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ fontSize: 84, lineHeight: 1.05 }}>{site.name}</div>
-          <div style={{ fontSize: 32, color: "#b8b5ae", maxWidth: 820 }}>
-            {site.tagline}
+          <div style={{ fontSize: 64, lineHeight: 1.08, maxWidth: 980 }}>
+            {site.headline}
+          </div>
+          <div style={{ fontSize: 28, color: "#b8b5ae", maxWidth: 820 }}>
+            Website and web application development.
           </div>
         </div>
       </div>

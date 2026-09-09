@@ -8,10 +8,10 @@ import { skillGroups } from "@/data/skills";
 
 export const metadata: Metadata = {
   title: "About",
-  description: `About ${site.name}, a freelance web developer focused on modern, conversion-oriented websites built with Next.js and TypeScript.`,
+  description: `About ${site.name}, a freelance web developer specializing in website development and web application development.`,
   openGraph: {
     title: "About",
-    description: `About ${site.name}, a freelance web developer focused on modern, conversion-oriented websites built with Next.js and TypeScript.`,
+    description: `About ${site.name}, a freelance web developer specializing in website development and web application development.`,
   },
 };
 
@@ -20,14 +20,14 @@ export default function AboutPage() {
     <>
       <PageHero
         eyebrow="About"
-        title="A freelance developer who cares about the details clients notice."
-        description={`${site.name} is an independent web developer helping businesses launch websites that feel current, load quickly, and make the next step obvious.`}
+        title="A freelance web developer focused on websites and web apps."
+        description={`${site.name} is an independent web developer who designs and builds fast, modern websites and custom web applications for businesses and ambitious ideas.`}
       />
 
       <Section
         eyebrow="Introduction"
         title="Built around clarity, not decoration"
-        description="I work with founders, studios, and small teams who need a website that looks professional and is easy to maintain. The work is hands-on: I design the information architecture, write the interface, and ship the code."
+        description="I work with founders, studios, and small teams who need a website or web application that looks professional and is easy to maintain. The work is hands-on: I design the information architecture, write the interface, and ship the code."
       >
         <div className="grid gap-5 md:grid-cols-2">
           <Card>
@@ -56,7 +56,7 @@ export default function AboutPage() {
       <Section
         eyebrow="Capabilities"
         title="Skills and technologies"
-        description="A practical stack for marketing sites and custom applications — chosen because it is fast, typed, and widely supported."
+        description="A practical stack for websites and custom web applications — chosen because it is fast, typed, and widely supported."
       >
         <div className="grid gap-5 sm:grid-cols-2">
           {skillGroups.map((group) => (

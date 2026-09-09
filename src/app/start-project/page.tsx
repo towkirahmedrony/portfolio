@@ -17,11 +17,11 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Start a Project",
   description:
-    "Share your website requirements in a short brief. I will review the details and follow up with a practical next step.",
+    "Share your website or web app requirements in a short brief. I will review the details and follow up with a practical next step.",
   openGraph: {
     title: "Start a Project",
     description:
-      "Share your website requirements in a short brief. I will review the details and follow up with a practical next step.",
+      "Share your website or web app requirements in a short brief. I will review the details and follow up with a practical next step.",
   },
 };
 
@@ -80,7 +80,7 @@ export default function StartProjectPage({
     <>
       <PageHero
         eyebrow="Project request"
-        title="Tell me about the website you need"
+        title="Tell me about the website or web app you need"
         description="A short brief, one step at a time. Your answers stay on this page until you submit — nothing is stored or emailed yet."
       />
       <section className="py-12 sm:py-16">

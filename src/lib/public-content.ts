@@ -1,3 +1,8 @@
+import {
+  FALLBACK_PUBLIC_SERVICES,
+  filterPrimaryServices,
+  toFactualProjectDescription,
+} from "@/data/positioning";
 import { createPublicSupabaseClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { resolvePublicImageUrl } from "@/lib/photos";
@@ -60,11 +65,13 @@ function toResult<T>(
 }
 
 function toPublicProject(row: PortfolioProjectRow): Project {
+  const rawDescription = row.description || row.short_description || "";
+
   return {
     id: row.id,
     slug: row.slug,
     title: row.title,
-    description: row.description || row.short_description || "",
+    description: toFactualProjectDescription(row.title, row.slug, rawDescription),
     category: row.category || null,
     image: resolvePublicImageUrl(row.thumbnail_url),
     technologies: row.technologies ?? [],
@@ -137,7 +144,7 @@ function toPublicService(
 
 export async function getPublicServices(): Promise<PublicContentResult<Service[]>> {
   if (!isSupabaseConfigured()) {
-    return { status: "unavailable" };
+    return { status: "ok", data: FALLBACK_PUBLIC_SERVICES };
   }
 
   try {
@@ -151,8 +158,14 @@ export async function getPublicServices(): Promise<PublicContentResult<Service[]
       .order("created_at", { ascending: false });
 
     const serviceRows = (data ?? []) as ServiceRow[];
-    if (error || serviceRows.length === 0) {
-      return toResult([] as Service[], error, serviceRows.length === 0);
+    if (error) {
+      return isMissingRelation(error)
+        ? { status: "ok", data: FALLBACK_PUBLIC_SERVICES }
+        : { status: "error" };
+    }
+
+    if (serviceRows.length === 0) {
+      return { status: "ok", data: FALLBACK_PUBLIC_SERVICES };
     }
 
     const serviceIds = serviceRows.map((row) => row.id);
@@ -170,12 +183,15 @@ export async function getPublicServices(): Promise<PublicContentResult<Service[]
       featuresByService.set(feature.service_id, list);
     }
 
-    const services: Service[] = serviceRows.map((row: ServiceRow) =>
-      toPublicService(row, featuresByService.get(row.id) ?? []),
-    );
-
-    return { status: "ok", data: services };
+    return {
+      status: "ok",
+      data: filterPrimaryServices(
+        serviceRows.map((row: ServiceRow) =>
+          toPublicService(row, featuresByService.get(row.id) ?? []),
+        ),
+      ),
+    };
   } catch {
-    return { status: "unavailable" };
+    return { status: "ok", data: FALLBACK_PUBLIC_SERVICES };
   }
 }

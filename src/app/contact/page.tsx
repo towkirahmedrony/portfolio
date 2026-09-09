@@ -6,10 +6,10 @@ import { site } from "@/data/site";
 
 export const metadata: Metadata = {
   title: "Contact",
-  description: `Contact ${site.name} by email or WhatsApp to start a website project.`,
+  description: `Contact ${site.name} by email or WhatsApp to start a website or web app project.`,
   openGraph: {
     title: "Contact",
-    description: `Contact ${site.name} by email or WhatsApp to start a website project.`,
+    description: `Contact ${site.name} by email or WhatsApp to start a website or web app project.`,
   },
 };
 
@@ -79,7 +79,7 @@ export default function ContactPage() {
           </h2>
           <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-muted sm:text-base">
             Include your timeline, budget range if you have one, and a sentence
-            about the site. That is enough to start.
+            about the website or web app. That is enough to start.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <ButtonLink href="/start-project" size="lg">
