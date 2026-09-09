@@ -183,6 +183,8 @@ export async function savePortfolioProject(formData: FormData): Promise<ActionRe
   revalidatePath(`/admin/portfolio/${saved.id}`);
   revalidatePath("/");
   revalidatePath("/projects");
+  revalidatePath("/projects", "layout");
+  revalidatePath("/sitemap.xml");
   if (!id) {
     redirect(`/admin/portfolio/${saved.id}`);
   }
@@ -220,6 +222,8 @@ export async function setPortfolioFlag(formData: FormData): Promise<ActionResult
   // Publish/unpublish (and featured) changes what public pages show.
   revalidatePath("/");
   revalidatePath("/projects");
+  revalidatePath("/projects", "layout");
+  revalidatePath("/sitemap.xml");
   return { ok: true };
 }
 
@@ -271,6 +275,8 @@ export async function reorderPortfolioProject(formData: FormData): Promise<Actio
   // Sort order determines the public projects listing and homepage order.
   revalidatePath("/");
   revalidatePath("/projects");
+  revalidatePath("/projects", "layout");
+  revalidatePath("/sitemap.xml");
   return { ok: true };
 }
 
@@ -310,6 +316,8 @@ export async function deletePortfolioProject(formData: FormData): Promise<Action
   // Deleting a published project must refresh the public listing + homepage.
   revalidatePath("/");
   revalidatePath("/projects");
+  revalidatePath("/projects", "layout");
+  revalidatePath("/sitemap.xml");
   return { ok: true };
 }
 
@@ -369,6 +377,8 @@ export async function addPortfolioImage(formData: FormData): Promise<ActionResul
   revalidatePath(`/admin/portfolio/${projectId}`);
   revalidatePath("/");
   revalidatePath("/projects");
+  revalidatePath("/projects", "layout");
+  revalidatePath("/sitemap.xml");
   return { ok: true };
 }
 
@@ -432,6 +442,8 @@ export async function removePortfolioImage(imageId: string): Promise<ActionResul
   revalidatePath(`/admin/portfolio/${image.portfolio_project_id}`);
   revalidatePath("/");
   revalidatePath("/projects");
+  revalidatePath("/projects", "layout");
+  revalidatePath("/sitemap.xml");
   return { ok: true };
 }
 
@@ -474,6 +486,8 @@ export async function savePortfolioThumbnail(
   revalidatePath(`/admin/portfolio/${projectId}`);
   revalidatePath("/");
   revalidatePath("/projects");
+  revalidatePath("/projects", "layout");
+  revalidatePath("/sitemap.xml");
   return { ok: true };
 }
 

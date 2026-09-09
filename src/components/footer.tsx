@@ -47,6 +47,25 @@ export function Footer() {
                 Email Me
               </a>
             </li>
+            <li>
+              <a
+                href={`https://wa.me/${site.whatsapp.replace(/\D/g, "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Chat with me on WhatsApp (opens in a new tab)"
+                className="rounded-sm text-sm text-foreground/85 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                WhatsApp
+              </a>
+            </li>
+            <li>
+              <Link
+                href="/start-project"
+                className="text-sm text-foreground/85 transition-colors hover:text-foreground"
+              >
+                Start a Project
+              </Link>
+            </li>
             {socialLinks.map((item) => (
               <li key={item.label}>
                 <a

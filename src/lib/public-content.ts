@@ -92,6 +92,30 @@ export type PublicProjectQuery = {
   limit?: number;
 };
 
+export async function getPublishedProjectSlugs(): Promise<string[]> {
+  if (!isSupabaseConfigured()) {
+    return [];
+  }
+
+  try {
+    const supabase = createPublicSupabaseClient();
+    const { data, error } = await supabase
+      .from("portfolio_projects")
+      .select("slug")
+      .eq("published", true)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      return [];
+    }
+
+    return ((data ?? []) as Array<{ slug: string }>).map((row) => row.slug);
+  } catch {
+    return [];
+  }
+}
+
 export async function getPublicProjects(
   query: PublicProjectQuery = {},
 ): Promise<PublicContentResult<Project[]>> {
@@ -116,6 +140,38 @@ export async function getPublicProjects(
     const { data, error } = await builder;
     const rows = (data ?? []) as PortfolioProjectRow[];
     return toResult(rows.map(toPublicProject), error, rows.length === 0);
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
+export async function getPublicProjectBySlug(
+  slug: string,
+): Promise<PublicContentResult<Project>> {
+  if (!slug || !isSupabaseConfigured()) {
+    return { status: "unavailable" };
+  }
+
+  try {
+    const supabase = createPublicSupabaseClient();
+    const { data, error } = await supabase
+      .from("portfolio_projects")
+      .select("*")
+      .eq("published", true)
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (error) {
+      return isMissingRelation(error)
+        ? { status: "unavailable" }
+        : { status: "error" };
+    }
+
+    if (!data) {
+      return { status: "empty" };
+    }
+
+    return { status: "ok", data: toPublicProject(data as PortfolioProjectRow) };
   } catch {
     return { status: "unavailable" };
   }

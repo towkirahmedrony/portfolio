@@ -4,9 +4,9 @@ export const site = {
   name: "Shakib Shahriar",
   role: "Freelance Web Developer",
   headline:
-    "I build fast, modern websites and web apps for businesses and ambitious ideas.",
+    "I build websites and web applications for businesses and ambitious ideas.",
   tagline:
-    "From polished business websites to custom web applications, I design and build fast, responsive, and scalable digital experiences focused on real-world results.",
+    "Need a new website, a custom web app, or a clearer version of what you already have? I design and build fast, responsive experiences that are easy to use and ready to grow.",
   description:
     "Freelance web developer specializing in website development and web application development for businesses and ambitious ideas.",
   email: "shakib.shahriarr@gmail.com",

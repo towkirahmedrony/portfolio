@@ -9,6 +9,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHero, Section } from "@/components/ui/section";
 import { getPublicServices } from "@/lib/public-content";
+import { pageMetadata } from "@/lib/seo";
 import type { Service } from "@/types";
 
 // Public marketing page: published services change rarely. Serve from the
@@ -16,16 +17,13 @@ import type { Service } from "@/types";
 // revalidate "/" and "/services" on demand.
 export const revalidate = 3600;
 
-export const metadata: Metadata = {
-  title: "Services",
+export const metadata: Metadata = pageMetadata({
+  title: "Website & Web Application Development",
+  absoluteTitle: "Website & Web Application Development",
   description:
     "Website development and web application development for businesses and ambitious ideas.",
-  openGraph: {
-    title: "Services",
-    description:
-      "Website development and web application development for businesses and ambitious ideas.",
-  },
-};
+  path: "/services",
+});
 
 function formatDuration(service: Service): string | null {
   const { estimatedDaysMin, estimatedDaysMax } = service;
@@ -52,7 +50,7 @@ function ServiceCard({ service }: { service: Service }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={service.image}
-              alt=""
+              alt={`${service.title} overview`}
               className="h-full w-full object-cover"
             />
           </div>
@@ -151,7 +149,10 @@ export default function ServicesPage() {
         </Suspense>
       </Section>
 
-      <CallToAction title="Not sure which service fits?" />
+      <CallToAction
+        title="Not sure which service fits?"
+        description="Tell me what you need — a website, a web application, or a redesign — and I will suggest a practical next step."
+      />
     </>
   );
 }

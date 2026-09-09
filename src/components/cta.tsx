@@ -3,7 +3,7 @@ import { Section } from "@/components/ui/section";
 
 export function CallToAction({
   title = "Have a project in mind?",
-  description = "Tell me about the website or web app you need. I will reply with a clear next step, timeline, and a practical way to get started.",
+  description = "Let's discuss what you want to build. Tell me about the website or web app you need.",
 }: {
   title?: string;
   description?: string;

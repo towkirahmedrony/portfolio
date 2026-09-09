@@ -60,7 +60,7 @@ export function ProjectGrid({ projects }: { projects: Project[] }) {
         })}
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {visible.map((project) => (
           <ProjectCard key={project.id} project={project} />
         ))}

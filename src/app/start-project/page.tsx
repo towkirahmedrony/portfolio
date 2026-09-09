@@ -11,19 +11,16 @@ import {
   resolveServiceId,
 } from "@/lib/order-form-server";
 import { parseStartProjectSearchParams } from "@/lib/order-form";
+import { pageMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Start a Project",
   description:
     "Share your website or web app requirements in a short brief. I will review the details and follow up with a practical next step.",
-  openGraph: {
-    title: "Start a Project",
-    description:
-      "Share your website or web app requirements in a short brief. I will review the details and follow up with a practical next step.",
-  },
-};
+  path: "/start-project",
+});
 
 async function StartProjectForm({
   searchParams,

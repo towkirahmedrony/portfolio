@@ -5,44 +5,52 @@ import { PageHero, Section } from "@/components/ui/section";
 import { Badge } from "@/components/ui/badge";
 import { site } from "@/data/site";
 import { skillGroups } from "@/data/skills";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "About",
-  description: `About ${site.name}, a freelance web developer specializing in website development and web application development.`,
-  openGraph: {
-    title: "About",
-    description: `About ${site.name}, a freelance web developer specializing in website development and web application development.`,
-  },
-};
+export const metadata: Metadata = pageMetadata({
+  title: `About ${site.name} — Freelance Web Developer`,
+  absoluteTitle: `About ${site.name} — Freelance Web Developer`,
+  description: `${site.name} is a freelance web developer specializing in website development and web application development.`,
+  path: "/about",
+});
 
 export default function AboutPage() {
   return (
     <>
       <PageHero
         eyebrow="About"
-        title="A freelance web developer focused on websites and web apps."
-        description={`${site.name} is an independent web developer who designs and builds fast, modern websites and custom web applications for businesses and ambitious ideas.`}
+        title={`${site.name} is a freelance web developer.`}
+        description="I specialize in website development and web application development — building clear, modern sites and custom web apps for businesses and ambitious ideas."
       />
 
       <Section
         eyebrow="Introduction"
-        title="Built around clarity, not decoration"
-        description="I work with founders, studios, and small teams who need a website or web application that looks professional and is easy to maintain. The work is hands-on: I design the information architecture, write the interface, and ship the code."
+        title="Who I am and what I build"
+        description="I work with founders, studios, and small teams who need a website or web application that looks professional and is easy to maintain. The work is hands-on: I shape the structure, write the interface, and ship the code."
       >
         <div className="grid gap-5 md:grid-cols-2">
           <Card>
             <h3 className="font-display text-xl tracking-tight">
-              Development philosophy
+              What I specialize in
+            </h3>
+            <p className="mt-3 text-sm leading-7 text-muted">
+              Website development and web application development. That might
+              mean a new business site, a custom product or dashboard, or a
+              clearer version of a site you already have.
+            </p>
+          </Card>
+          <Card>
+            <h3 className="font-display text-xl tracking-tight">
+              How I think about the work
             </h3>
             <p className="mt-3 text-sm leading-7 text-muted">
               Good websites are quiet. Hierarchy, type, and spacing should do
               most of the work. I prefer a limited visual language, accessible
-              markup, and components that can grow into a larger product without
-              being rewritten.
+              markup, and components that can grow without being rewritten.
             </p>
           </Card>
           <Card>
-            <h3 className="font-display text-xl tracking-tight">How I work</h3>
+            <h3 className="font-display text-xl tracking-tight">How we work</h3>
             <p className="mt-3 text-sm leading-7 text-muted">
               Direct communication, written scope, and regular previews. You
               always know what is being built and why. I would rather ship a
@@ -50,20 +58,29 @@ export default function AboutPage() {
               need yet.
             </p>
           </Card>
+          <Card>
+            <h3 className="font-display text-xl tracking-tight">
+              What you can expect
+            </h3>
+            <p className="mt-3 text-sm leading-7 text-muted">
+              You work with me directly. I listen first, keep the brief
+              practical, and send work you can review before anything goes live.
+            </p>
+          </Card>
         </div>
       </Section>
 
       <Section
-        eyebrow="Capabilities"
-        title="Skills and technologies"
-        description="A practical stack for websites and custom web applications — chosen because it is fast, typed, and widely supported."
+        eyebrow="Stack"
+        title="Tools I use when they help the product"
+        description="Useful if you want to know how a site or app is built. The work still starts from your offer, audience, and workflow — not from a technology list."
       >
         <div className="grid gap-5 sm:grid-cols-2">
           {skillGroups.map((group) => (
             <Card key={group.category}>
-              <h2 className="font-display text-xl tracking-tight">
+              <h3 className="font-display text-xl tracking-tight">
                 {group.category}
-              </h2>
+              </h3>
               <div className="mt-4 flex flex-wrap gap-2">
                 {group.skills.map((skill) => (
                   <Badge key={skill}>{skill}</Badge>
@@ -74,7 +91,10 @@ export default function AboutPage() {
         </div>
       </Section>
 
-      <CallToAction title="If this sounds like a fit, let’s talk." />
+      <CallToAction
+        title="If this sounds like a fit, let's talk."
+        description="Tell me about the website or web app you need. I will reply with a clear next step."
+      />
     </>
   );
 }

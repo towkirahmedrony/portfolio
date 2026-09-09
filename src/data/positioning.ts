@@ -199,5 +199,19 @@ export function toFactualProjectDescription(
     return override.description;
   }
 
-  return stripUnverifiedClaims(description);
+  return toShortDescription(stripUnverifiedClaims(description));
+}
+
+function toShortDescription(text: string): string {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) {
+    return cleaned;
+  }
+
+  const parts = cleaned.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g);
+  if (!parts) {
+    return cleaned;
+  }
+
+  return parts.slice(0, 2).join(" ").replace(/\s+/g, " ").trim();
 }

@@ -102,7 +102,11 @@ export function Navbar() {
               </Link>
             ))}
             <SignOutButton />
-            <ButtonLink href="/start-project" onClick={() => setOpen(false)}>
+            <ButtonLink
+              href="/start-project"
+              className="w-full"
+              onClick={() => setOpen(false)}
+            >
               Start a Project
             </ButtonLink>
           </nav>

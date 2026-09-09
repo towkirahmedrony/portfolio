@@ -18,6 +18,7 @@ import {
   getPublicServices,
   HOME_PROJECTS_LIMIT,
 } from "@/lib/public-content";
+import { pageMetadata } from "@/lib/seo";
 import type { Service } from "@/types";
 
 // Public marketing page: projects & services are CMS-published, rarely
@@ -27,14 +28,12 @@ import type { Service } from "@/types";
 // appear immediately without a per-visitor Supabase round-trip.
 export const revalidate = 3600;
 
-export const metadata: Metadata = {
-  title: `${site.name} — Freelance Web Developer`,
+export const metadata: Metadata = pageMetadata({
+  title: "Freelance Web Developer — Websites & Web Applications",
+  absoluteTitle: "Freelance Web Developer — Websites & Web Applications",
   description: site.description,
-  openGraph: {
-    title: `${site.name} — Freelance Web Developer`,
-    description: site.description,
-  },
-};
+  path: "/",
+});
 
 function HomeServiceCard({ service }: { service: Service }) {
   const blurb = service.shortDescription || service.description;
@@ -46,7 +45,7 @@ function HomeServiceCard({ service }: { service: Service }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={service.image}
-            alt=""
+            alt={`${service.title} overview`}
             className="h-full w-full object-cover"
           />
         </div>
@@ -92,7 +91,7 @@ async function HomeFeaturedWorkContent() {
 
   if (result.status === "ok") {
     return (
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {result.data.map((project) => (
           <ProjectCard key={project.id} project={project} />
         ))}
@@ -150,8 +149,8 @@ export default function HomePage() {
       <Section
         id="services"
         eyebrow="Services"
-        title="Website and web application development."
-        description="Two focused services: fast, modern websites, and custom web apps built around real workflows and business needs."
+        title="What I can build for you"
+        description="Two focused services: modern websites for businesses, and custom web applications built around real workflows."
       >
         <Suspense fallback={<HomeCardSkeleton />}>
           <HomeServicesContent />
@@ -162,10 +161,10 @@ export default function HomePage() {
         id="work"
         eyebrow="Selected work"
         title="Featured projects"
-        description="A selection of websites and web applications, with a short description of what was built and the stack behind each project."
+        description="A selection of websites and web applications — what they are, what was built, and how they work."
         actions={
           <ButtonLink href="/projects" variant="secondary">
-            See all projects
+            View My Work
           </ButtonLink>
         }
       >
@@ -177,7 +176,7 @@ export default function HomePage() {
       <Section
         id="why"
         eyebrow="Approach"
-        title="Why choose me"
+        title="Why work with me"
         description="A small, focused practice — so you work directly with the person designing and shipping the website or web app."
       >
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -219,7 +218,10 @@ export default function HomePage() {
         </ol>
       </Section>
 
-      <CallToAction />
+      <CallToAction
+        title="Have a project in mind?"
+        description="Let's discuss what you want to build — a website, a web application, or an improvement to an existing site."
+      />
     </>
   );
 }

@@ -28,28 +28,28 @@ export const skillGroups: SkillGroup[] = [
 
 export const reasons: Reason[] = [
   {
-    title: "Responsive design",
+    title: "Built around your offer",
     description:
-      "Every layout is built mobile-first so it reads well on a phone, tablet, and desktop without awkward breakpoints.",
+      "I start from what you sell, who it is for, and what a visitor should do next — then turn that into clear pages.",
   },
   {
-    title: "Modern technologies",
+    title: "Websites that work on every screen",
     description:
-      "I work with Next.js, TypeScript, and Tailwind CSS — a stack that is fast to ship, easy to maintain, and ready to grow.",
+      "Layouts are designed mobile-first so the site stays readable on a phone, tablet, and desktop.",
   },
   {
-    title: "Performance",
+    title: "Fast to load, easy to maintain",
     description:
-      "Images, fonts, and markup are optimized so pages load quickly and stay snappy as content expands.",
+      "Pages are built to stay snappy as content grows, without a fragile pile of one-off code.",
   },
   {
-    title: "Clean code",
+    title: "A focused first version",
     description:
-      "Reusable components, strict TypeScript, and a clear folder structure make future features cheaper to add.",
+      "I would rather ship something you can use than overbuild a platform you do not need yet.",
   },
   {
-    title: "Client-focused development",
+    title: "You work with me directly",
     description:
-      "I start from your offer, audience, and goals — then translate them into pages that are easy to understand and act on.",
+      "No account hand-offs. Scope, design, and development stay with the same person.",
   },
 ];

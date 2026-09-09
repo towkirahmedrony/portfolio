@@ -23,7 +23,7 @@ export const processSteps: ProcessStep[] = [
     step: "04",
     title: "Development",
     description:
-      "The website or web app is implemented in Next.js with reusable components, accessible markup, and production-ready performance.",
+      "The website or web app is implemented with reusable components, accessible markup, and production-ready performance.",
   },
   {
     step: "05",

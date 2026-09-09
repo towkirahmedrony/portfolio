@@ -8,22 +8,19 @@ import {
 } from "@/components/public/content-states";
 import { PageHero, Section } from "@/components/ui/section";
 import { getPublicProjects } from "@/lib/public-content";
+import { pageMetadata } from "@/lib/seo";
 
 // Public marketing page: published portfolio projects change rarely. Serve
 // from the Next.js cache (ISR) with a one-hour fallback TTL; admin portfolio
 // mutations revalidate "/" and "/projects" on demand.
 export const revalidate = 3600;
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Projects",
   description:
-    "Selected websites and web applications, with factual descriptions of what was built and the technologies used.",
-  openGraph: {
-    title: "Projects",
-    description:
-      "Selected websites and web applications, with factual descriptions of what was built and the technologies used.",
-  },
-};
+    "Selected websites and web applications, with short descriptions of what was built and the technologies used.",
+  path: "/projects",
+});
 
 async function ProjectsContent() {
   const result = await getPublicProjects();
@@ -60,7 +57,10 @@ export default function ProjectsPage() {
           <ProjectsContent />
         </Suspense>
       </Section>
-      <CallToAction title="Want something in this direction?" />
+      <CallToAction
+        title="Have a project in mind?"
+        description="Let's discuss what you want to build."
+      />
     </>
   );
 }

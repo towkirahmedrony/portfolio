@@ -3,15 +3,14 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHero, Section } from "@/components/ui/section";
 import { site } from "@/data/site";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Contact",
-  description: `Contact ${site.name} by email or WhatsApp to start a website or web app project.`,
-  openGraph: {
-    title: "Contact",
-    description: `Contact ${site.name} by email or WhatsApp to start a website or web app project.`,
-  },
-};
+export const metadata: Metadata = pageMetadata({
+  title: `Start a Project — ${site.name}`,
+  absoluteTitle: `Start a Project — ${site.name}`,
+  description: `Contact ${site.name} about website development, web application development, a redesign, or a custom web project.`,
+  path: "/contact",
+});
 
 export default function ContactPage() {
   const whatsappHref = `https://wa.me/${site.whatsapp.replace(/\D/g, "")}`;
@@ -20,8 +19,8 @@ export default function ContactPage() {
     <>
       <PageHero
         eyebrow="Contact"
-        title="Get in touch"
-        description="Share a short note about what you need. Email and WhatsApp are the fastest ways to reach me — I typically reply within one to two business days."
+        title="Start a project"
+        description="Tell me about your project and I'll get back to you. I work on website development, web application development, existing-site redesigns, and custom web projects."
       />
 
       <Section className="pt-12 sm:pt-16">
@@ -38,8 +37,9 @@ export default function ContactPage() {
                 Email Me
               </h2>
               <p className="mt-3 text-sm leading-6 text-muted">
-                Send me an email
+                Best for a short brief about the website or web app you need.
               </p>
+              <p className="mt-4 text-sm font-medium break-all">{site.email}</p>
             </a>
           </Card>
 
@@ -58,16 +58,16 @@ export default function ContactPage() {
                 WhatsApp
               </h2>
               <p className="mt-3 text-sm leading-6 text-muted">
-                Chat with me on WhatsApp
+                A quicker way to ask about a new site, a web app, or a redesign.
               </p>
+              <p className="mt-4 text-sm font-medium">{site.whatsappDisplay}</p>
             </a>
           </Card>
 
           <Card>
             <h2 className="font-display text-xl tracking-tight">Location</h2>
             <p className="mt-3 text-sm leading-6 text-muted">
-              Remote-first. Available for clients worldwide, with overlap in
-              European and US time zones.
+              Remote-first. Available for clients worldwide.
             </p>
             <p className="mt-5 text-sm font-medium">{site.location}</p>
           </Card>
@@ -78,15 +78,15 @@ export default function ContactPage() {
             Ready when you are
           </h2>
           <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-muted sm:text-base">
-            Include your timeline, budget range if you have one, and a sentence
-            about the website or web app. That is enough to start.
+            Tell me about the website, web app, or redesign you have in mind.
+            A short note is enough to start.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <ButtonLink href="/start-project" size="lg">
               Start a Project
             </ButtonLink>
-            <ButtonLink href={`mailto:${site.email}`} variant="secondary" size="lg">
-              Email me
+            <ButtonLink href="/projects" variant="secondary" size="lg">
+              View My Work
             </ButtonLink>
           </div>
         </div>
