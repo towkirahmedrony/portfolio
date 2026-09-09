@@ -6,11 +6,15 @@ import { AdminPanel } from "@/components/admin/projects/query-state";
 import { clientDisplayName } from "@/lib/admin-project-constants";
 import { saveInvoiceDraft } from "@/lib/admin-invoice-actions";
 import type { InvoiceClient, InvoiceProjectSummary } from "@/lib/admin-invoice-constants";
+import { DiscountFields } from "@/components/admin/finance/discount-fields";
 import {
-  calculateQuoteFinancials,
+  calculateQuoteFinancialsFromDiscount,
+  emptyTotals,
   formatMoney,
   lineAmount,
+  moneyInputOrZero,
   roundMoney,
+  type DiscountType,
 } from "@/lib/quote-money";
 import type { InvoiceItemRow, InvoiceRow } from "@/types/database";
 
@@ -60,6 +64,7 @@ export function InvoiceEditor({
   readOnly?: boolean;
 }) {
   const [lines, setLines] = useState<EditorLine[]>(() => fromInvoiceItems(items));
+  const [discountType, setDiscountType] = useState<DiscountType>("amount");
   const [discount, setDiscount] = useState(String(invoice.discount_total ?? 0));
   const [tax, setTax] = useState(String(invoice.tax_total ?? 0));
   const [dueDate, setDueDate] = useState(invoice.due_date ?? "");
@@ -68,11 +73,16 @@ export function InvoiceEditor({
   const calculation = useMemo(() => {
     const parsedLines = lines.map((line) => ({
       description: line.description,
-      quantity: Number(line.quantity),
-      unit_price: Number(line.unit_price),
+      quantity: moneyInputOrZero(line.quantity),
+      unit_price: moneyInputOrZero(line.unit_price),
     }));
-    return calculateQuoteFinancials(parsedLines, Number(discount) || 0, Number(tax) || 0);
-  }, [lines, discount, tax]);
+    return calculateQuoteFinancialsFromDiscount(
+      parsedLines,
+      discountType,
+      moneyInputOrZero(discount),
+      moneyInputOrZero(tax),
+    );
+  }, [lines, discountType, discount, tax]);
 
   function updateLine(key: string, patch: Partial<EditorLine>) {
     setLines((current) =>
@@ -88,14 +98,7 @@ export function InvoiceEditor({
     setLines((current) => (current.length <= 1 ? current : current.filter((line) => line.key !== key)));
   }
 
-  const totals = calculation.ok
-    ? calculation.totals
-    : {
-        subtotal: 0,
-        discount_total: roundMoney(Number(discount) || 0),
-        tax_total: roundMoney(Number(tax) || 0),
-        total: 0,
-      };
+  const totals = calculation.ok ? calculation.totals : emptyTotals();
 
   const amountPaid = roundMoney(Number(invoice.amount_paid ?? 0));
   const amountDue = roundMoney(Math.max(0, totals.total - amountPaid));
@@ -237,32 +240,17 @@ export function InvoiceEditor({
               <dt className="text-muted">Subtotal</dt>
               <dd className="font-medium text-foreground">{formatMoney(totals.subtotal, currency)}</dd>
             </div>
-            <label className="flex items-center justify-between gap-3">
-              <span className="text-muted">Discount</span>
-              <input
-                name="discount_total"
-                type="number"
-                min="0"
-                step="0.01"
-                value={discount}
-                onChange={(event) => setDiscount(event.target.value)}
-                disabled={readOnly}
-                className={`${fieldClass} max-w-36 text-right`}
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3">
-              <span className="text-muted">Tax</span>
-              <input
-                name="tax_total"
-                type="number"
-                min="0"
-                step="0.01"
-                value={tax}
-                onChange={(event) => setTax(event.target.value)}
-                disabled={readOnly}
-                className={`${fieldClass} max-w-36 text-right`}
-              />
-            </label>
+            <DiscountFields
+              discountType={discountType}
+              discountValue={discount}
+              tax={tax}
+              totals={totals}
+              currency={currency}
+              readOnly={readOnly}
+              onDiscountTypeChange={setDiscountType}
+              onDiscountValueChange={setDiscount}
+              onTaxChange={setTax}
+            />
             <div className="flex items-center justify-between border-t border-card-border pt-3">
               <dt className="font-medium text-foreground">Total</dt>
               <dd className="font-display text-lg text-foreground">

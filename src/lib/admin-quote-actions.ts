@@ -15,6 +15,9 @@ import {
 import {
   assertMatchingTotals,
   calculateQuoteFinancials,
+  calculateQuoteFinancialsFromDiscount,
+  moneyInputOrZero,
+  parseDiscountFormInput,
   parseNumeric,
   roundMoney,
   toPostgresNumeric,
@@ -44,6 +47,17 @@ function asRequiredNumber(value: FormDataEntryValue | null, label: string): numb
   const parsed = parseNumeric(asString(value));
   if (parsed == null) {
     throw new Error(`${label} must be a valid number.`);
+  }
+  return parsed;
+}
+
+function asMoneyOrZero(value: FormDataEntryValue | null, label: string): number {
+  const parsed = moneyInputOrZero(asString(value));
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${label} must be a valid number.`);
+  }
+  if (parsed < 0) {
+    throw new Error(`${label} cannot be negative.`);
   }
   return parsed;
 }
@@ -190,17 +204,23 @@ export async function saveQuoteDraft(formData: FormData): Promise<ActionResult> 
     return { ok: false, error: "Select a project request." };
   }
 
-  let discountTotal: number;
+  const discountInput = parseDiscountFormInput(
+    formData.get("discount_type"),
+    formData.get("discount_value") ?? formData.get("discount_total"),
+  );
+  if (!discountInput.ok) {
+    return { ok: false, error: discountInput.error };
+  }
+
   let taxTotal: number;
   let submittedTotals;
   let items;
 
   try {
-    discountTotal = asRequiredNumber(formData.get("discount_total"), "Discount");
-    taxTotal = asRequiredNumber(formData.get("tax_total"), "Tax");
+    taxTotal = asMoneyOrZero(formData.get("tax_total"), "Tax");
     submittedTotals = {
       subtotal: asRequiredNumber(formData.get("subtotal"), "Subtotal"),
-      discount_total: discountTotal,
+      discount_total: asMoneyOrZero(formData.get("discount_total"), "Discount"),
       tax_total: taxTotal,
       total: asRequiredNumber(formData.get("total"), "Total"),
     };
@@ -213,7 +233,12 @@ export async function saveQuoteDraft(formData: FormData): Promise<ActionResult> 
     return { ok: false, error: "Add at least one line item." };
   }
 
-  const calculated = calculateQuoteFinancials(items, discountTotal, taxTotal);
+  const calculated = calculateQuoteFinancialsFromDiscount(
+    items,
+    discountInput.type,
+    discountInput.value,
+    taxTotal,
+  );
   if (!calculated.ok) {
     return { ok: false, error: calculated.error };
   }

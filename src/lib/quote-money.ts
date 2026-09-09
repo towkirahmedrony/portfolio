@@ -51,6 +51,129 @@ export type QuoteCalculationResult =
   | { ok: true; items: Array<QuoteLineInput & { amount: number }>; totals: QuoteTotals }
   | { ok: false; error: string };
 
+export const DISCOUNT_TYPES = ["amount", "percent"] as const;
+export type DiscountType = (typeof DISCOUNT_TYPES)[number];
+
+export const DISCOUNT_TYPE_OPTIONS: ReadonlyArray<{ value: DiscountType; label: string }> = [
+  { value: "amount", label: "BDT / Amount" },
+  { value: "percent", label: "% / Percentage" },
+];
+
+export function isDiscountType(value: string): value is DiscountType {
+  return value === "amount" || value === "percent";
+}
+
+export function parseDiscountType(value: unknown): DiscountType {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (isDiscountType(trimmed)) {
+      return trimmed;
+    }
+  }
+  return "amount";
+}
+
+export function parseDiscountTypeInput(
+  value: unknown,
+): { ok: true; type: DiscountType } | { ok: false; error: string } {
+  if (value == null) {
+    return { ok: true, type: "amount" };
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return { ok: true, type: "amount" };
+    }
+    if (isDiscountType(trimmed)) {
+      return { ok: true, type: trimmed };
+    }
+  }
+
+  return { ok: false, error: "Discount type must be BDT / Amount or % / Percentage." };
+}
+
+export function parseDiscountFormInput(
+  discountTypeRaw: unknown,
+  discountValueRaw: unknown,
+): { ok: true; type: DiscountType; value: number } | { ok: false; error: string } {
+  const typeResult = parseDiscountTypeInput(discountTypeRaw);
+  if (!typeResult.ok) {
+    return typeResult;
+  }
+
+  const value = moneyInputOrZero(discountValueRaw);
+  if (!Number.isFinite(value)) {
+    return { ok: false, error: "Discount must be a valid number." };
+  }
+
+  if (value < 0) {
+    return { ok: false, error: "Discount cannot be negative." };
+  }
+
+  if (typeResult.type === "percent" && value > 100) {
+    return { ok: false, error: "Percentage discount cannot exceed 100." };
+  }
+
+  return { ok: true, type: typeResult.type, value };
+}
+
+export function moneyInputOrZero(value: unknown): number {
+  if (value == null) {
+    return 0;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : Number.NaN;
+  }
+
+  if (typeof value === "string") {
+    if (!value.trim()) {
+      return 0;
+    }
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : Number.NaN;
+  }
+
+  return Number.NaN;
+}
+
+export function emptyTotals(): QuoteTotals {
+  return {
+    subtotal: 0,
+    discount_total: 0,
+    tax_total: 0,
+    total: 0,
+  };
+}
+
+export function resolveDiscountTotal(
+  type: DiscountType,
+  discountValue: number,
+  subtotal: number,
+): { ok: true; discount_total: number } | { ok: false; error: string } {
+  if (!Number.isFinite(discountValue)) {
+    return { ok: false, error: "Discount must be a valid number." };
+  }
+
+  if (discountValue < 0) {
+    return { ok: false, error: "Discount cannot be negative." };
+  }
+
+  if (!Number.isFinite(subtotal) || subtotal < 0) {
+    return { ok: false, error: "Subtotal must be a valid non-negative amount." };
+  }
+
+  if (type === "percent") {
+    if (discountValue > 100) {
+      return { ok: false, error: "Percentage discount cannot exceed 100." };
+    }
+    return { ok: true, discount_total: roundMoney(subtotal * (discountValue / 100)) };
+  }
+
+  return { ok: true, discount_total: roundMoney(discountValue) };
+}
+
 export function calculateQuoteFinancials(
   items: QuoteLineInput[],
   discountTotal: number,
@@ -118,6 +241,25 @@ export function calculateQuoteFinancials(
       total,
     },
   };
+}
+
+export function calculateQuoteFinancialsFromDiscount(
+  items: QuoteLineInput[],
+  discountType: DiscountType,
+  discountValue: number,
+  taxTotal: number,
+): QuoteCalculationResult {
+  const preview = calculateQuoteFinancials(items, 0, 0);
+  if (!preview.ok) {
+    return preview;
+  }
+
+  const resolved = resolveDiscountTotal(discountType, discountValue, preview.totals.subtotal);
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  return calculateQuoteFinancials(items, resolved.discount_total, taxTotal);
 }
 
 export function formatMoney(amount: number, currency: string): string {

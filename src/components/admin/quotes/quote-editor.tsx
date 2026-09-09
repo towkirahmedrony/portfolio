@@ -10,11 +10,14 @@ import type {
   QuoteRequestLink,
 } from "@/lib/admin-quote-constants";
 import { saveQuoteDraft } from "@/lib/admin-quote-actions";
+import { DiscountFields } from "@/components/admin/finance/discount-fields";
 import {
-  calculateQuoteFinancials,
+  calculateQuoteFinancialsFromDiscount,
+  emptyTotals,
   formatMoney,
   lineAmount,
-  roundMoney,
+  moneyInputOrZero,
+  type DiscountType,
 } from "@/lib/quote-money";
 import type { QuoteItemRow, QuoteRow } from "@/types/database";
 
@@ -85,8 +88,11 @@ export function QuoteEditor({
     quote?.project_request_id ?? preselectedRequestId ?? "",
   );
   const [lines, setLines] = useState<EditorLine[]>(() => fromQuoteItems(items));
-  const [discount, setDiscount] = useState(String(quote?.discount_total ?? 0));
-  const [tax, setTax] = useState(String(quote?.tax_total ?? 0));
+  const [discountType, setDiscountType] = useState<DiscountType>("amount");
+  const [discount, setDiscount] = useState(
+    quote ? String(quote.discount_total ?? 0) : "",
+  );
+  const [tax, setTax] = useState(quote ? String(quote.tax_total ?? 0) : "");
   const [notes, setNotes] = useState(quote?.notes ?? "");
   const [terms, setTerms] = useState(quote?.terms ?? "");
   const [validUntil, setValidUntil] = useState(toDatetimeLocal(quote?.valid_until));
@@ -103,11 +109,16 @@ export function QuoteEditor({
   const calculation = useMemo(() => {
     const parsedLines = lines.map((line) => ({
       description: line.description,
-      quantity: Number(line.quantity),
-      unit_price: Number(line.unit_price),
+      quantity: moneyInputOrZero(line.quantity),
+      unit_price: moneyInputOrZero(line.unit_price),
     }));
-    return calculateQuoteFinancials(parsedLines, Number(discount) || 0, Number(tax) || 0);
-  }, [lines, discount, tax]);
+    return calculateQuoteFinancialsFromDiscount(
+      parsedLines,
+      discountType,
+      moneyInputOrZero(discount),
+      moneyInputOrZero(tax),
+    );
+  }, [lines, discountType, discount, tax]);
 
   function updateLine(key: string, patch: Partial<EditorLine>) {
     setLines((current) =>
@@ -123,14 +134,7 @@ export function QuoteEditor({
     setLines((current) => (current.length <= 1 ? current : current.filter((line) => line.key !== key)));
   }
 
-  const totals = calculation.ok
-    ? calculation.totals
-    : {
-        subtotal: 0,
-        discount_total: roundMoney(Number(discount) || 0),
-        tax_total: roundMoney(Number(tax) || 0),
-        total: 0,
-      };
+  const totals = calculation.ok ? calculation.totals : emptyTotals();
 
   return (
     <ActionForm action={saveQuoteDraft} className="grid gap-6" successMessage="Draft saved.">
@@ -327,32 +331,17 @@ export function QuoteEditor({
               <dt className="text-muted">Subtotal</dt>
               <dd className="font-medium text-foreground">{formatMoney(totals.subtotal, currency)}</dd>
             </div>
-            <label className="flex items-center justify-between gap-3">
-              <span className="text-muted">Discount</span>
-              <input
-                name="discount_total"
-                type="number"
-                min="0"
-                step="0.01"
-                value={discount}
-                onChange={(event) => setDiscount(event.target.value)}
-                disabled={readOnly}
-                className={`${fieldClass} max-w-36 text-right`}
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3">
-              <span className="text-muted">Tax</span>
-              <input
-                name="tax_total"
-                type="number"
-                min="0"
-                step="0.01"
-                value={tax}
-                onChange={(event) => setTax(event.target.value)}
-                disabled={readOnly}
-                className={`${fieldClass} max-w-36 text-right`}
-              />
-            </label>
+            <DiscountFields
+              discountType={discountType}
+              discountValue={discount}
+              tax={tax}
+              totals={totals}
+              currency={currency}
+              readOnly={readOnly}
+              onDiscountTypeChange={setDiscountType}
+              onDiscountValueChange={setDiscount}
+              onTaxChange={setTax}
+            />
             <div className="flex items-center justify-between border-t border-card-border pt-3">
               <dt className="font-medium text-foreground">Total</dt>
               <dd className="font-display text-lg text-foreground">
