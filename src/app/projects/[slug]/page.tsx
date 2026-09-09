@@ -72,6 +72,7 @@ export default async function ProjectDetailPage({
   }
 
   const project = result.data;
+  const body = project.details || project.description;
 
   return (
     <>
@@ -98,20 +99,31 @@ export default async function ProjectDetailPage({
 
         <div className="grid min-w-0 gap-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]">
           <div className="min-w-0">
-            {project.technologies.length > 0 ? (
+            {body ? (
               <>
                 <h2 className="font-display text-2xl tracking-tight">
+                  What this is
+                </h2>
+                <p className="mt-4 break-words text-sm leading-7 text-muted sm:text-base">
+                  {body}
+                </p>
+              </>
+            ) : null}
+
+            {project.technologies.length > 0 ? (
+              <>
+                <h2 className="font-display mt-10 text-2xl tracking-tight">
                   Built with
                 </h2>
                 <p className="mt-4 break-words text-sm leading-7 text-muted sm:text-base">
                   {project.technologies.join(" · ")}
                 </p>
               </>
-            ) : (
+            ) : !body ? (
               <p className="text-sm leading-7 text-muted sm:text-base">
                 Links and a live demo are listed when they are available.
               </p>
-            )}
+            ) : null}
           </div>
 
           <aside className="rounded-2xl border border-card-border bg-card p-6 sm:p-8">

@@ -8,20 +8,18 @@ import {
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHero, Section } from "@/components/ui/section";
+import { getPrimaryServiceCopy } from "@/data/positioning";
 import { getPublicServices } from "@/lib/public-content";
 import { pageMetadata } from "@/lib/seo";
 import type { Service } from "@/types";
 
-// Public marketing page: published services change rarely. Serve from the
-// Next.js cache (ISR) with a one-hour fallback TTL; admin service mutations
-// revalidate "/" and "/services" on demand.
 export const revalidate = 3600;
 
 export const metadata: Metadata = pageMetadata({
   title: "Website & Web Application Development",
   absoluteTitle: "Website & Web Application Development",
   description:
-    "Website development and web application development for businesses and ambitious ideas.",
+    "Hire me to build a business website or a custom web application — scoped around what you need to ship, with custom pricing.",
   path: "/services",
 });
 
@@ -39,8 +37,38 @@ function formatDuration(service: Service): string | null {
   return null;
 }
 
+function ServiceList({
+  title,
+  items,
+}: {
+  title: string;
+  items: readonly string[];
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div>
+      <h3 className="text-xs font-medium tracking-[0.18em] text-muted uppercase">
+        {title}
+      </h3>
+      <ul className="mt-3 space-y-2">
+        {items.map((item) => (
+          <li key={item} className="text-sm leading-6">
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ServiceCard({ service }: { service: Service }) {
   const duration = formatDuration(service);
+  const copy = getPrimaryServiceCopy(service);
+  const features =
+    service.features.length > 0 ? service.features : copy.features;
 
   return (
     <Card className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
@@ -61,27 +89,19 @@ function ServiceCard({ service }: { service: Service }) {
             {service.description || service.shortDescription}
           </p>
         ) : null}
-        <div className="mt-6">
+        <div className="mt-8 grid gap-6">
+          <ServiceList title="What is included" items={copy.included} />
+          <ServiceList title="Typical deliverables" items={copy.deliverables} />
+          <ServiceList title="What you receive" items={copy.youReceive} />
+        </div>
+        <div className="mt-8">
           <ButtonLink href={`/start-project?service=${service.slug}`}>
             Start this project
           </ButtonLink>
         </div>
       </div>
       <div className="grid gap-6">
-        {service.features.length > 0 ? (
-          <div>
-            <h3 className="text-xs font-medium tracking-[0.18em] text-muted uppercase">
-              Key features
-            </h3>
-            <ul className="mt-3 space-y-2">
-              {service.features.map((feature, index) => (
-                <li key={`${service.id}-${index}`} className="text-sm leading-6">
-                  {feature}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <ServiceList title="Key features" items={features} />
         <div>
           <h3 className="text-xs font-medium tracking-[0.18em] text-muted uppercase">
             Pricing &amp; timeline
@@ -89,16 +109,21 @@ function ServiceCard({ service }: { service: Service }) {
           <dl className="mt-3 space-y-3 text-sm leading-6">
             <div>
               <dt className="text-muted">Pricing</dt>
-              <dd className="mt-1 font-medium">
-                Custom pricing based on project scope.
-              </dd>
+              <dd className="mt-1 font-medium">Custom Pricing</dd>
             </div>
             {duration ? (
               <div>
-                <dt className="text-muted">Timeline</dt>
+                <dt className="text-muted">Estimated timeline</dt>
                 <dd className="mt-1">{duration}</dd>
               </div>
             ) : null}
+            <div>
+              <dt className="text-muted">Revisions &amp; support</dt>
+              <dd className="mt-1">
+                Review rounds and post-launch support are agreed in the project
+                scope — not a fixed package.
+              </dd>
+            </div>
           </dl>
         </div>
       </div>
@@ -139,8 +164,8 @@ export default function ServicesPage() {
     <>
       <PageHero
         eyebrow="Services"
-        title="Website and web application development"
-        description="I specialize in two services: modern websites for businesses, and custom web applications for products, dashboards, and real workflows."
+        title="What you can hire me to build"
+        description="Two services: a website that presents your work clearly, or a custom web application for a product, dashboard, or internal workflow. Pricing is custom, based on scope."
       />
 
       <Section className="pt-12 sm:pt-16">

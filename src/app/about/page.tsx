@@ -3,14 +3,14 @@ import { CallToAction } from "@/components/cta";
 import { Card } from "@/components/ui/card";
 import { PageHero, Section } from "@/components/ui/section";
 import { Badge } from "@/components/ui/badge";
-import { site } from "@/data/site";
+import { site, socialLinks } from "@/data/site";
 import { skillGroups } from "@/data/skills";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = pageMetadata({
   title: `About ${site.name} — Freelance Web Developer`,
   absoluteTitle: `About ${site.name} — Freelance Web Developer`,
-  description: `${site.name} is a freelance web developer specializing in website development and web application development.`,
+  description: `${site.name} is a freelance web developer. Work is hands-on: structure, interface, and shipping the code for websites and web applications.`,
   path: "/about",
 });
 
@@ -20,13 +20,13 @@ export default function AboutPage() {
       <PageHero
         eyebrow="About"
         title={`${site.name} is a freelance web developer.`}
-        description="I specialize in website development and web application development — building clear, modern sites and custom web apps for businesses and ambitious ideas."
+        description="I work directly with founders, studios, and small teams who need a website or web application that looks professional and is straightforward to maintain."
       />
 
       <Section
         eyebrow="Introduction"
         title="Who I am and what I build"
-        description="I work with founders, studios, and small teams who need a website or web application that looks professional and is easy to maintain. The work is hands-on: I shape the structure, write the interface, and ship the code."
+        description="The practice is small on purpose. You talk to the same person who plans the pages, writes the interface, and ships the code."
       >
         <div className="grid gap-5 md:grid-cols-2">
           <Card>
@@ -68,6 +68,25 @@ export default function AboutPage() {
             </p>
           </Card>
         </div>
+        {socialLinks.length > 0 ? (
+          <p className="mt-8 text-sm leading-7 text-muted">
+            Public work lives on{" "}
+            {socialLinks.map((item, index) => (
+              <span key={item.href}>
+                {index > 0 ? ", " : null}
+                <a
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-foreground underline-offset-4 hover:underline"
+                >
+                  {item.label}
+                </a>
+              </span>
+            ))}
+            .
+          </p>
+        ) : null}
       </Section>
 
       <Section

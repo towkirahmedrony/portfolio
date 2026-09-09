@@ -12,6 +12,7 @@ export type Project = {
   slug: string;
   title: string;
   description: string;
+  details: string;
   category: string | null;
   image: string | null; // portfolio_projects.thumbnail_url
   technologies: string[];

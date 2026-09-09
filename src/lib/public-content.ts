@@ -1,7 +1,7 @@
 import {
   FALLBACK_PUBLIC_SERVICES,
   filterPrimaryServices,
-  toFactualProjectDescription,
+  toFactualProjectCopy,
 } from "@/data/positioning";
 import { createPublicSupabaseClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -66,12 +66,14 @@ function toResult<T>(
 
 function toPublicProject(row: PortfolioProjectRow): Project {
   const rawDescription = row.description || row.short_description || "";
+  const copy = toFactualProjectCopy(row.title, row.slug, rawDescription);
 
   return {
     id: row.id,
     slug: row.slug,
     title: row.title,
-    description: toFactualProjectDescription(row.title, row.slug, rawDescription),
+    description: copy.summary,
+    details: copy.details,
     category: row.category || null,
     image: resolvePublicImageUrl(row.thumbnail_url),
     technologies: row.technologies ?? [],

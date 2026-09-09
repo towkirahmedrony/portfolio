@@ -41,6 +41,9 @@ export const metadata: Metadata = {
     title: `${site.name} — Freelance Web Developer`,
     description: site.description,
   },
+  alternates: {
+    canonical: site.url,
+  },
   robots: {
     index: true,
     follow: true,

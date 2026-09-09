@@ -150,7 +150,7 @@ export default function HomePage() {
         id="services"
         eyebrow="Services"
         title="What I can build for you"
-        description="Two focused services: modern websites for businesses, and custom web applications built around real workflows."
+        description="Website development for a clear public presence, and web application development for products, dashboards, and real workflows."
       >
         <Suspense fallback={<HomeCardSkeleton />}>
           <HomeServicesContent />
