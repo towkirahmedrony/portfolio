@@ -26,6 +26,23 @@ export const skillGroups: SkillGroup[] = [
   },
 ];
 
+export const aboutStats = [
+  { value: "100+", label: "Projects Delivered" },
+  { value: "2+", label: "Years Experience" },
+] as const;
+
+export const aboutTechnologies = [
+  "Next.js",
+  "React",
+  "TypeScript",
+  "JavaScript",
+  "Tailwind CSS",
+  "Supabase",
+  "PostgreSQL",
+  "Kotlin",
+  "Jetpack Compose",
+] as const;
+
 export const reasons: Reason[] = [
   {
     title: "Built around your offer",

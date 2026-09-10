@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { PageHero, Section } from "@/components/ui/section";
 import { Badge } from "@/components/ui/badge";
 import { site, socialLinks } from "@/data/site";
-import { skillGroups } from "@/data/skills";
+import { aboutStats, aboutTechnologies, skillGroups } from "@/data/skills";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = pageMetadata({
@@ -20,12 +20,42 @@ export default function AboutPage() {
       <PageHero
         eyebrow="About"
         title={`${site.name} is a freelance web developer.`}
-        description="I work directly with founders, studios, and small teams who need a website or web application that looks professional and is straightforward to maintain."
+        description="I plan, design, and write the code myself — so you work with one person from the first conversation through launch."
       />
 
       <Section
+        eyebrow="At a glance"
+        title="Experience in numbers"
+        description="A short snapshot of the work so far — not a client count, just what has been shipped and how long I have been doing this."
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          {aboutStats.map((stat) => (
+            <Card key={stat.label} className="text-center sm:text-left">
+              <p className="font-display text-4xl tracking-tight text-accent sm:text-5xl">
+                {stat.value}
+              </p>
+              <p className="mt-2 text-sm font-medium tracking-wide text-muted">
+                {stat.label}
+              </p>
+            </Card>
+          ))}
+        </div>
+        <Card className="mt-5">
+          <h3 className="font-display text-xl tracking-tight">Technologies</h3>
+          <p className="mt-3 text-sm leading-7 text-muted">
+            The stack I use most often in portfolio and client work.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {aboutTechnologies.map((tech) => (
+              <Badge key={tech}>{tech}</Badge>
+            ))}
+          </div>
+        </Card>
+      </Section>
+
+      <Section
         eyebrow="Introduction"
-        title="Who I am and what I build"
+        title="Who I am and how I work"
         description="The practice is small on purpose. You talk to the same person who plans the pages, writes the interface, and ships the code."
       >
         <div className="grid gap-5 md:grid-cols-2">

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { CallToAction } from "@/components/cta";
+import { FaqSection } from "@/components/faq";
 import { ProjectCard } from "@/components/project-card";
 import {
   ContentStateMessage,
@@ -176,8 +177,8 @@ export default function HomePage() {
       <Section
         id="why"
         eyebrow="Approach"
-        title="Why work with me"
-        description="A small, focused practice — so you work directly with the person designing and shipping the website or web app."
+        title="How the work is built"
+        description="Clear structure, pages that hold up on every screen, and a first version you can actually use."
       >
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {reasons.map((reason) => (
@@ -217,6 +218,8 @@ export default function HomePage() {
           ))}
         </ol>
       </Section>
+
+      <FaqSection description="A few practical answers before we start. Anything that depends on the project is agreed in the brief." />
 
       <CallToAction
         title="Have a project in mind?"
