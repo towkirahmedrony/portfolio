@@ -30,6 +30,7 @@ export type AiChatHistoryResponse = {
 export type AiChatErrorResponse = {
   ok: false;
   error: string;
+  code?: string;
 };
 
 export type AiChatResponse =

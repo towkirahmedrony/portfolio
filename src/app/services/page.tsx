@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { ProjectAssistantSection } from "@/components/ai/project-assistant-section";
 import { CallToAction } from "@/components/cta";
 import { FaqSection } from "@/components/faq";
 import { PublicReviewsSection } from "@/components/reviews/reviews-section";
@@ -180,11 +179,6 @@ export default function ServicesPage() {
       <PublicReviewsSection compact />
 
       <FaqSection description="How hiring, payment, revisions, and handover typically work. Details that depend on the project are written into the scope." />
-
-      <ProjectAssistantSection
-        title="Not sure which service fits?"
-        description="Ask about website development, web applications, or how a project typically starts. For a quote, use Start a Project."
-      />
 
       <CallToAction
         title="Not sure which service fits?"

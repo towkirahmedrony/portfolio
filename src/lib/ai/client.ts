@@ -71,9 +71,26 @@ function asError(payload: unknown, fallback: string): string {
     payload &&
     typeof payload === "object" &&
     "error" in payload &&
-    typeof (payload as AiChatErrorResponse).error === "string"
+    typeof (payload as AiChatErrorResponse).error === "string" &&
+    (payload as AiChatErrorResponse).error.trim().length > 0
   ) {
     return (payload as AiChatErrorResponse).error;
+  }
+  return fallback;
+}
+
+function fallbackForStatus(status: number, fallback: string): string {
+  if (status === 429) {
+    return "The assistant is busy right now. Please try again in a moment.";
+  }
+  if (status === 503) {
+    return "The assistant is not available right now.";
+  }
+  if (status === 504) {
+    return "The assistant took too long to reply. Please try again.";
+  }
+  if (status >= 500) {
+    return fallback;
   }
   return fallback;
 }
@@ -86,19 +103,55 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
+export class AiChatRequestError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+
+  constructor(message: string, status: number, code: string | null = null) {
+    super(message);
+    this.name = "AiChatRequestError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+function asCode(payload: unknown): string | null {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "code" in payload &&
+    typeof (payload as AiChatErrorResponse).code === "string"
+  ) {
+    return (payload as AiChatErrorResponse).code ?? null;
+  }
+  return null;
+}
+
 export async function sendAiChatMessage(input: {
   message: string;
   sessionId: string | null;
 }): Promise<AiChatSuccessResponse> {
-  const response = await fetch(AI_CHAT_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({
-      message: input.message,
-      sessionId: input.sessionId ?? undefined,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(AI_CHAT_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        message: input.message,
+        sessionId: input.sessionId ?? undefined,
+      }),
+    });
+  } catch (error) {
+    if (error instanceof AiChatRequestError) {
+      throw error;
+    }
+    throw new AiChatRequestError(
+      "Could not reach the assistant. Check your connection and try again.",
+      0,
+      "network",
+    );
+  }
 
   const payload = await readJson(response);
   if (
@@ -112,18 +165,31 @@ export async function sendAiChatMessage(input: {
     return payload as AiChatSuccessResponse;
   }
 
-  throw new Error(asError(payload, "Could not send that message. Please try again."));
+  throw new AiChatRequestError(
+    asError(payload, fallbackForStatus(response.status, "Could not send that message. Please try again.")),
+    response.status,
+    asCode(payload),
+  );
 }
 
 export async function loadAiChatHistory(
   sessionId: string,
 ): Promise<AiChatHistoryResponse> {
   const url = `${AI_CHAT_ENDPOINT}?sessionId=${encodeURIComponent(sessionId)}`;
-  const response = await fetch(url, {
-    method: "GET",
-    credentials: "same-origin",
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  } catch {
+    throw new AiChatRequestError(
+      "Could not reach the assistant. Check your connection and try again.",
+      0,
+      "network",
+    );
+  }
 
   const payload = await readJson(response);
   if (
@@ -137,5 +203,9 @@ export async function loadAiChatHistory(
     return payload as AiChatHistoryResponse;
   }
 
-  throw new Error(asError(payload, "Could not load that conversation."));
+  throw new AiChatRequestError(
+    asError(payload, fallbackForStatus(response.status, "Could not load that conversation.")),
+    response.status,
+    asCode(payload),
+  );
 }

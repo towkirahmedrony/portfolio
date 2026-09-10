@@ -101,7 +101,11 @@ export async function loadOwnedSession(
     .eq("id", input.sessionId)
     .maybeSingle();
 
-  if (error || !data) {
+  if (error) {
+    throw new Error(error.message || "Could not load chat session.");
+  }
+
+  if (!data) {
     return null;
   }
 

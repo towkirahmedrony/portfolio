@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { ProjectAssistantSection } from "@/components/ai/project-assistant-section";
 import { CallToAction } from "@/components/cta";
 import { FaqSection } from "@/components/faq";
 import { ProjectCard } from "@/components/project-card";
@@ -152,7 +151,7 @@ export default function HomePage() {
           >
             Prefer to ask first?{" "}
             <a
-              href="#ask"
+              href="/ai-assistant"
               className="font-medium text-foreground underline decoration-card-border underline-offset-4 transition-colors hover:decoration-accent"
             >
               Open the project assistant
@@ -236,8 +235,6 @@ export default function HomePage() {
       </Section>
 
       <FaqSection description="A few practical answers before we start. Anything that depends on the project is agreed in the brief." />
-
-      <ProjectAssistantSection />
 
       <CallToAction
         title="Have a project in mind?"

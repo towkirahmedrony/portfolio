@@ -1,8 +1,15 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { buildAiAssistantContext } from "@/lib/ai/context";
+import { buildAiAssistantContext, type AiAssistantContext } from "@/lib/ai/context";
 import { buildCta } from "@/lib/ai/cta";
-import { isGeminiConfigured } from "@/lib/ai/env";
+import { getGeminiModel, isGeminiConfigured } from "@/lib/ai/env";
+import {
+  AiRouteError,
+  errorMessage,
+  GeminiRequestError,
+  logAiEvent,
+  publicMessageForGemini,
+} from "@/lib/ai/errors";
 import { generateAssistantReply } from "@/lib/ai/gemini";
 import {
   claimSessionIfNeeded,
@@ -22,17 +29,25 @@ import {
   isServiceRoleConfigured,
 } from "@/lib/supabase/service";
 import type { AiCta, AiChatErrorResponse, AiChatMessage } from "@/types/ai";
-import type { AiChatMessageRow } from "@/types/database";
+import type { AiChatMessageRow, AiChatSessionRow } from "@/types/database";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 const VISITOR_COOKIE = "ai_visitor_id";
 const VISITOR_MAX_AGE = 60 * 60 * 24 * 365;
 const MESSAGE_MAX = 4_000;
 const HISTORY_FETCH_BUFFER = 2;
 
-function jsonError(status: number, error: string) {
-  const body: AiChatErrorResponse = { ok: false, error };
+function jsonError(
+  status: number,
+  error: string,
+  extra?: { code?: string },
+) {
+  const body: AiChatErrorResponse = extra?.code
+    ? { ok: false, error, code: extra.code }
+    : { ok: false, error };
   return NextResponse.json(body, { status });
 }
 
@@ -77,47 +92,161 @@ function historyForGemini(rows: AiChatMessageRow[]) {
     }));
 }
 
-export async function GET(request: Request) {
-  if (!isSupabaseConfigured() || !isServiceRoleConfigured()) {
-    return jsonError(503, "The assistant is not configured yet.");
+function fail(input: {
+  status: number;
+  publicMessage: string;
+  stage: string;
+  code: AiRouteError["code"];
+  message?: string;
+  details?: Record<string, unknown>;
+}): never {
+  throw new AiRouteError({
+    status: input.status,
+    publicMessage: input.publicMessage,
+    stage: input.stage,
+    code: input.code,
+    message: input.message ?? input.publicMessage,
+    details: input.details,
+  });
+}
+
+function toClientError(error: unknown): {
+  status: number;
+  publicMessage: string;
+  code: string;
+} {
+  if (error instanceof AiRouteError) {
+    logAiEvent("error", error.stage, {
+      code: error.code,
+      status: error.status,
+      error: error.message,
+      ...error.details,
+    });
+    return {
+      status: error.status,
+      publicMessage: error.publicMessage,
+      code: error.code,
+    };
   }
 
+  if (error instanceof GeminiRequestError) {
+    logAiEvent("error", "gemini.failed", {
+      code: error.code,
+      status: error.status,
+      httpStatus: error.httpStatus,
+      finishReason: error.finishReason,
+      error: error.message,
+    });
+    return {
+      status: error.status,
+      publicMessage: publicMessageForGemini(error),
+      code: error.code === "timeout" ? "timeout" : "gemini",
+    };
+  }
+
+  logAiEvent("error", "unhandled", {
+    error: errorMessage(error),
+  });
+  return {
+    status: 500,
+    publicMessage: "Could not complete that conversation. Please try again.",
+    code: "unknown",
+  };
+}
+
+export async function GET(request: Request) {
   const sessionId = new URL(request.url).searchParams.get("sessionId");
   if (!isUuid(sessionId)) {
-    return jsonError(400, "A valid sessionId is required.");
+    return jsonError(400, "A valid sessionId is required.", { code: "invalid" });
   }
 
-  const { visitorId, setCookie } = await resolveVisitorId();
-  const userClient = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await userClient.auth.getUser();
-  const service = createServiceRoleSupabaseClient();
+  if (!isSupabaseConfigured() || !isServiceRoleConfigured()) {
+    logAiEvent("error", "history.config", {
+      supabaseConfigured: isSupabaseConfigured(),
+      serviceRoleConfigured: isServiceRoleConfigured(),
+    });
+    return jsonError(503, "The assistant is not configured yet.", { code: "config" });
+  }
+
+  let visitorId = "";
+  let setCookie = false;
 
   try {
-    const session = await loadOwnedSession(service, {
-      sessionId,
-      userId: user?.id ?? null,
-      visitorId,
-    });
+    const visitor = await resolveVisitorId();
+    visitorId = visitor.visitorId;
+    setCookie = visitor.setCookie;
+
+    const userClient = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await userClient.auth.getUser();
+    const service = createServiceRoleSupabaseClient();
+
+    let session: AiChatSessionRow | null;
+    try {
+      session = await loadOwnedSession(service, {
+        sessionId,
+        userId: user?.id ?? null,
+        visitorId,
+      });
+    } catch (error) {
+      fail({
+        status: 500,
+        publicMessage: "Could not load that conversation.",
+        stage: "history.database",
+        code: "database",
+        message: errorMessage(error),
+        details: { sessionIdPresent: true },
+      });
+    }
 
     if (!session) {
       return withVisitorCookie(
-        jsonError(404, "Conversation not found."),
+        jsonError(404, "Conversation not found.", { code: "not_found" }),
         visitorId,
         setCookie,
       );
     }
 
-    const context = await buildAiAssistantContext();
-    const rows = await listSessionMessages(
-      service,
-      session.id,
-      context.maxHistoryMessages,
-    );
+    let context: AiAssistantContext;
+    try {
+      context = await buildAiAssistantContext();
+    } catch (error) {
+      fail({
+        status: 503,
+        publicMessage: "The assistant is not available right now.",
+        stage: "history.context",
+        code: "unavailable",
+        message: errorMessage(error),
+      });
+    }
+
+    let rows: AiChatMessageRow[];
+    try {
+      rows = await listSessionMessages(
+        service,
+        session.id,
+        context.maxHistoryMessages,
+      );
+    } catch (error) {
+      fail({
+        status: 500,
+        publicMessage: "Could not load that conversation.",
+        stage: "history.messages",
+        code: "database",
+        message: errorMessage(error),
+      });
+    }
+
     const messages = rows
       .map(toPublicMessage)
       .filter((message): message is AiChatMessage => message !== null);
+
+    logAiEvent("log", "history.success", {
+      sessionId: session.id,
+      messageCount: messages.length,
+      authenticated: Boolean(user),
+    });
 
     return withVisitorCookie(
       NextResponse.json({
@@ -129,11 +258,9 @@ export async function GET(request: Request) {
       setCookie,
     );
   } catch (error) {
-    console.error("[ai-chat] history failed", {
-      error: error instanceof Error ? error.message : "unknown error",
-    });
+    const mapped = toClientError(error);
     return withVisitorCookie(
-      jsonError(500, "Could not load that conversation."),
+      jsonError(mapped.status, mapped.publicMessage, { code: mapped.code }),
       visitorId,
       setCookie,
     );
@@ -141,116 +268,213 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!isSupabaseConfigured() || !isServiceRoleConfigured()) {
-    return jsonError(503, "The assistant is not configured yet.");
-  }
-
-  if (!isGeminiConfigured()) {
-    return jsonError(503, "The assistant is not available right now.");
-  }
-
   let payload: unknown;
   try {
     payload = await request.json();
   } catch {
-    return jsonError(400, "Request body must be JSON.");
+    return jsonError(400, "Request body must be JSON.", { code: "invalid" });
   }
 
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return jsonError(400, "Request body must be a JSON object.");
+    return jsonError(400, "Request body must be a JSON object.", { code: "invalid" });
   }
 
   const body = payload as { message?: unknown; sessionId?: unknown; visitorId?: unknown };
   if (body.visitorId !== undefined) {
-    return jsonError(400, "Anonymous identity is managed by the server.");
+    return jsonError(400, "Anonymous identity is managed by the server.", { code: "invalid" });
   }
   const message = readJsonString(body.message);
   const requestedSessionId = readJsonString(body.sessionId);
 
   if (message.length === 0) {
-    return jsonError(400, "Please enter a message.");
+    return jsonError(400, "Please enter a message.", { code: "invalid" });
   }
   if (message.length > MESSAGE_MAX) {
-    return jsonError(400, `Message must be ${MESSAGE_MAX} characters or fewer.`);
+    return jsonError(400, `Message must be ${MESSAGE_MAX} characters or fewer.`, {
+      code: "invalid",
+    });
   }
   if (requestedSessionId && !isUuid(requestedSessionId)) {
-    return jsonError(400, "A valid sessionId is required.");
+    return jsonError(400, "A valid sessionId is required.", { code: "invalid" });
   }
 
-  const { visitorId, setCookie } = await resolveVisitorId();
-  const userClient = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await userClient.auth.getUser();
-  const service = createServiceRoleSupabaseClient();
-  const userId = user?.id ?? null;
-
-  let context;
-  try {
-    context = await buildAiAssistantContext();
-  } catch (error) {
-    console.error("[ai-chat] context failed", {
-      error: error instanceof Error ? error.message : "unknown error",
+  if (!isSupabaseConfigured() || !isServiceRoleConfigured()) {
+    logAiEvent("error", "request.config", {
+      supabaseConfigured: isSupabaseConfigured(),
+      serviceRoleConfigured: isServiceRoleConfigured(),
     });
-    return withVisitorCookie(
-      jsonError(503, "The assistant is not available right now."),
-      visitorId,
-      setCookie,
-    );
+    return jsonError(503, "The assistant is not configured yet.", { code: "config" });
   }
 
-  if (!context.enabled) {
-    return withVisitorCookie(
-      jsonError(503, "The assistant is currently disabled."),
-      visitorId,
-      setCookie,
-    );
+  if (!isGeminiConfigured()) {
+    logAiEvent("error", "request.missing-gemini-key", {
+      geminiKeyPresent: false,
+      model: getGeminiModel(),
+    });
+    return jsonError(503, "The assistant is not available right now.", { code: "config" });
   }
 
-  let session = requestedSessionId
-    ? await loadOwnedSession(service, {
-        sessionId: requestedSessionId,
-        userId,
-        visitorId,
-      })
-    : null;
-
-  if (requestedSessionId && !session) {
-    return withVisitorCookie(
-      jsonError(404, "Conversation not found."),
-      visitorId,
-      setCookie,
-    );
-  }
+  let visitorId = "";
+  let setCookie = false;
 
   try {
-    if (!session) {
-      session = await createChatSession(service, {
-        userId,
-        visitorId,
-        title: titleFromMessage(message),
+    const visitor = await resolveVisitorId();
+    visitorId = visitor.visitorId;
+    setCookie = visitor.setCookie;
+
+    const userClient = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await userClient.auth.getUser();
+    const service = createServiceRoleSupabaseClient();
+    const userId = user?.id ?? null;
+
+    let context: AiAssistantContext;
+    try {
+      context = await buildAiAssistantContext();
+    } catch (error) {
+      fail({
+        status: 503,
+        publicMessage: "The assistant is not available right now.",
+        stage: "request.context",
+        code: "unavailable",
+        message: errorMessage(error),
       });
-    } else {
-      session = await claimSessionIfNeeded(service, session, userId);
     }
 
-    const previous = await listSessionMessages(
-      service,
-      session.id,
-      context.maxHistoryMessages + HISTORY_FETCH_BUFFER,
-    );
+    if (!context.enabled) {
+      logAiEvent("log", "request.disabled", {});
+      return withVisitorCookie(
+        jsonError(503, "The assistant is currently disabled.", { code: "unavailable" }),
+        visitorId,
+        setCookie,
+      );
+    }
 
-    await insertChatMessage(service, {
-      sessionId: session.id,
-      role: "user",
-      content: message,
+    logAiEvent("log", "request.received", {
+      hasSessionId: Boolean(requestedSessionId),
+      messageChars: message.length,
+      authenticated: Boolean(userId),
+      geminiKeyPresent: isGeminiConfigured(),
+      model: getGeminiModel(),
     });
 
-    const reply = await generateAssistantReply({
-      systemPrompt: context.systemPrompt,
-      history: historyForGemini(previous).slice(-context.maxHistoryMessages),
-      userMessage: message,
-    });
+    let session: AiChatSessionRow | null = null;
+    if (requestedSessionId) {
+      try {
+        session = await loadOwnedSession(service, {
+          sessionId: requestedSessionId,
+          userId,
+          visitorId,
+        });
+      } catch (error) {
+        fail({
+          status: 500,
+          publicMessage: "Could not load that conversation.",
+          stage: "request.load-session",
+          code: "database",
+          message: errorMessage(error),
+        });
+      }
+
+      if (!session) {
+        return withVisitorCookie(
+          jsonError(404, "Conversation not found.", { code: "not_found" }),
+          visitorId,
+          setCookie,
+        );
+      }
+    }
+
+    try {
+      if (!session) {
+        session = await createChatSession(service, {
+          userId,
+          visitorId,
+          title: titleFromMessage(message),
+        });
+        logAiEvent("log", "request.session-created", {
+          sessionId: session.id,
+          authenticated: Boolean(userId),
+        });
+      } else {
+        session = await claimSessionIfNeeded(service, session, userId);
+      }
+    } catch (error) {
+      fail({
+        status: 500,
+        publicMessage: "Could not start that conversation. Please try again.",
+        stage: "request.create-session",
+        code: "database",
+        message: errorMessage(error),
+      });
+    }
+
+    if (!session) {
+      fail({
+        status: 500,
+        publicMessage: "Could not start that conversation. Please try again.",
+        stage: "request.create-session",
+        code: "database",
+        message: "Chat session was not created.",
+      });
+    }
+
+    let previous: AiChatMessageRow[] = [];
+    try {
+      previous = await listSessionMessages(
+        service,
+        session.id,
+        context.maxHistoryMessages + HISTORY_FETCH_BUFFER,
+      );
+    } catch (error) {
+      fail({
+        status: 500,
+        publicMessage: "Could not load that conversation.",
+        stage: "request.history",
+        code: "database",
+        message: errorMessage(error),
+        details: { sessionId: session.id },
+      });
+    }
+
+    try {
+      await insertChatMessage(service, {
+        sessionId: session.id,
+        role: "user",
+        content: message,
+      });
+    } catch (error) {
+      fail({
+        status: 500,
+        publicMessage: "Could not save your message. Please try again.",
+        stage: "request.persist-user",
+        code: "database",
+        message: errorMessage(error),
+        details: { sessionId: session.id },
+      });
+    }
+
+    let reply;
+    try {
+      reply = await generateAssistantReply({
+        systemPrompt: context.systemPrompt,
+        history: historyForGemini(previous).slice(-context.maxHistoryMessages),
+        userMessage: message,
+      });
+    } catch (error) {
+      if (error instanceof GeminiRequestError) {
+        throw error;
+      }
+      fail({
+        status: 502,
+        publicMessage: "The assistant could not complete that reply. Please try again.",
+        stage: "request.gemini",
+        code: "gemini",
+        message: errorMessage(error),
+        details: { sessionId: session.id },
+      });
+    }
 
     const cta: AiCta | null = buildCta({
       showCta: reply.showCta,
@@ -260,22 +484,43 @@ export async function POST(request: Request) {
       href: context.ctaHref,
     });
 
-    const assistantRow = await insertChatMessage(service, {
-      sessionId: session.id,
-      role: "assistant",
-      content: reply.message,
-      cta,
-    });
-    await touchSession(service, session.id);
+    let assistantRow;
+    try {
+      assistantRow = await insertChatMessage(service, {
+        sessionId: session.id,
+        role: "assistant",
+        content: reply.message,
+        cta,
+      });
+      await touchSession(service, session.id);
+    } catch (error) {
+      fail({
+        status: 500,
+        publicMessage: "Could not save the assistant reply. Please try again.",
+        stage: "request.persist-assistant",
+        code: "database",
+        message: errorMessage(error),
+        details: { sessionId: session.id },
+      });
+    }
 
     const publicMessage = toPublicMessage(assistantRow);
     if (!publicMessage) {
-      return withVisitorCookie(
-        jsonError(500, "Could not save the assistant reply."),
-        visitorId,
-        setCookie,
-      );
+      fail({
+        status: 500,
+        publicMessage: "Could not save the assistant reply.",
+        stage: "request.parse-assistant",
+        code: "database",
+        details: { sessionId: session.id, role: assistantRow.role },
+      });
     }
+
+    logAiEvent("log", "request.success", {
+      sessionId: session.id,
+      authenticated: Boolean(userId),
+      showCta: Boolean(cta),
+      historyTurns: previous.length,
+    });
 
     return withVisitorCookie(
       NextResponse.json({
@@ -288,11 +533,9 @@ export async function POST(request: Request) {
       setCookie,
     );
   } catch (error) {
-    console.error("[ai-chat] request failed", {
-      error: error instanceof Error ? error.message : "unknown error",
-    });
+    const mapped = toClientError(error);
     return withVisitorCookie(
-      jsonError(500, "Could not complete that conversation. Please try again."),
+      jsonError(mapped.status, mapped.publicMessage, { code: mapped.code }),
       visitorId,
       setCookie,
     );

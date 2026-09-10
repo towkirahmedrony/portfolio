@@ -317,6 +317,13 @@ async function loadActiveRows<T extends { is_active?: boolean }>(
 
   const second = await fallback;
   if (second.error) {
+    const firstMessage =
+      first.error && typeof first.error === "object" && "message" in first.error
+        ? String((first.error as { message?: unknown }).message ?? "")
+        : "query failed";
+    console.error("[ai-chat] context.query-failed", {
+      error: firstMessage || "query failed",
+    });
     return emptyRows<T>();
   }
 
@@ -407,6 +414,13 @@ export async function buildAiAssistantContext(): Promise<AiAssistantContext> {
 
   function rowsFrom<T>(result: { data: T[] | null; error: unknown }): T[] {
     if (result.error) {
+      const message =
+        result.error && typeof result.error === "object" && "message" in result.error
+          ? String((result.error as { message?: unknown }).message ?? "")
+          : "query failed";
+      console.error("[ai-chat] context.public-query-failed", {
+        error: message || "query failed",
+      });
       return emptyRows<T>();
     }
     return (result.data ?? emptyRows()) as T[];
