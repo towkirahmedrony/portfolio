@@ -8,6 +8,7 @@ import {
   toProjectRequestInsert,
   validateProjectRequest,
 } from "@/lib/project-request";
+import { notifyNewProjectRequestSafe } from "@/lib/telegram";
 import type { OrderFormConfig, ProjectRequest } from "@/types/project-request";
 
 const UNIQUE_VIOLATION = "23505";
@@ -86,12 +87,38 @@ export async function submitProjectRequest(
       .single();
 
     if (!error && inserted) {
+      const requestNumber =
+        inserted.request_number ??
+        insertPayload.request_number ??
+        generateRequestNumber();
+
       revalidatePath("/profile");
       revalidatePath(`/profile/project-requests/${inserted.id}`);
+
+      await notifyNewProjectRequestSafe({
+        id: inserted.id,
+        requestNumber,
+        fullName: insertPayload.full_name,
+        email: insertPayload.email,
+        phone: insertPayload.phone ?? null,
+        companyName: insertPayload.company_name ?? null,
+        projectType: insertPayload.project_type ?? null,
+        websiteStatus: insertPayload.website_status ?? null,
+        pageCount: insertPayload.page_count ?? null,
+        description: insertPayload.description ?? null,
+        requiredFeatures: insertPayload.required_features ?? null,
+        budgetMin: insertPayload.budget_min ?? null,
+        budgetMax: insertPayload.budget_max ?? null,
+        budgetCurrency: insertPayload.budget_currency ?? null,
+        deadlineType: insertPayload.deadline_type ?? null,
+        deadlineDate: insertPayload.deadline_date ?? null,
+        referralCode: insertPayload.referral_code_entered ?? null,
+      });
+
       return {
         ok: true,
         requestId: inserted.id,
-        requestNumber: inserted.request_number ?? insertPayload.request_number ?? generateRequestNumber(),
+        requestNumber,
       };
     }
 
