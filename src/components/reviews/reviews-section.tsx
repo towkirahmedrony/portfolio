@@ -42,16 +42,19 @@ function ReviewsLayout({
   compact: boolean;
 }) {
   if (compact) {
-    return (
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {reviews.map((review) => (
-          <ReviewCard key={review.id} review={review} compact />
-        ))}
-      </div>
-    );
+    if (reviews.length < 2) {
+      return (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {reviews.map((review) => (
+            <ReviewCard key={review.id} review={review} compact />
+          ))}
+        </div>
+      );
+    }
+    return <ReviewsCarousel reviews={reviews} />;
   }
 
-  if (reviews.length > 3) {
+  if (reviews.length > 1) {
     return <ReviewsCarousel reviews={reviews} />;
   }
 
