@@ -1,8 +1,10 @@
 import { site } from "@/data/site";
+import { formatStatusLabel } from "@/lib/admin-project-constants";
 import {
   displaySlug,
   formatRequestBudget,
   formatRequestDeadline,
+  formatRequestStatusLabel,
 } from "@/lib/admin-project-request-constants";
 
 const LOG_PREFIX = "[telegram]";
@@ -29,6 +31,33 @@ export type NewProjectRequestNotice = {
   deadlineType: string | null;
   deadlineDate: string | null;
   referralCode: string | null;
+};
+
+export type NewContactMessageNotice = {
+  name: string;
+  email: string;
+  phone: string | null;
+  subject: string | null;
+  message: string;
+};
+
+export type ClientChatMessageNotice = {
+  conversation: "request" | "project";
+  contextId: string;
+  reference: string;
+  title: string | null;
+  status: string | null;
+  clientName: string;
+  email: string | null;
+  phone: string | null;
+  message: string;
+  messageId: string;
+};
+
+type TelegramSendContext = {
+  kind: "project-request" | "contact-message" | "client-chat";
+  id?: string;
+  requestNumber?: string;
 };
 
 type TelegramConfig = {
@@ -119,6 +148,64 @@ function buildNewProjectRequestMessage(notice: NewProjectRequestNotice): string 
   return truncate(lines.join("\n"), TELEGRAM_TEXT_LIMIT);
 }
 
+function buildNewContactMessage(notice: NewContactMessageNotice): string {
+  const adminUrl = new URL("/admin/contact-messages", site.url).toString();
+  const lines = [
+    "New contact message",
+    "",
+    line("Name", notice.name),
+    line("Email", notice.email),
+    line("Phone", notice.phone),
+    line("Subject", notice.subject),
+  ].filter((item): item is string => Boolean(item));
+
+  const message = notice.message.trim();
+  if (message) {
+    lines.push("", "Message:", truncate(message, 1_200));
+  }
+
+  lines.push("", "Admin:", adminUrl);
+  return truncate(lines.join("\n"), TELEGRAM_TEXT_LIMIT);
+}
+
+function buildClientChatMessage(notice: ClientChatMessageNotice): string {
+  const chatPath =
+    notice.conversation === "request"
+      ? `/admin/project-requests/${notice.contextId}/messages`
+      : `/admin/projects/${notice.contextId}/messages`;
+  const adminUrl = new URL(chatPath, site.url).toString();
+  const statusLabel =
+    notice.conversation === "request"
+      ? formatRequestStatusLabel(notice.status ?? "")
+      : formatStatusLabel(notice.status ?? "");
+  const contextLabel = notice.conversation === "request" ? "Request" : "Project";
+  const titleLabel = notice.conversation === "request" ? "Type" : "Title";
+
+  const lines = [
+    notice.conversation === "request"
+      ? "New client message (project request)"
+      : "New client message (project)",
+    "",
+    line(contextLabel, notice.reference),
+    line(
+      titleLabel,
+      notice.conversation === "request" ? displaySlug(notice.title) : notice.title,
+    ),
+    line("Status", notice.status ? statusLabel : null),
+    line("Name", notice.clientName),
+    line("Email", notice.email),
+    line("Phone", notice.phone),
+  ].filter((item): item is string => Boolean(item));
+
+  const message = notice.message.trim();
+  if (message) {
+    lines.push("", "Message:", truncate(message, 1_200));
+  }
+
+  lines.push("", "Admin chat:", adminUrl);
+  return truncate(lines.join("\n"), TELEGRAM_TEXT_LIMIT);
+}
+
 async function readResponseBody(response: Response): Promise<string> {
   try {
     return await response.text();
@@ -127,12 +214,14 @@ async function readResponseBody(response: Response): Promise<string> {
   }
 }
 
-export async function notifyNewProjectRequest(
-  notice: NewProjectRequestNotice,
+async function sendTelegramMessage(
+  text: string,
+  context: TelegramSendContext,
 ): Promise<void> {
   console.info(`${LOG_PREFIX} notification triggered`, {
-    requestId: notice.id,
-    requestNumber: notice.requestNumber,
+    kind: context.kind,
+    requestId: context.id,
+    requestNumber: context.requestNumber,
   });
 
   const config = readTelegramConfig();
@@ -151,12 +240,12 @@ export async function notifyNewProjectRequest(
     return;
   }
 
-  const text = buildNewProjectRequestMessage(notice);
   const endpoint = `${TELEGRAM_API_ORIGIN}/bot${config.token}/sendMessage`;
 
   console.info(`${LOG_PREFIX} Telegram API request started`, {
     method: "sendMessage",
-    requestId: notice.id,
+    kind: context.kind,
+    requestId: context.id,
   });
 
   let response: Response;
@@ -174,7 +263,8 @@ export async function notifyNewProjectRequest(
     });
   } catch (error) {
     console.error(`${LOG_PREFIX} Telegram API request failed`, {
-      requestId: notice.id,
+      kind: context.kind,
+      requestId: context.id,
       error: error instanceof Error ? error.message : "unknown error",
     });
     throw error;
@@ -182,14 +272,16 @@ export async function notifyNewProjectRequest(
 
   const body = await readResponseBody(response);
   console.info(`${LOG_PREFIX} Telegram API response status`, {
-    requestId: notice.id,
+    kind: context.kind,
+    requestId: context.id,
     status: response.status,
     ok: response.ok,
   });
 
   if (!response.ok) {
     console.error(`${LOG_PREFIX} Telegram API error body`, {
-      requestId: notice.id,
+      kind: context.kind,
+      requestId: context.id,
       status: response.status,
       body: truncate(body, ERROR_BODY_LOG_LIMIT),
     });
@@ -201,7 +293,8 @@ export async function notifyNewProjectRequest(
     parsed = JSON.parse(body) as { ok?: unknown; description?: unknown };
   } catch {
     console.error(`${LOG_PREFIX} Telegram API error body`, {
-      requestId: notice.id,
+      kind: context.kind,
+      requestId: context.id,
       status: response.status,
       body: truncate(body, ERROR_BODY_LOG_LIMIT),
     });
@@ -212,7 +305,8 @@ export async function notifyNewProjectRequest(
     const description =
       typeof parsed.description === "string" ? parsed.description : "unknown Telegram error";
     console.error(`${LOG_PREFIX} Telegram API error body`, {
-      requestId: notice.id,
+      kind: context.kind,
+      requestId: context.id,
       status: response.status,
       body: truncate(body, ERROR_BODY_LOG_LIMIT),
     });
@@ -220,7 +314,18 @@ export async function notifyNewProjectRequest(
   }
 
   console.info(`${LOG_PREFIX} notification success`, {
-    requestId: notice.id,
+    kind: context.kind,
+    requestId: context.id,
+    requestNumber: context.requestNumber,
+  });
+}
+
+export async function notifyNewProjectRequest(
+  notice: NewProjectRequestNotice,
+): Promise<void> {
+  await sendTelegramMessage(buildNewProjectRequestMessage(notice), {
+    kind: "project-request",
+    id: notice.id,
     requestNumber: notice.requestNumber,
   });
 }
@@ -232,8 +337,56 @@ export async function notifyNewProjectRequestSafe(
     await notifyNewProjectRequest(notice);
   } catch (error) {
     console.error(`${LOG_PREFIX} notification failed (fail-open)`, {
+      kind: "project-request",
       requestId: notice.id,
       requestNumber: notice.requestNumber,
+      error: error instanceof Error ? error.message : "unknown error",
+    });
+  }
+}
+
+export async function notifyNewContactMessage(
+  notice: NewContactMessageNotice,
+): Promise<void> {
+  await sendTelegramMessage(buildNewContactMessage(notice), {
+    kind: "contact-message",
+  });
+}
+
+export async function notifyNewContactMessageSafe(
+  notice: NewContactMessageNotice,
+): Promise<void> {
+  try {
+    await notifyNewContactMessage(notice);
+  } catch (error) {
+    console.error(`${LOG_PREFIX} notification failed (fail-open)`, {
+      kind: "contact-message",
+      error: error instanceof Error ? error.message : "unknown error",
+    });
+  }
+}
+
+export async function notifyClientChatMessage(
+  notice: ClientChatMessageNotice,
+): Promise<void> {
+  await sendTelegramMessage(buildClientChatMessage(notice), {
+    kind: "client-chat",
+    id: notice.messageId,
+    requestNumber: notice.reference,
+  });
+}
+
+export async function notifyClientChatMessageSafe(
+  notice: ClientChatMessageNotice,
+): Promise<void> {
+  try {
+    await notifyClientChatMessage(notice);
+  } catch (error) {
+    console.error(`${LOG_PREFIX} notification failed (fail-open)`, {
+      kind: "client-chat",
+      requestId: notice.messageId,
+      requestNumber: notice.reference,
+      conversation: notice.conversation,
       error: error instanceof Error ? error.message : "unknown error",
     });
   }

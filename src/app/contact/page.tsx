@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ContactForm } from "@/components/contact/contact-form";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHero, Section } from "@/components/ui/section";
@@ -97,6 +98,18 @@ export default function ContactPage() {
             <p className="mt-5 text-sm font-medium">{site.location}</p>
           </Card>
         </div>
+
+        <Card className="mt-12">
+          <h2 className="font-display text-xl tracking-tight sm:text-2xl">
+            Send a message
+          </h2>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+            Share a short note about your project. I will get back to you by email.
+          </p>
+          <div className="mt-8">
+            <ContactForm />
+          </div>
+        </Card>
 
         <div className="mt-12 rounded-3xl border border-card-border bg-accent-soft px-6 py-12 text-center sm:px-12">
           <h2 className="font-display text-3xl tracking-tight">

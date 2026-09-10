@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { cn } from "@/lib/utils";
+import { notifyAdminOfClientChatMessage } from "@/lib/notify-client-chat-message";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import type { ProjectMessageRow } from "@/types/database";
@@ -434,6 +435,14 @@ export function ProjectChat({
         return;
       }
       const row = asMessageRow(data);
+      const storedId =
+        row?.id ??
+        (data && typeof data === "object" && typeof (data as { id?: unknown }).id === "string"
+          ? (data as { id: string }).id
+          : null);
+      if (!currentViewer.isAdmin && storedId) {
+        void notifyAdminOfClientChatMessage(storedId);
+      }
       if (!row) {
         // Stored (the RPC succeeded) but the payload shape was unexpected —
         // reconcile from the database instead of losing the message.
