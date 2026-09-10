@@ -14,6 +14,202 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          cta: Json | null
+          id: string
+          metadata: Json
+          role: string
+          session_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          cta?: Json | null
+          id?: string
+          metadata?: Json
+          role: string
+          session_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          cta?: Json | null
+          id?: string
+          metadata?: Json
+          role?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_chat_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "ai_chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_chat_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          title: string | null
+          updated_at: string
+          user_id: string | null
+          visitor_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string | null
+          visitor_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string | null
+          visitor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_chat_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_faqs: {
+        Row: {
+          answer: string
+          created_at: string
+          id: string
+          is_active: boolean
+          question: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          answer: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          question: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          answer?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          question?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_knowledge: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string
+          id: string
+          is_active: boolean
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_rules: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string
+          id: string
+          is_active: boolean
+          priority: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          priority?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          priority?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_settings: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string
@@ -2333,6 +2529,12 @@ export const Constants = {
 // ---------------------------------------------------------------------------
 
 // Row aliases
+export type AiChatMessageRow = Tables<"ai_chat_messages">
+export type AiChatSessionRow = Tables<"ai_chat_sessions">
+export type AiFaqRow = Tables<"ai_faqs">
+export type AiKnowledgeRow = Tables<"ai_knowledge">
+export type AiRuleRow = Tables<"ai_rules">
+export type AiSettingRow = Tables<"ai_settings">
 export type AuditLogRow = Tables<"audit_logs">
 export type ContactMessageRow = Tables<"contact_messages">
 export type InvoiceItemRow = Tables<"invoice_items">
@@ -2369,6 +2571,12 @@ export type ServiceFeatureRow = Tables<"service_features">
 export type ServiceRow = Tables<"services">
 
 // Insert aliases
+export type AiChatMessageInsert = TablesInsert<"ai_chat_messages">
+export type AiChatSessionInsert = TablesInsert<"ai_chat_sessions">
+export type AiFaqInsert = TablesInsert<"ai_faqs">
+export type AiKnowledgeInsert = TablesInsert<"ai_knowledge">
+export type AiRuleInsert = TablesInsert<"ai_rules">
+export type AiSettingInsert = TablesInsert<"ai_settings">
 export type AuditLogInsert = TablesInsert<"audit_logs">
 export type ContactMessageInsert = TablesInsert<"contact_messages">
 export type InvoiceItemInsert = TablesInsert<"invoice_items">
@@ -2405,6 +2613,12 @@ export type ServiceFeatureInsert = TablesInsert<"service_features">
 export type ServiceInsert = TablesInsert<"services">
 
 // Update aliases
+export type AiChatMessageUpdate = TablesUpdate<"ai_chat_messages">
+export type AiChatSessionUpdate = TablesUpdate<"ai_chat_sessions">
+export type AiFaqUpdate = TablesUpdate<"ai_faqs">
+export type AiKnowledgeUpdate = TablesUpdate<"ai_knowledge">
+export type AiRuleUpdate = TablesUpdate<"ai_rules">
+export type AiSettingUpdate = TablesUpdate<"ai_settings">
 export type AuditLogUpdate = TablesUpdate<"audit_logs">
 export type ContactMessageUpdate = TablesUpdate<"contact_messages">
 export type InvoiceItemUpdate = TablesUpdate<"invoice_items">
