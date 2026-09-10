@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { ProjectAssistant } from "@/components/ai/project-assistant";
 import { ProjectRequestForm } from "@/components/project-request/project-request-form";
 import {
   ContentStateMessage,
@@ -85,6 +86,9 @@ export default function StartProjectPage({
           <Suspense fallback={<OrderFormSkeleton />}>
             <StartProjectForm searchParams={searchParams} />
           </Suspense>
+          <div className="mt-12">
+            <ProjectAssistant compact />
+          </div>
         </div>
       </section>
     </>

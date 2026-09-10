@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ProjectAssistant } from "@/components/ai/project-assistant";
 import { ContactForm } from "@/components/contact/contact-form";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -97,6 +98,13 @@ export default function ContactPage() {
             </p>
             <p className="mt-5 text-sm font-medium">{site.location}</p>
           </Card>
+        </div>
+
+        <div className="mt-12">
+          <ProjectAssistant
+            compact
+            description="Ask about a website, web app, or how to start. For a written brief, use the form below."
+          />
         </div>
 
         <Card className="mt-12">
