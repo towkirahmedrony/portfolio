@@ -2,9 +2,9 @@
  * Public display models for portfolio / services content.
  *
  * These are read-only view models hydrated from Supabase
- * (portfolio_projects + portfolio_project_images, services + service_features —
- * see src/lib/public-content.ts). They intentionally stay decoupled from the
- * database row types in src/types/database.ts.
+ * (portfolio_projects + portfolio_project_images, services + service_features,
+ * reviews — see src/lib/public-content.ts). They intentionally stay decoupled
+ * from the database row types in src/types/database.ts.
  */
 
 export type Project = {
@@ -19,6 +19,18 @@ export type Project = {
   liveUrl: string | null;
   githubUrl: string | null;
   featured: boolean;
+};
+
+export type PublicReview = {
+  id: string;
+  rating: number;
+  title: string | null;
+  review: string;
+  photo: string | null;
+  publishedAt: string | null;
+  clientName: string;
+  clientCompany: string | null;
+  projectTitle: string | null;
 };
 
 export type Service = {

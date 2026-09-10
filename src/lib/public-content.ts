@@ -6,7 +6,7 @@ import {
 import { createPublicSupabaseClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { resolvePublicImageUrl } from "@/lib/photos";
-import type { Project, Service } from "@/types";
+import type { Project, PublicReview, Service } from "@/types";
 import type {
   PortfolioProjectRow,
   ServiceFeatureRow,
@@ -17,9 +17,10 @@ import type {
  * Public (server-side) data access for portfolio & services content.
  *
  * Everything here only ever reads *published* rows, ordered by sort_order —
- * the same portfolio_projects / services records the admin CMS manages. RLS
- * additionally restricts anonymous reads to published rows (see
- * supabase/migrations/20260904210000_public_content_read_policies.sql).
+ * the same portfolio_projects / services / reviews records the admin CMS
+ * manages. RLS additionally restricts anonymous reads to published rows (see
+ * supabase/migrations/20260904210000_public_content_read_policies.sql and
+ * supabase/migrations/20260910120000_public_reviews_read.sql).
  *
  * Result states are intentionally coarse: public pages never surface raw
  * database error messages.
@@ -40,10 +41,12 @@ function isMissingRelation(error: { message?: string; code?: string } | null): b
     error.code === "42P01" ||
     error.code === "PGRST205" ||
     error.code === "PGRST200" ||
+    error.code === "PGRST202" ||
     message.includes("does not exist") ||
     message.includes("schema cache") ||
     message.includes("could not find the table") ||
     message.includes("could not find a relationship") ||
+    message.includes("could not find the function") ||
     message.includes("permission denied")
   );
 }
@@ -251,5 +254,100 @@ export async function getPublicServices(): Promise<PublicContentResult<Service[]
     };
   } catch {
     return { status: "ok", data: FALLBACK_PUBLIC_SERVICES };
+  }
+}
+
+/** Max published reviews shown on the homepage testimonials section. */
+export const HOME_REVIEWS_LIMIT = 8;
+
+/** Compact strip on the services page — not a second full carousel. */
+export const SERVICES_REVIEWS_LIMIT = 3;
+
+type PublicReviewRow = {
+  id: string;
+  rating: number;
+  title: string | null;
+  review: string;
+  photo_url: string | null;
+  published_at: string | null;
+  client_name: string | null;
+  client_company: string | null;
+  project_title: string | null;
+};
+
+function toPublicReview(row: PublicReviewRow): PublicReview {
+  const rating = Number(row.rating);
+  return {
+    id: row.id,
+    rating: Number.isFinite(rating) ? Math.min(5, Math.max(1, Math.round(rating))) : 5,
+    title: row.title,
+    review: row.review,
+    photo: resolvePublicImageUrl(row.photo_url),
+    publishedAt: row.published_at,
+    clientName: row.client_name?.trim() || "Client",
+    clientCompany: row.client_company?.trim() || null,
+    projectTitle: row.project_title?.trim() || null,
+  };
+}
+
+export type PublicReviewQuery = {
+  limit?: number;
+};
+
+export async function getPublicReviews(
+  query: PublicReviewQuery = {},
+): Promise<PublicContentResult<PublicReview[]>> {
+  if (!isSupabaseConfigured()) {
+    return { status: "unavailable" };
+  }
+
+  const limit = Math.min(Math.max(query.limit ?? HOME_REVIEWS_LIMIT, 1), 24);
+
+  try {
+    const supabase = createPublicSupabaseClient();
+    const { data, error } = await supabase.rpc("list_public_reviews", {
+      p_limit: limit,
+    });
+
+    if (!error) {
+      const rows = (data ?? []) as PublicReviewRow[];
+      return toResult(rows.map(toPublicReview), null, rows.length === 0);
+    }
+
+    if (!isMissingRelation(error)) {
+      return { status: "error" };
+    }
+
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("reviews")
+      .select("id, rating, title, review, photo_url, published_at")
+      .eq("status", "approved")
+      .not("published_at", "is", null)
+      .order("published_at", { ascending: false })
+      .limit(limit);
+
+    const fallbackRows = (fallbackData ?? []) as Array<{
+      id: string;
+      rating: number;
+      title: string | null;
+      review: string;
+      photo_url: string | null;
+      published_at: string | null;
+    }>;
+
+    return toResult(
+      fallbackRows.map((row) =>
+        toPublicReview({
+          ...row,
+          client_name: null,
+          client_company: null,
+          project_title: null,
+        }),
+      ),
+      fallbackError,
+      fallbackRows.length === 0,
+    );
+  } catch {
+    return { status: "unavailable" };
   }
 }

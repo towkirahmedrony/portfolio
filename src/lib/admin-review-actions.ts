@@ -65,6 +65,8 @@ export async function moderateReview(formData: FormData): Promise<ActionResult> 
   }
 
   revalidatePath("/admin/reviews");
+  revalidatePath("/");
+  revalidatePath("/services");
   return { ok: true };
 }
 
@@ -107,5 +109,7 @@ export async function saveReviewPhoto(
   }
 
   revalidatePath("/admin/reviews");
+  revalidatePath("/");
+  revalidatePath("/services");
   return { ok: true };
 }

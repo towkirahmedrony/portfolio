@@ -1988,6 +1988,20 @@ export type Database = {
       generate_request_number: { Args: never; Returns: string }
       is_active_admin: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
+      list_public_reviews: {
+        Args: { p_limit?: number }
+        Returns: {
+          client_company: string | null
+          client_name: string
+          id: string
+          photo_url: string | null
+          project_title: string | null
+          published_at: string | null
+          rating: number
+          review: string
+          title: string | null
+        }[]
+      }
       mark_project_messages_read: { Args: { p_project_id: string }; Returns: number }
       mark_request_messages_read: { Args: { p_request_id: string }; Returns: number }
       send_project_message: {

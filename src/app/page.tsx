@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { CallToAction } from "@/components/cta";
 import { FaqSection } from "@/components/faq";
 import { ProjectCard } from "@/components/project-card";
+import { PublicReviewsSection } from "@/components/reviews/reviews-section";
 import {
   ContentStateMessage,
   HomeCardSkeleton,
@@ -22,11 +23,11 @@ import {
 import { pageMetadata } from "@/lib/seo";
 import type { Service } from "@/types";
 
-// Public marketing page: projects & services are CMS-published, rarely
-// changing content. Serve from the Next.js cache (ISR) with a one-hour
-// fallback TTL; admin content mutations revalidate "/", "/projects" and
-// "/services" on demand (see src/lib/admin-content-actions.ts), so edits
-// appear immediately without a per-visitor Supabase round-trip.
+// Public marketing page: projects, services and published reviews are
+// CMS-managed, rarely changing content. Serve from the Next.js cache (ISR)
+// with a one-hour fallback TTL; admin mutations revalidate "/", "/projects"
+// and "/services" on demand, so edits appear without a per-visitor
+// Supabase round-trip.
 export const revalidate = 3600;
 
 export const metadata: Metadata = pageMetadata({
@@ -173,6 +174,8 @@ export default function HomePage() {
           <HomeFeaturedWorkContent />
         </Suspense>
       </Section>
+
+      <PublicReviewsSection />
 
       <Section
         id="why"

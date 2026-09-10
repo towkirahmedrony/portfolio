@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { CallToAction } from "@/components/cta";
 import { FaqSection } from "@/components/faq";
+import { PublicReviewsSection } from "@/components/reviews/reviews-section";
 import {
   ContentStateMessage,
   ServiceListSkeleton,
@@ -174,6 +175,8 @@ export default function ServicesPage() {
           <ServicesContent />
         </Suspense>
       </Section>
+
+      <PublicReviewsSection compact />
 
       <FaqSection description="How hiring, payment, revisions, and handover typically work. Details that depend on the project are written into the scope." />
 
