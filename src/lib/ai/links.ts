@@ -93,14 +93,35 @@ const PHRASE_LINKS: readonly {
     href: () => PAGE_ROUTES["start-project"] ?? null,
   },
   {
-    pattern: /\bproject assistant\b/i,
-    href: () => PAGE_ROUTES["ai-assistant"] ?? null,
-  },
-  {
     pattern: /\b(services|projects|about|contact|home) page\b/i,
     href: (match) => PAGE_ROUTES[match[1].toLowerCase()] ?? null,
   },
 ];
+
+const ASSISTANT_SELF_LABEL =
+  /^(?:nora|(?:friendly |ai )*project assistant|assistant)$/i;
+
+function pathnameOf(href: string): string | null {
+  if (href.startsWith("/")) {
+    return href.split(/[?#]/)[0] ?? null;
+  }
+  try {
+    return new URL(href).pathname;
+  } catch {
+    return null;
+  }
+}
+
+function isAssistantSelfLink(label: string, href: string): boolean {
+  const path = pathnameOf(href);
+  const normalized =
+    path && path.length > 1 ? path.replace(/\/+$/, "") : path;
+  if (normalized === "/ai-assistant") {
+    return true;
+  }
+  const trimmed = label.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, "");
+  return ASSISTANT_SELF_LABEL.test(trimmed);
+}
 
 type PhraseMatch = { index: number; length: number; label: string; href: string };
 
@@ -110,10 +131,14 @@ function linkNodes(label: string, href: string): MessageNode[] {
     // Unsafe destination: keep the original text rather than dropping content.
     return [{ type: "text", text: `[${label}](${href})` }];
   }
+  const visible = label || resolved.href;
+  if (isAssistantSelfLink(visible, resolved.href)) {
+    return [{ type: "text", text: visible }];
+  }
   return [
     {
       type: "link",
-      label: label || resolved.href,
+      label: visible,
       href: resolved.href,
       external: resolved.external,
     },
@@ -202,7 +227,7 @@ export function parseMessageContent(content: string): MessageNode[] {
       const url = trailing ? bareUrl.slice(0, -trailing.length) : bareUrl;
       const resolved = resolveMessageHref(url);
       nodes.push(
-        resolved
+        resolved && !isAssistantSelfLink(url, resolved.href)
           ? { type: "link", label: url, href: resolved.href, external: resolved.external }
           : { type: "text", text: url },
       );

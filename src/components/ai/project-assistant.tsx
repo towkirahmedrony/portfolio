@@ -41,6 +41,43 @@ type ProjectAssistantProps = {
   backLabel?: string;
 };
 
+function ThinkingIndicator() {
+  return (
+    <p className="text-muted" role="status">
+      Thinking
+      <span className="inline-flex items-baseline" aria-hidden>
+        <span className="animate-pulse">.</span>
+        <span className="animate-pulse [animation-delay:150ms]">.</span>
+        <span className="animate-pulse [animation-delay:300ms]">.</span>
+      </span>
+    </p>
+  );
+}
+
+function HistorySkeleton() {
+  return (
+    <div className="flex flex-col gap-3" aria-hidden>
+      <div className="h-14 max-w-[80%] animate-pulse rounded-2xl rounded-bl-md border border-card-border bg-background" />
+      <div className="ml-auto h-10 max-w-[55%] animate-pulse rounded-2xl rounded-br-md bg-accent/15" />
+      <div className="h-16 max-w-[72%] animate-pulse rounded-2xl rounded-bl-md border border-card-border bg-background" />
+    </div>
+  );
+}
+
+function mergeHistoryMessages(
+  current: AiChatMessage[],
+  historyMessages: AiChatMessage[],
+): AiChatMessage[] {
+  if (current.length === 0) {
+    return historyMessages;
+  }
+  const historyIds = new Set(historyMessages.map((item) => item.id));
+  const extras = current.filter(
+    (item) => !historyIds.has(item.id) && item.id.startsWith("local-"),
+  );
+  return extras.length > 0 ? [...historyMessages, ...extras] : historyMessages;
+}
+
 function MessageCta({ cta }: { cta: AiCta }) {
   return (
     <ButtonLink
@@ -68,7 +105,10 @@ export function ProjectAssistant({
   const rootRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sendingRef = useRef(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const messagesRef = useRef<AiChatMessage[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(() =>
+    readStoredAiSessionId(),
+  );
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -78,6 +118,7 @@ export function ProjectAssistant({
   const [historyLoading, setHistoryLoading] = useState(() => Boolean(readStoredAiSessionId()));
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [liveHeight, setLiveHeight] = useState<number | null>(null);
+  messagesRef.current = messages;
 
   const loadHistory = useCallback(async (stored: string) => {
     setHistoryError(null);
@@ -86,16 +127,18 @@ export function ProjectAssistant({
       const history = await loadAiChatHistory(stored);
       setSessionId(history.sessionId);
       storeAiSessionId(history.sessionId);
-      setMessages(history.messages);
+      setMessages((current) => mergeHistoryMessages(current, history.messages));
       setHistoryError(null);
     } catch (loadError) {
-      clearStoredAiSessionId();
-      setSessionId(null);
-      setHistoryError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Could not load that conversation.",
-      );
+      if (messagesRef.current.length === 0 && !sendingRef.current) {
+        clearStoredAiSessionId();
+        setSessionId(null);
+        setHistoryError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Could not load that conversation.",
+        );
+      }
     } finally {
       setHistoryLoading(false);
     }
@@ -115,20 +158,22 @@ export function ProjectAssistant({
         }
         setSessionId(history.sessionId);
         storeAiSessionId(history.sessionId);
-        setMessages(history.messages);
+        setMessages((current) => mergeHistoryMessages(current, history.messages));
         setHistoryError(null);
       })
       .catch((loadError: unknown) => {
         if (cancelled) {
           return;
         }
-        clearStoredAiSessionId();
-        setSessionId(null);
-        setHistoryError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Could not load that conversation.",
-        );
+        if (messagesRef.current.length === 0 && !sendingRef.current) {
+          clearStoredAiSessionId();
+          setSessionId(null);
+          setHistoryError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not load that conversation.",
+          );
+        }
       })
       .finally(() => {
         if (!cancelled) {
@@ -195,7 +240,7 @@ export function ProjectAssistant({
     };
   }, [isPage]);
 
-  const canSend = draft.trim().length > 0 && !sending && !historyLoading;
+  const canSend = draft.trim().length > 0 && !sending;
 
   async function sendMessage(raw: string) {
     const message = raw.trim();
@@ -331,7 +376,7 @@ export function ProjectAssistant({
           onKeyDown={handleKeyDown}
           rows={1}
           maxLength={AI_MESSAGE_MAX}
-          disabled={sending || historyLoading}
+          disabled={sending}
           enterKeyHint="send"
           placeholder="Ask about a website or web app…"
           className="min-h-12 w-full resize-none rounded-2xl border border-card-border bg-background px-4 py-3 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 sm:min-h-11 sm:text-sm"
@@ -368,12 +413,8 @@ export function ProjectAssistant({
       aria-relevant="additions"
       aria-label="Project assistant conversation"
     >
-      {historyLoading ? (
-        <div className="flex h-full items-center justify-center">
-          <p className="text-sm text-muted" role="status">
-            Loading conversation…
-          </p>
-        </div>
+      {historyLoading && messages.length === 0 ? (
+        <HistorySkeleton />
       ) : historyError && messages.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
           <p className="text-sm text-muted" role="alert">
@@ -441,9 +482,7 @@ export function ProjectAssistant({
                   )}
                 >
                   {isStreamingDraft ? (
-                    <p className="text-muted" role="status">
-                      Thinking…
-                    </p>
+                    <ThinkingIndicator />
                   ) : (
                     <MessageText
                       content={message.content}
