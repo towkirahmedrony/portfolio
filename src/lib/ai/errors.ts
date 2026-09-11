@@ -61,6 +61,28 @@ export function sanitizeAiLogValue(value: string): string {
   return value.replace(SECRET_PATTERN, "[redacted]");
 }
 
+export function createAiTimer() {
+  const startedAt = Date.now();
+  const marks: Record<string, number> = {};
+
+  return {
+    mark(name: string) {
+      marks[name] = Date.now() - startedAt;
+    },
+    async measure<T>(name: string, task: () => Promise<T>): Promise<T> {
+      const from = Date.now();
+      try {
+        return await task();
+      } finally {
+        marks[name] = Date.now() - from;
+      }
+    },
+    snapshot(): Record<string, number> {
+      return { ...marks, total: Date.now() - startedAt };
+    },
+  };
+}
+
 export function logAiEvent(
   level: "log" | "error",
   stage: string,

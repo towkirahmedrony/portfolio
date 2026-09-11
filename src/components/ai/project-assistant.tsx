@@ -66,6 +66,7 @@ export function ProjectAssistant({
   const listRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const sendingRef = useRef(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -197,7 +198,7 @@ export function ProjectAssistant({
 
   async function sendMessage(raw: string) {
     const message = raw.trim();
-    if (!message || sending) {
+    if (!message || sending || sendingRef.current) {
       return;
     }
     if (message.length > AI_MESSAGE_MAX) {
@@ -205,6 +206,7 @@ export function ProjectAssistant({
       setRetryMessage(message);
       return;
     }
+    sendingRef.current = true;
 
     const optimistic = createLocalAiMessage("user", message);
     const assistantDraft = createLocalAiMessage("assistant", "");
@@ -266,6 +268,7 @@ export function ProjectAssistant({
           : "Could not send that message. Please try again.",
       );
     } finally {
+      sendingRef.current = false;
       setSending(false);
       setStreaming(false);
       textareaRef.current?.focus();

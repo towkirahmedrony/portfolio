@@ -4,7 +4,6 @@ import { GeminiRequestError, logAiEvent } from "@/lib/ai/errors";
 
 const GEMINI_TIMEOUT_MS = 25_000;
 const GEMINI_ORIGIN = "https://generativelanguage.googleapis.com/v1beta";
-const ACTION_LINE = /\s*\[\[action:([a-z0-9-]+)\]\]\s*$/i;
 const INCOMPLETE_ACTION =
   /\s*\[\[(?:a(?:c(?:t(?:i(?:o(?:n(?::[a-z0-9-]*)?)?)?)?)?)?)?$/i;
 
@@ -270,6 +269,8 @@ export async function* streamAssistantReply(input: {
     systemPromptChars: input.systemPrompt.length,
   });
 
+  const geminiStartedAt = Date.now();
+  let firstTokenAt: number | null = null;
   let response: Response;
   try {
     response = await fetch(endpoint, {
@@ -365,6 +366,9 @@ export async function* streamAssistantReply(input: {
         const delta = nextVisible.slice(visible.length);
         visible = nextVisible;
         if (delta) {
+          if (firstTokenAt == null) {
+            firstTokenAt = Date.now() - geminiStartedAt;
+          }
           yield { type: "delta", text: delta };
         }
       }
@@ -401,7 +405,10 @@ export async function* streamAssistantReply(input: {
     });
   }
 
-  logAiEvent("log", "gemini.success", {
+  logAiEvent("log", "timing", {
+    gemini: Date.now() - geminiStartedAt,
+    geminiFirstToken: firstTokenAt,
+    geminiConnect: firstTokenAt,
     model: geminiModel,
     stream: true,
     actionKey: reply.actionKey,

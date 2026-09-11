@@ -5,6 +5,7 @@ import { buildCta } from "@/lib/ai/cta";
 import { getGeminiModel, isGeminiConfigured } from "@/lib/ai/env";
 import {
   AiRouteError,
+  createAiTimer,
   errorMessage,
   GeminiRequestError,
   logAiEvent,
@@ -20,7 +21,6 @@ import {
   loadOwnedSession,
   titleFromMessage,
   toPublicMessage,
-  touchSession,
 } from "@/lib/ai/sessions";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -309,20 +309,21 @@ export async function POST(request: Request) {
 
   let visitorId = "";
   let setCookie = false;
+  const timer = createAiTimer();
 
   try {
-    const visitor = await resolveVisitorId();
+    const visitor = await timer.measure("visitor", resolveVisitorId);
     visitorId = visitor.visitorId;
     setCookie = visitor.setCookie;
 
     const userClient = await createServerSupabaseClient();
+    const service = createServiceRoleSupabaseClient();
     let context: AiAssistantContext;
     let user: { id: string } | null = null;
     try {
-      const [auth, assistantContext] = await Promise.all([
-        userClient.auth.getUser(),
-        getAiAssistantContext(),
-      ]);
+      const [auth, assistantContext] = await timer.measure("auth-context", () =>
+        Promise.all([userClient.auth.getUser(), getAiAssistantContext()]),
+      );
       user = auth.data.user;
       context = assistantContext;
     } catch (error) {
@@ -335,7 +336,6 @@ export async function POST(request: Request) {
       });
     }
 
-    const service = createServiceRoleSupabaseClient();
     const userId = user?.id ?? null;
 
     if (!context.enabled) {
@@ -356,13 +356,25 @@ export async function POST(request: Request) {
     });
 
     let session: AiChatSessionRow | null = null;
+    let previous: AiChatMessageRow[] = [];
     if (requestedSessionId) {
       try {
-        session = await loadOwnedSession(service, {
-          sessionId: requestedSessionId,
-          userId,
-          visitorId,
-        });
+        const loaded = await timer.measure("session-history", () =>
+          Promise.all([
+            loadOwnedSession(service, {
+              sessionId: requestedSessionId,
+              userId,
+              visitorId,
+            }),
+            listSessionMessages(
+              service,
+              requestedSessionId,
+              context.maxHistoryMessages + HISTORY_FETCH_BUFFER,
+            ),
+          ]),
+        );
+        session = loaded[0];
+        previous = loaded[1];
       } catch (error) {
         fail({
           status: 500,
@@ -382,28 +394,30 @@ export async function POST(request: Request) {
       }
     }
 
-    try {
-      if (!session) {
-        session = await createChatSession(service, {
-          userId,
-          visitorId,
-          title: titleFromMessage(message),
-        });
+    if (!session) {
+      try {
+        session = await timer.measure("session-create", () =>
+          createChatSession(service, {
+            userId,
+            visitorId,
+            title: titleFromMessage(message),
+          }),
+        );
         logAiEvent("log", "request.session-created", {
           sessionId: session.id,
           authenticated: Boolean(userId),
         });
-      } else {
-        session = await claimSessionIfNeeded(service, session, userId);
+      } catch (error) {
+        fail({
+          status: 500,
+          publicMessage: "Could not start that conversation. Please try again.",
+          stage: "request.create-session",
+          code: "database",
+          message: errorMessage(error),
+        });
       }
-    } catch (error) {
-      fail({
-        status: 500,
-        publicMessage: "Could not start that conversation. Please try again.",
-        stage: "request.create-session",
-        code: "database",
-        message: errorMessage(error),
-      });
+    } else if (userId && session.user_id !== userId) {
+      session = await claimSessionIfNeeded(service, session, userId);
     }
 
     if (!session) {
@@ -416,47 +430,21 @@ export async function POST(request: Request) {
       });
     }
 
-    let previous: AiChatMessageRow[] = [];
-    try {
-      previous = await listSessionMessages(
-        service,
-        session.id,
-        context.maxHistoryMessages + HISTORY_FETCH_BUFFER,
-      );
-    } catch (error) {
-      fail({
-        status: 500,
-        publicMessage: "Could not load that conversation.",
-        stage: "request.history",
-        code: "database",
-        message: errorMessage(error),
-        details: { sessionId: session.id },
-      });
-    }
-
-    try {
-      await insertChatMessage(service, {
-        sessionId: session.id,
-        role: "user",
-        content: message,
-      });
-    } catch (error) {
-      fail({
-        status: 500,
-        publicMessage: "Could not save your message. Please try again.",
-        stage: "request.persist-user",
-        code: "database",
-        message: errorMessage(error),
-        details: { sessionId: session.id },
-      });
-    }
-
     const encoder = new TextEncoder();
     const sessionId = session.id;
     const historyTurns = historyForGemini(previous).slice(-context.maxHistoryMessages);
     const systemPrompt = context.systemPrompt;
     const ctaLabel = context.ctaLabel;
     const ctaHref = context.ctaHref;
+    timer.mark("pre-stream");
+
+    const persistUser = timer.measure("save-user-message", () =>
+      insertChatMessage(service, {
+        sessionId,
+        role: "user",
+        content: message,
+      }),
+    );
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -468,6 +456,7 @@ export async function POST(request: Request) {
 
         try {
           let reply = null;
+          const geminiStartedAt = Date.now();
           for await (const event of streamAssistantReply({
             systemPrompt,
             history: historyTurns,
@@ -479,12 +468,29 @@ export async function POST(request: Request) {
               reply = event.reply;
             }
           }
+          timer.mark("gemini");
+          logAiEvent("log", "timing", {
+            gemini: Date.now() - geminiStartedAt,
+          });
 
           if (!reply) {
             throw new GeminiRequestError({
               message: "Gemini returned an empty reply.",
               status: 502,
               code: "empty",
+            });
+          }
+
+          try {
+            await persistUser;
+          } catch (error) {
+            fail({
+              status: 500,
+              publicMessage: "Could not save your message. Please try again.",
+              stage: "request.persist-user",
+              code: "database",
+              message: errorMessage(error),
+              details: { sessionId },
             });
           }
 
@@ -497,13 +503,14 @@ export async function POST(request: Request) {
             href: ctaHref,
           });
 
-          const assistantRow = await insertChatMessage(service, {
-            sessionId,
-            role: "assistant",
-            content: reply.message,
-            cta,
-          });
-          void touchSession(service, sessionId);
+          const assistantRow = await timer.measure("save-assistant-message", () =>
+            insertChatMessage(service, {
+              sessionId,
+              role: "assistant",
+              content: reply.message,
+              cta,
+            }),
+          );
 
           const publicMessage = toPublicMessage(assistantRow);
           if (!publicMessage) {
@@ -515,6 +522,7 @@ export async function POST(request: Request) {
             authenticated: Boolean(userId),
             showCta: Boolean(cta),
             historyTurns: previous.length,
+            ...timer.snapshot(),
           });
 
           write({

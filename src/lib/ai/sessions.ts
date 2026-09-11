@@ -135,36 +135,35 @@ export async function createChatSession(
     title: string;
   },
 ): Promise<AiChatSessionRow> {
-  const fullInsert = await supabase
-    .from("ai_chat_sessions")
-    .insert({
-      user_id: input.userId,
-      visitor_id: input.userId ? null : input.visitorId,
-      title: input.title,
-    })
-    .select("*")
-    .single();
+  const now = new Date().toISOString();
+  const row: AiChatSessionRow = {
+    id: crypto.randomUUID(),
+    user_id: input.userId,
+    visitor_id: input.userId ? null : input.visitorId,
+    title: input.title,
+    created_at: now,
+    updated_at: now,
+  };
 
-  if (!fullInsert.error && fullInsert.data) {
-    return fullInsert.data as AiChatSessionRow;
+  const fullInsert = await supabase.from("ai_chat_sessions").insert(row);
+  if (!fullInsert.error) {
+    return row;
   }
 
-  const fallback = await supabase
-    .from("ai_chat_sessions")
-    .insert({
-      user_id: input.userId,
-      title: input.title,
-    })
-    .select("*")
-    .single();
-
-  if (fallback.error || !fallback.data) {
+  const fallback = await supabase.from("ai_chat_sessions").insert({
+    id: row.id,
+    user_id: row.user_id,
+    title: row.title,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  });
+  if (fallback.error) {
     throw new Error(
       fullInsert.error?.message || fallback.error?.message || "Could not create chat session.",
     );
   }
 
-  return fallback.data as AiChatSessionRow;
+  return { ...row, visitor_id: null };
 }
 
 export async function claimSessionIfNeeded(
@@ -214,39 +213,38 @@ export async function insertChatMessage(
   },
 ): Promise<AiChatMessageRow> {
   const ctaJson = ctaToJson(input.cta);
-  const withMeta = await supabase
-    .from("ai_chat_messages")
-    .insert({
-      session_id: input.sessionId,
-      role: input.role,
-      content: input.content,
-      cta: ctaJson,
-      metadata: ctaJson ? { cta: ctaJson } : {},
-    })
-    .select("*")
-    .single();
+  const now = new Date().toISOString();
+  const row: AiChatMessageRow = {
+    id: crypto.randomUUID(),
+    session_id: input.sessionId,
+    role: input.role,
+    content: input.content,
+    created_at: now,
+    cta: ctaJson,
+    metadata: ctaJson ? { cta: ctaJson } : {},
+  };
 
-  if (!withMeta.error && withMeta.data) {
-    return withMeta.data as AiChatMessageRow;
+  const withMeta = await supabase.from("ai_chat_messages").insert(row);
+
+  if (!withMeta.error) {
+    return row;
   }
 
-  const core = await supabase
-    .from("ai_chat_messages")
-    .insert({
-      session_id: input.sessionId,
-      role: input.role,
-      content: input.content,
-    })
-    .select("*")
-    .single();
+  const core = await supabase.from("ai_chat_messages").insert({
+    id: row.id,
+    session_id: row.session_id,
+    role: row.role,
+    content: row.content,
+    created_at: row.created_at,
+  });
 
-  if (core.error || !core.data) {
+  if (core.error) {
     throw new Error(
       withMeta.error?.message || core.error?.message || "Could not save chat message.",
     );
   }
 
-  return core.data as AiChatMessageRow;
+  return { ...row, cta: null, metadata: {} };
 }
 
 export async function listSessionMessages(
