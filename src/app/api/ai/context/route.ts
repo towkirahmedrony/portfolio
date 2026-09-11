@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
 import { errorMessage } from "@/lib/ai/errors";
 import {
@@ -40,6 +41,14 @@ export const maxDuration = 15;
 const GENERIC_ERROR = "Unable to load assistant context.";
 const SECRET_HEADER = "x-dify-context-secret";
 const QUERY_MAX_CHARS = 500;
+
+/**
+ * The six context datasets change rarely, so they are cached server-side for
+ * 5 minutes (see `getAssistantDatasets`). Only the dataset rows are cached - the
+ * query-specific relevance work still runs on every request.
+ */
+const DATASETS_CACHE_SECONDS = 300;
+const DATASETS_CACHE_TAG = "ai-context-datasets";
 
 /** Bounded reads: never pull a whole table for one visitor question. */
 const LIMITS = {
@@ -629,17 +638,39 @@ type ResultCounts = {
   projects: number;
 };
 
+/** Raw, already public/active rows for the six context datasets. */
+type RawDatasets = {
+  services: ServicePicker[];
+  projects: ProjectPicker[];
+  knowledge: KnowledgePicker[];
+  rules: RulePicker[];
+  faqs: FaqPicker[];
+  settings: SettingPicker[];
+};
+
+/** One cached snapshot of those datasets, plus how it was produced. */
+type DatasetsSnapshot = {
+  datasets: RawDatasets;
+  /** Per-query durations from the load that actually produced this snapshot. */
+  queryMs: Timings;
+  /** When the snapshot was produced, so callers can report its age. */
+  loadedAt: number;
+};
+
 /**
- * Loads the compact AI-safe context for one visitor question.
+ * The six Supabase reads behind the visitor context.
  *
- * Every section is an independent Supabase query and they all run in a single
+ * This is the original in-request `Promise.all`, unchanged: every filter,
+ * ordering, limit and column projection is the same. It now sits behind a cache
+ * so that the query-specific relevance ranking below can stay per-request.
+ *
+ * Every section is an independent query and they all run in a single
  * `Promise.all` - no sequential waterfalls - because latency is the reason this
  * endpoint exists. Only the required columns, only public/active rows, bounded
  * limits, no external APIs, no AI calls, read-only.
  */
-async function buildDifyContext(query: string): Promise<DifyContext> {
-  const startedAt = Date.now();
-  const timings: Timings = {
+async function fetchAssistantDatasets(): Promise<DatasetsSnapshot> {
+  const queryMs: Timings = {
     servicesMs: 0,
     projectsMs: 0,
     knowledgeMs: 0,
@@ -647,6 +678,123 @@ async function buildDifyContext(query: string): Promise<DifyContext> {
     faqsMs: 0,
     settingsMs: 0,
   };
+
+  const client = createServiceRoleSupabaseClient();
+
+  const measured = async <T>(key: keyof Timings, task: () => Promise<T>): Promise<T> => {
+    const from = Date.now();
+    try {
+      return await task();
+    } finally {
+      queryMs[key] = Date.now() - from;
+    }
+  };
+
+  const [services, projects, knowledge, rules, faqs, settings] = await Promise.all([
+    measured("servicesMs", () =>
+      runQuery<ServicePicker>("services", () =>
+        client
+          .from("services")
+          .select(
+            "name,slug,short_description,description,starting_price,currency,estimated_days_min,estimated_days_max,featured,sort_order",
+          )
+          // Public read only: never expose unpublished services.
+          .eq("published", true)
+          .order("sort_order", { ascending: true })
+          .limit(LIMITS.fetch),
+      ),
+    ),
+    measured("projectsMs", () =>
+      runQuery<ProjectPicker>("portfolio_projects", () =>
+        client
+          .from("portfolio_projects")
+          .select(
+            "title,slug,short_description,description,category,technologies,live_url,github_url,featured,sort_order",
+          )
+          // Public read only: never expose unpublished projects.
+          .eq("published", true)
+          .order("sort_order", { ascending: true })
+          .limit(LIMITS.fetch),
+      ),
+    ),
+    measured("knowledgeMs", () =>
+      runQuery<KnowledgePicker>("ai_knowledge", () =>
+        client
+          .from("ai_knowledge")
+          .select("category,title,content,priority")
+          .eq("is_active", true)
+          // ai_knowledge orders by priority - it has no sort_order column.
+          .order("priority", { ascending: false })
+          .limit(LIMITS.fetch),
+      ),
+    ),
+    measured("rulesMs", () =>
+      runQuery<RulePicker>("ai_rules", () =>
+        client
+          .from("ai_rules")
+          .select("rule_type,name,instruction,priority")
+          .eq("is_active", true)
+          // ai_rules has `name`, not `title`.
+          .order("priority", { ascending: false })
+          .limit(LIMITS.fetch),
+      ),
+    ),
+    measured("faqsMs", () =>
+      runQuery<FaqPicker>("ai_faqs", () =>
+        client
+          .from("ai_faqs")
+          .select("category,question,answer,keywords,priority")
+          .eq("is_active", true)
+          .order("priority", { ascending: false })
+          .limit(LIMITS.fetch),
+      ),
+    ),
+    measured("settingsMs", () =>
+      runQuery<SettingPicker>("ai_settings", () =>
+        client
+          .from("ai_settings")
+          // ai_settings uses setting_key / setting_value, not key / value.
+          .select("setting_key,setting_value")
+          .eq("is_active", true)
+          .limit(LIMITS.settingsFetch),
+      ),
+    ),
+  ]);
+
+  return {
+    datasets: { services, projects, knowledge, rules, faqs, settings },
+    queryMs,
+    loadedAt: Date.now(),
+  };
+}
+
+/**
+ * The 5-minute server-side cache for those datasets, built on the Next.js Data
+ * Cache: it is a shared server cache that works on Vercel/serverless, needs no
+ * schema change, no migration and no new table, and can never be served to the
+ * browser (the route response keeps `Cache-Control: no-store`).
+ *
+ * Only the raw, already public/active rows are cached. The call takes no
+ * arguments, so this is a single query-independent snapshot - the visitor query,
+ * the relevance ranking, DIFY_CONTEXT_SECRET and the response are never part of
+ * it. Bump the "v1" key part if the cached shape ever changes.
+ */
+const getAssistantDatasets: () => Promise<DatasetsSnapshot> = unstable_cache(
+  fetchAssistantDatasets,
+  ["ai-context", "datasets", "v1"],
+  { revalidate: DATASETS_CACHE_SECONDS, tags: [DATASETS_CACHE_TAG] },
+);
+
+/**
+ * Loads the compact AI-safe context for one visitor question.
+ *
+ * The datasets come from the 5-minute cache. Everything query-dependent
+ * (tokenising, keyword relevance, ranking, section limits, field clipping and the
+ * sensitive-setting filter) still runs on every request, so relevance matching is
+ * unchanged - only the repeated table reads are skipped.
+ */
+async function buildDifyContext(query: string): Promise<DifyContext> {
+  const startedAt = Date.now();
   const counts: ResultCounts = {
     rules: 0,
     knowledge: 0,
@@ -655,89 +803,27 @@ async function buildDifyContext(query: string): Promise<DifyContext> {
     services: 0,
     projects: 0,
   };
+  let queryMs: Timings = {
+    servicesMs: 0,
+    projectsMs: 0,
+    knowledgeMs: 0,
+    rulesMs: 0,
+    faqsMs: 0,
+    settingsMs: 0,
+  };
+  let datasetsMs = 0;
+  let datasetsLoadedAgoMs = 0;
 
   try {
-    const client = createServiceRoleSupabaseClient();
+    const datasetsFrom = Date.now();
+    const snapshot = await getAssistantDatasets();
+    datasetsMs = Date.now() - datasetsFrom;
+    queryMs = snapshot.queryMs;
+    datasetsLoadedAgoMs = Date.now() - snapshot.loadedAt;
 
-    const measured = async <T>(key: keyof Timings, task: () => Promise<T>): Promise<T> => {
-      const from = Date.now();
-      try {
-        return await task();
-      } finally {
-        timings[key] = Date.now() - from;
-      }
-    };
-
-    const [services, projects, knowledge, rules, faqs, settings] = await Promise.all([
-      measured("servicesMs", () =>
-        runQuery<ServicePicker>("services", () =>
-          client
-            .from("services")
-            .select(
-              "name,slug,short_description,description,starting_price,currency,estimated_days_min,estimated_days_max,featured,sort_order",
-            )
-            // Public read only: never expose unpublished services.
-            .eq("published", true)
-            .order("sort_order", { ascending: true })
-            .limit(LIMITS.fetch),
-        ),
-      ),
-      measured("projectsMs", () =>
-        runQuery<ProjectPicker>("portfolio_projects", () =>
-          client
-            .from("portfolio_projects")
-            .select(
-              "title,slug,short_description,description,category,technologies,live_url,github_url,featured,sort_order",
-            )
-            // Public read only: never expose unpublished projects.
-            .eq("published", true)
-            .order("sort_order", { ascending: true })
-            .limit(LIMITS.fetch),
-        ),
-      ),
-      measured("knowledgeMs", () =>
-        runQuery<KnowledgePicker>("ai_knowledge", () =>
-          client
-            .from("ai_knowledge")
-            .select("category,title,content,priority")
-            .eq("is_active", true)
-            // ai_knowledge orders by priority - it has no sort_order column.
-            .order("priority", { ascending: false })
-            .limit(LIMITS.fetch),
-        ),
-      ),
-      measured("rulesMs", () =>
-        runQuery<RulePicker>("ai_rules", () =>
-          client
-            .from("ai_rules")
-            .select("rule_type,name,instruction,priority")
-            .eq("is_active", true)
-            // ai_rules has `name`, not `title`.
-            .order("priority", { ascending: false })
-            .limit(LIMITS.fetch),
-        ),
-      ),
-      measured("faqsMs", () =>
-        runQuery<FaqPicker>("ai_faqs", () =>
-          client
-            .from("ai_faqs")
-            .select("category,question,answer,keywords,priority")
-            .eq("is_active", true)
-            .order("priority", { ascending: false })
-            .limit(LIMITS.fetch),
-        ),
-      ),
-      measured("settingsMs", () =>
-        runQuery<SettingPicker>("ai_settings", () =>
-          client
-            .from("ai_settings")
-            // ai_settings uses setting_key / setting_value, not key / value.
-            .select("setting_key,setting_value")
-            .eq("is_active", true)
-            .limit(LIMITS.settingsFetch),
-        ),
-      ),
-    ]);
+    // Ranking treats these arrays as read-only (it maps/slices into new arrays),
+    // so the cached snapshot is never mutated.
+    const { services, projects, knowledge, rules, faqs, settings } = snapshot.datasets;
 
     const normalizedQuery = normalizeText(query);
     const tokens = tokensOf(query);
@@ -791,14 +877,19 @@ async function buildDifyContext(query: string): Promise<DifyContext> {
     };
   } finally {
     // Timing/result metadata only: never the visitor query, secrets, or records.
+    // `datasetsLoadedAgoMs` is ~0 when the datasets were read on this request and
+    // larger when they were served from the 5-minute cache; the per-query values
+    // describe the load that produced the cached snapshot.
     console.log("[ai-context]", {
       totalMs: Date.now() - startedAt,
-      servicesMs: timings.servicesMs,
-      projectsMs: timings.projectsMs,
-      knowledgeMs: timings.knowledgeMs,
-      rulesMs: timings.rulesMs,
-      faqsMs: timings.faqsMs,
-      settingsMs: timings.settingsMs,
+      datasetsMs,
+      datasetsLoadedAgoMs,
+      servicesMs: queryMs.servicesMs,
+      projectsMs: queryMs.projectsMs,
+      knowledgeMs: queryMs.knowledgeMs,
+      rulesMs: queryMs.rulesMs,
+      faqsMs: queryMs.faqsMs,
+      settingsMs: queryMs.settingsMs,
       resultCounts: counts,
     });
   }

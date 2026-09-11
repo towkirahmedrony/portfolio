@@ -11,6 +11,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { AssistantIcon } from "@/components/ai/assistant-icon";
+import { MessageText } from "@/components/ai/message-text";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -444,12 +445,10 @@ export function ProjectAssistant({
                       Thinking…
                     </p>
                   ) : (
-                    <p className="whitespace-pre-wrap break-words">
-                      {message.content}
-                      {sending && isLatest && !isUser && streaming ? (
-                        <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-accent align-baseline" />
-                      ) : null}
-                    </p>
+                    <MessageText
+                      content={message.content}
+                      showCursor={sending && isLatest && !isUser && streaming}
+                    />
                   )}
                 </div>
                 {!isUser && message.cta ? <MessageCta cta={message.cta} /> : null}
