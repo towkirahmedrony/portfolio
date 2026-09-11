@@ -1,8 +1,12 @@
 import { getGeminiApiKey, getGeminiModel, isGeminiConfigured } from "@/lib/ai/env";
+import { getRouteByHref, isAiRouteKey } from "@/lib/ai/cta";
 import { GeminiRequestError, logAiEvent } from "@/lib/ai/errors";
 
-const GEMINI_TIMEOUT_MS = 20_000;
+const GEMINI_TIMEOUT_MS = 25_000;
 const GEMINI_ORIGIN = "https://generativelanguage.googleapis.com/v1beta";
+const ACTION_LINE = /\s*\[\[action:([a-z0-9-]+)\]\]\s*$/i;
+const INCOMPLETE_ACTION =
+  /\s*\[\[(?:a(?:c(?:t(?:i(?:o(?:n(?::[a-z0-9-]*)?)?)?)?)?)?)?$/i;
 
 export type GeminiChatTurn = {
   role: "user" | "assistant";
@@ -11,6 +15,7 @@ export type GeminiChatTurn = {
 
 export type GeminiStructuredReply = {
   message: string;
+  actionKey: string | null;
   showCta: boolean;
   ctaReason: string | null;
 };
@@ -38,10 +43,24 @@ type GeminiResponse = {
 
 function extractText(payload: GeminiResponse): string {
   const parts = payload.candidates?.[0]?.content?.parts ?? [];
-  return parts
-    .map((part) => part.text ?? "")
-    .join("\n")
-    .trim();
+  return parts.map((part) => part.text ?? "").join("");
+}
+
+function stripActionTags(value: string): string {
+  return value.replace(/\s*\[\[action:[a-z0-9-]+\]\]/gi, "");
+}
+
+export function visibleStreamText(raw: string): string {
+  const trimmed = raw.trimStart();
+  if (trimmed.startsWith("{") || trimmed.startsWith("```")) {
+    return "";
+  }
+  let text = stripActionTags(raw);
+  const incomplete = text.search(INCOMPLETE_ACTION);
+  if (incomplete >= 0) {
+    text = text.slice(0, incomplete);
+  }
+  return text;
 }
 
 function stripFence(text: string): string {
@@ -49,37 +68,59 @@ function stripFence(text: string): string {
   return (fenced?.[1] ?? text).trim();
 }
 
-function parseStructuredReply(raw: string): GeminiStructuredReply | null {
-  const text = stripFence(raw);
-  if (!text) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(text) as {
-      message?: unknown;
-      showCta?: unknown;
-      ctaReason?: unknown;
-    };
-    if (typeof parsed.message !== "string" || parsed.message.trim().length === 0) {
-      return null;
+export function parseAssistantReply(raw: string): GeminiStructuredReply {
+  const fenced = stripFence(raw);
+  if (fenced.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(fenced) as {
+        message?: unknown;
+        action?: unknown;
+        actionKey?: unknown;
+        showCta?: unknown;
+        ctaReason?: unknown;
+      };
+      if (typeof parsed.message === "string" && parsed.message.trim()) {
+        const action =
+          parsed.action && typeof parsed.action === "object" && parsed.action !== null
+            ? (parsed.action as { key?: unknown; href?: unknown })
+            : null;
+        const keyCandidate =
+          (typeof parsed.actionKey === "string" && parsed.actionKey) ||
+          (typeof action?.key === "string" && action.key) ||
+          (typeof action?.href === "string" && getRouteByHref(action.href)?.key) ||
+          null;
+        const actionKey =
+          keyCandidate && isAiRouteKey(String(keyCandidate).toLowerCase())
+            ? String(keyCandidate).toLowerCase()
+            : null;
+        return {
+          message: stripActionTags(parsed.message).trim(),
+          actionKey,
+          showCta: parsed.showCta === true || actionKey === "start-project",
+          ctaReason:
+            typeof parsed.ctaReason === "string" && parsed.ctaReason.trim()
+              ? parsed.ctaReason.trim()
+              : null,
+        };
+      }
+    } catch {
+      // Fall through to action-tag parsing.
     }
-
-    return {
-      message: parsed.message.trim(),
-      showCta: parsed.showCta === true,
-      ctaReason:
-        typeof parsed.ctaReason === "string" && parsed.ctaReason.trim().length > 0
-          ? parsed.ctaReason.trim()
-          : null,
-    };
-  } catch {
-    return {
-      message: text,
-      showCta: false,
-      ctaReason: null,
-    };
   }
+
+  const match = raw.match(/\[\[action:([a-z0-9-]+)\]\]/i);
+  const actionKey =
+    match?.[1] && isAiRouteKey(match[1].toLowerCase())
+      ? match[1].toLowerCase()
+      : null;
+  const message = stripActionTags(raw).trim();
+
+  return {
+    message,
+    actionKey,
+    showCta: actionKey === "start-project",
+    ctaReason: null,
+  };
 }
 
 function classifyHttpStatus(status: number): GeminiRequestError["code"] {
@@ -109,11 +150,105 @@ function isAbortError(error: unknown): boolean {
   return name === "TimeoutError" || name === "AbortError";
 }
 
-export async function generateAssistantReply(input: {
+function buildRequestBody(input: {
   systemPrompt: string;
   history: GeminiChatTurn[];
   userMessage: string;
-}): Promise<GeminiStructuredReply> {
+}) {
+  return {
+    systemInstruction: {
+      parts: [{ text: input.systemPrompt }],
+    },
+    contents: [
+      ...input.history.map((turn) => ({
+        role: turn.role === "assistant" ? "model" : "user",
+        parts: [{ text: turn.content }],
+      })),
+      {
+        role: "user",
+        parts: [{ text: input.userMessage }],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 768,
+    },
+  };
+}
+
+async function* readSseTextDeltas(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<{ text?: string; payload: GeminiResponse }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const consumeBlock = function* (block: string): Generator<{
+    text?: string;
+    payload: GeminiResponse;
+  }> {
+    const dataLines = block
+      .split("\n")
+      .map((line) => line.replace(/\r$/, ""))
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart());
+    if (dataLines.length === 0) {
+      const trimmed = block.trim();
+      if (!trimmed || trimmed === "[DONE]") {
+        return;
+      }
+      try {
+        const payload = JSON.parse(trimmed) as GeminiResponse;
+        const text = extractText(payload);
+        yield { text: text || undefined, payload };
+      } catch {
+        return;
+      }
+      return;
+    }
+
+    const data = dataLines.join("\n").trim();
+    if (!data || data === "[DONE]") {
+      return;
+    }
+    try {
+      const payload = JSON.parse(data) as GeminiResponse;
+      const text = extractText(payload);
+      yield { text: text || undefined, payload };
+    } catch {
+      return;
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    buffer = buffer.replace(/\r\n/g, "\n");
+
+    let separator = buffer.indexOf("\n\n");
+    while (separator >= 0) {
+      const block = buffer.slice(0, separator);
+      buffer = buffer.slice(separator + 2);
+      yield* consumeBlock(block);
+      separator = buffer.indexOf("\n\n");
+    }
+  }
+
+  buffer += decoder.decode();
+  const leftover = buffer.trim();
+  if (leftover) {
+    yield* consumeBlock(leftover);
+  }
+}
+
+export async function* streamAssistantReply(input: {
+  systemPrompt: string;
+  history: GeminiChatTurn[];
+  userMessage: string;
+}): AsyncGenerator<{ type: "delta"; text: string } | { type: "done"; reply: GeminiStructuredReply }> {
   const geminiApiKey = getGeminiApiKey();
   const geminiModel = getGeminiModel();
 
@@ -125,21 +260,11 @@ export async function generateAssistantReply(input: {
     });
   }
 
-  const contents = [
-    ...input.history.map((turn) => ({
-      role: turn.role === "assistant" ? "model" : "user",
-      parts: [{ text: turn.content }],
-    })),
-    {
-      role: "user",
-      parts: [{ text: input.userMessage }],
-    },
-  ];
-
-  const endpoint = `${GEMINI_ORIGIN}/models/${encodeURIComponent(geminiModel)}:generateContent`;
+  const endpoint = `${GEMINI_ORIGIN}/models/${encodeURIComponent(geminiModel)}:streamGenerateContent?alt=sse`;
 
   logAiEvent("log", "gemini.request", {
     model: geminiModel,
+    stream: true,
     historyTurns: input.history.length,
     userMessageChars: input.userMessage.length,
     systemPromptChars: input.systemPrompt.length,
@@ -151,19 +276,10 @@ export async function generateAssistantReply(input: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Accept: "text/event-stream",
         "x-goog-api-key": geminiApiKey,
       },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: input.systemPrompt }],
-        },
-        contents,
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 1024,
-          responseMimeType: "application/json",
-        },
-      }),
+      body: JSON.stringify(buildRequestBody(input)),
       cache: "no-store",
       signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
     });
@@ -182,24 +298,14 @@ export async function generateAssistantReply(input: {
     });
   }
 
-  const body = await response.text();
-  let payload: GeminiResponse;
-  try {
-    payload = JSON.parse(body) as GeminiResponse;
-  } catch {
-    logAiEvent("error", "gemini.invalid-json", {
-      httpStatus: response.status,
-      bodyChars: body.length,
-    });
-    throw new GeminiRequestError({
-      message: "Gemini returned a non-JSON body.",
-      status: 502,
-      code: "invalid",
-      httpStatus: response.status,
-    });
-  }
-
   if (!response.ok) {
+    const body = await response.text();
+    let payload: GeminiResponse = {};
+    try {
+      payload = JSON.parse(body) as GeminiResponse;
+    } catch {
+      payload = {};
+    }
     const code = classifyHttpStatus(response.status);
     const upstream = payload.error?.message || payload.error?.status || `HTTP ${response.status}`;
     logAiEvent("error", "gemini.http-error", {
@@ -217,8 +323,54 @@ export async function generateAssistantReply(input: {
     });
   }
 
-  const finishReason = payload.candidates?.[0]?.finishReason ?? null;
-  const blockReason = payload.promptFeedback?.blockReason ?? null;
+  if (!response.body) {
+    throw new GeminiRequestError({
+      message: "Gemini returned an empty stream.",
+      status: 502,
+      code: "empty",
+      httpStatus: response.status,
+    });
+  }
+
+  let raw = "";
+  let visible = "";
+  let finishReason: string | null = null;
+  let blockReason: string | null = null;
+
+  for await (const chunk of readSseTextDeltas(response.body)) {
+    if (chunk.payload.error?.message) {
+      logAiEvent("error", "gemini.stream-error", {
+        model: geminiModel,
+        upstreamStatus: chunk.payload.error.status ?? null,
+        upstreamCode: chunk.payload.error.code ?? null,
+      });
+      throw new GeminiRequestError({
+        message: `Gemini API error: ${chunk.payload.error.message}`,
+        status: 502,
+        code: "upstream",
+      });
+    }
+
+    finishReason = chunk.payload.candidates?.[0]?.finishReason ?? finishReason;
+    blockReason = chunk.payload.promptFeedback?.blockReason ?? blockReason;
+
+    if (chunk.text) {
+      if (chunk.text.startsWith(raw) && chunk.text.length >= raw.length) {
+        raw = chunk.text;
+      } else {
+        raw += chunk.text;
+      }
+      const nextVisible = visibleStreamText(raw);
+      if (nextVisible.length > visible.length) {
+        const delta = nextVisible.slice(visible.length);
+        visible = nextVisible;
+        if (delta) {
+          yield { type: "delta", text: delta };
+        }
+      }
+    }
+  }
+
   if (blockReason || finishReason === "SAFETY" || finishReason === "BLOCKLIST") {
     logAiEvent("error", "gemini.blocked", {
       finishReason,
@@ -234,11 +386,10 @@ export async function generateAssistantReply(input: {
     });
   }
 
-  const parsed = parseStructuredReply(extractText(payload));
-  if (!parsed) {
+  const reply = parseAssistantReply(raw);
+  if (!reply.message) {
     logAiEvent("error", "gemini.empty-reply", {
       finishReason,
-      candidateCount: payload.candidates?.length ?? 0,
       model: geminiModel,
     });
     throw new GeminiRequestError({
@@ -252,10 +403,32 @@ export async function generateAssistantReply(input: {
 
   logAiEvent("log", "gemini.success", {
     model: geminiModel,
-    showCta: parsed.showCta,
-    messageChars: parsed.message.length,
+    stream: true,
+    actionKey: reply.actionKey,
+    messageChars: reply.message.length,
     finishReason,
   });
 
-  return parsed;
+  yield { type: "done", reply };
+}
+
+export async function generateAssistantReply(input: {
+  systemPrompt: string;
+  history: GeminiChatTurn[];
+  userMessage: string;
+}): Promise<GeminiStructuredReply> {
+  let reply: GeminiStructuredReply | null = null;
+  for await (const event of streamAssistantReply(input)) {
+    if (event.type === "done") {
+      reply = event.reply;
+    }
+  }
+  if (!reply) {
+    throw new GeminiRequestError({
+      message: "Gemini returned an empty reply.",
+      status: 502,
+      code: "empty",
+    });
+  }
+  return reply;
 }

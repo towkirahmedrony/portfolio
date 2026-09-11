@@ -2,6 +2,7 @@ import type {
   AiChatErrorResponse,
   AiChatHistoryResponse,
   AiChatMessage,
+  AiChatStreamEvent,
   AiChatSuccessResponse,
 } from "@/types/ai";
 
@@ -127,15 +128,42 @@ function asCode(payload: unknown): string | null {
   return null;
 }
 
-export async function sendAiChatMessage(input: {
-  message: string;
-  sessionId: string | null;
-}): Promise<AiChatSuccessResponse> {
+export type StreamAiChatHandlers = {
+  onSession?: (sessionId: string) => void;
+  onDelta?: (text: string) => void;
+};
+
+function parseStreamEvent(line: string): AiChatStreamEvent | null {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as AiChatStreamEvent;
+    if (!parsed || typeof parsed !== "object" || !("type" in parsed)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function sendAiChatMessage(
+  input: {
+    message: string;
+    sessionId: string | null;
+  },
+  handlers: StreamAiChatHandlers = {},
+): Promise<AiChatSuccessResponse> {
   let response: Response;
   try {
     response = await fetch(AI_CHAT_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/x-ndjson",
+      },
       credentials: "same-origin",
       body: JSON.stringify({
         message: input.message,
@@ -153,22 +181,112 @@ export async function sendAiChatMessage(input: {
     );
   }
 
-  const payload = await readJson(response);
-  if (
-    response.ok &&
-    payload &&
-    typeof payload === "object" &&
-    "ok" in payload &&
-    (payload as AiChatSuccessResponse).ok === true &&
-    "message" in payload
-  ) {
-    return payload as AiChatSuccessResponse;
+  const contentType = response.headers.get("content-type") ?? "";
+  const streaming = contentType.includes("application/x-ndjson") && Boolean(response.body);
+
+  if (!streaming) {
+    const payload = await readJson(response);
+    if (
+      response.ok &&
+      payload &&
+      typeof payload === "object" &&
+      "ok" in payload &&
+      (payload as AiChatSuccessResponse).ok === true &&
+      "message" in payload
+    ) {
+      const success = payload as AiChatSuccessResponse;
+      handlers.onSession?.(success.sessionId);
+      if (success.message.content) {
+        handlers.onDelta?.(success.message.content);
+      }
+      return success;
+    }
+
+    throw new AiChatRequestError(
+      asError(
+        payload,
+        fallbackForStatus(response.status, "Could not send that message. Please try again."),
+      ),
+      response.status,
+      asCode(payload),
+    );
+  }
+
+  if (!response.ok) {
+    const payload = await readJson(response);
+    throw new AiChatRequestError(
+      asError(
+        payload,
+        fallbackForStatus(response.status, "Could not send that message. Please try again."),
+      ),
+      response.status,
+      asCode(payload),
+    );
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: AiChatSuccessResponse | null = null;
+  let streamError: AiChatRequestError | null = null;
+
+  const handleEvent = (event: AiChatStreamEvent) => {
+    if (event.type === "meta") {
+      handlers.onSession?.(event.sessionId);
+      return;
+    }
+    if (event.type === "delta") {
+      handlers.onDelta?.(event.text);
+      return;
+    }
+    if (event.type === "done") {
+      handlers.onSession?.(event.sessionId);
+      result = {
+        ok: true,
+        sessionId: event.sessionId,
+        message: event.message,
+        cta: event.cta,
+      };
+      return;
+    }
+    streamError = new AiChatRequestError(event.error, 500, event.code ?? "gemini");
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline);
+      buffer = buffer.slice(newline + 1);
+      const event = parseStreamEvent(line);
+      if (event) {
+        handleEvent(event);
+      }
+      newline = buffer.indexOf("\n");
+    }
+  }
+
+  buffer += decoder.decode();
+  const leftover = parseStreamEvent(buffer);
+  if (leftover) {
+    handleEvent(leftover);
+  }
+
+  if (streamError) {
+    throw streamError;
+  }
+  if (result) {
+    return result;
   }
 
   throw new AiChatRequestError(
-    asError(payload, fallbackForStatus(response.status, "Could not send that message. Please try again.")),
-    response.status,
-    asCode(payload),
+    "The assistant could not complete that reply. Please try again.",
+    502,
+    "gemini",
   );
 }
 

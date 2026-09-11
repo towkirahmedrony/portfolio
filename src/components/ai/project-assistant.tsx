@@ -40,14 +40,16 @@ type ProjectAssistantProps = {
   backLabel?: string;
 };
 
-function latestCta(messages: AiChatMessage[]): AiCta | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const cta = messages[index]?.cta;
-    if (cta) {
-      return cta;
-    }
-  }
-  return null;
+function MessageCta({ cta }: { cta: AiCta }) {
+  return (
+    <ButtonLink
+      href={cta.href}
+      size="md"
+      className="mt-2 h-9 self-start px-4 text-xs"
+    >
+      {cta.label}
+    </ButtonLink>
+  );
 }
 
 export function ProjectAssistant({
@@ -68,6 +70,7 @@ export function ProjectAssistant({
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(() => Boolean(readStoredAiSessionId()));
@@ -141,8 +144,11 @@ export function ProjectAssistant({
     if (!root) {
       return;
     }
-    root.scrollTo({ top: root.scrollHeight, behavior: "smooth" });
-  }, [messages, sending, historyLoading]);
+    const distance = root.scrollHeight - root.scrollTop - root.clientHeight;
+    if (distance < 120) {
+      root.scrollTo({ top: root.scrollHeight, behavior: sending ? "auto" : "smooth" });
+    }
+  }, [messages, sending, streaming, historyLoading]);
 
   const resizeDraft = useCallback(() => {
     const field = textareaRef.current;
@@ -201,27 +207,58 @@ export function ProjectAssistant({
     }
 
     const optimistic = createLocalAiMessage("user", message);
-    setMessages((current) => [...current, optimistic]);
+    const assistantDraft = createLocalAiMessage("assistant", "");
+    setMessages((current) => {
+      const last = current[current.length - 1];
+      if (last?.role === "user" && last.content === message) {
+        return [...current, assistantDraft];
+      }
+      return [...current, optimistic, assistantDraft];
+    });
     setDraft("");
     setError(null);
     setRetryMessage(null);
     setSending(true);
+    setStreaming(false);
 
     try {
-      const result = await sendAiChatMessage({
-        message,
-        sessionId,
-      });
+      const result = await sendAiChatMessage(
+        {
+          message,
+          sessionId,
+        },
+        {
+          onSession: (nextSessionId) => {
+            storeAiSessionId(nextSessionId);
+            setSessionId(nextSessionId);
+          },
+          onDelta: (text) => {
+            setStreaming(true);
+            setMessages((current) =>
+              current.map((item) =>
+                item.id === assistantDraft.id
+                  ? { ...item, content: `${item.content}${text}` }
+                  : item,
+              ),
+            );
+          },
+        },
+      );
       storeAiSessionId(result.sessionId);
       setSessionId(result.sessionId);
-      setMessages((current) => [
-        ...current.filter((item) => item.id !== optimistic.id),
-        { ...optimistic, id: `user-${result.message.id}` },
-        result.message,
-      ]);
+      setMessages((current) =>
+        current.map((item) => {
+          if (item.id === optimistic.id) {
+            return { ...optimistic, id: `user-${result.message.id}` };
+          }
+          if (item.id === assistantDraft.id) {
+            return result.message;
+          }
+          return item;
+        }),
+      );
     } catch (sendError) {
-      setMessages((current) => current.filter((item) => item.id !== optimistic.id));
-      setDraft(message);
+      setMessages((current) => current.filter((item) => item.id !== assistantDraft.id));
       setRetryMessage(message);
       setError(
         sendError instanceof Error
@@ -230,6 +267,7 @@ export function ProjectAssistant({
       );
     } finally {
       setSending(false);
+      setStreaming(false);
       textareaRef.current?.focus();
     }
   }
@@ -247,7 +285,6 @@ export function ProjectAssistant({
     void sendMessage(draft);
   }
 
-  const cta = latestCta(messages);
   const showEmpty = messages.length === 0 && !sending && !historyLoading;
 
   const composer = (
@@ -299,10 +336,10 @@ export function ProjectAssistant({
           type="submit"
           size="md"
           disabled={!canSend}
-          aria-label={sending ? "Sending message" : "Send message"}
-          className="h-12 shrink-0 px-5 sm:h-11"
-        >
-          {sending ? "Sending" : "Send"}
+            aria-label={sending ? "Sending message" : "Send message"}
+            className="h-12 shrink-0 px-5 sm:h-11"
+          >
+            {sending ? "Wait" : "Send"}
         </Button>
       </form>
       <p className="mt-2 hidden px-1 text-[11px] text-muted sm:block">
@@ -384,8 +421,11 @@ export function ProjectAssistant({
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {messages.map((message) => {
+          {messages.map((message, index) => {
             const isUser = message.role === "user";
+            const isLatest = index === messages.length - 1;
+            const isStreamingDraft =
+              sending && isLatest && !isUser && message.content.length === 0 && !streaming;
             return (
               <div key={message.id} className="flex flex-col">
                 <div
@@ -396,34 +436,27 @@ export function ProjectAssistant({
                       : "self-start rounded-bl-md border border-card-border bg-background text-foreground",
                   )}
                 >
-                  <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                  {isStreamingDraft ? (
+                    <p className="text-muted" role="status">
+                      Thinking…
+                    </p>
+                  ) : (
+                    <p className="whitespace-pre-wrap break-words">
+                      {message.content}
+                      {sending && isLatest && !isUser && streaming ? (
+                        <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-accent align-baseline" />
+                      ) : null}
+                    </p>
+                  )}
                 </div>
+                {!isUser && message.cta ? <MessageCta cta={message.cta} /> : null}
               </div>
             );
           })}
-          {sending ? (
-            <div
-              className="self-start max-w-[80%] rounded-2xl rounded-bl-md border border-card-border bg-background px-4 py-3 text-sm text-muted"
-              role="status"
-            >
-              Thinking…
-            </div>
-          ) : null}
         </div>
       )}
     </div>
   );
-
-  const ctaBar = cta ? (
-    <div className="flex flex-col gap-3 border-t border-card-border bg-accent-soft px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-      <p className="text-sm leading-6 text-foreground">
-        {cta.reason || "Ready to brief a website or web app?"}
-      </p>
-      <ButtonLink href={cta.href} size="md" className="shrink-0">
-        {cta.label}
-      </ButtonLink>
-    </div>
-  ) : null;
 
   if (isPage) {
     return (
@@ -462,7 +495,6 @@ export function ProjectAssistant({
           </span>
         </header>
         {thread}
-        {ctaBar}
         {composer}
       </section>
     );
@@ -499,7 +531,6 @@ export function ProjectAssistant({
         </div>
       </div>
       {thread}
-      {ctaBar}
       {composer}
     </section>
   );

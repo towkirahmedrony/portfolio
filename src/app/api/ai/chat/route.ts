@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { buildAiAssistantContext, type AiAssistantContext } from "@/lib/ai/context";
+import { getAiAssistantContext, type AiAssistantContext } from "@/lib/ai/context";
 import { buildCta } from "@/lib/ai/cta";
 import { getGeminiModel, isGeminiConfigured } from "@/lib/ai/env";
 import {
@@ -10,7 +10,7 @@ import {
   logAiEvent,
   publicMessageForGemini,
 } from "@/lib/ai/errors";
-import { generateAssistantReply } from "@/lib/ai/gemini";
+import { streamAssistantReply } from "@/lib/ai/gemini";
 import {
   claimSessionIfNeeded,
   createChatSession,
@@ -28,7 +28,12 @@ import {
   createServiceRoleSupabaseClient,
   isServiceRoleConfigured,
 } from "@/lib/supabase/service";
-import type { AiCta, AiChatErrorResponse, AiChatMessage } from "@/types/ai";
+import type {
+  AiCta,
+  AiChatErrorResponse,
+  AiChatMessage,
+  AiChatStreamEvent,
+} from "@/types/ai";
 import type { AiChatMessageRow, AiChatSessionRow } from "@/types/database";
 
 export const runtime = "nodejs";
@@ -39,6 +44,7 @@ const VISITOR_COOKIE = "ai_visitor_id";
 const VISITOR_MAX_AGE = 60 * 60 * 24 * 365;
 const MESSAGE_MAX = 4_000;
 const HISTORY_FETCH_BUFFER = 2;
+const HISTORY_DISPLAY_LIMIT = 24;
 
 function jsonError(
   status: number,
@@ -208,25 +214,12 @@ export async function GET(request: Request) {
       );
     }
 
-    let context: AiAssistantContext;
-    try {
-      context = await buildAiAssistantContext();
-    } catch (error) {
-      fail({
-        status: 503,
-        publicMessage: "The assistant is not available right now.",
-        stage: "history.context",
-        code: "unavailable",
-        message: errorMessage(error),
-      });
-    }
-
     let rows: AiChatMessageRow[];
     try {
       rows = await listSessionMessages(
         service,
         session.id,
-        context.maxHistoryMessages,
+        HISTORY_DISPLAY_LIMIT,
       );
     } catch (error) {
       fail({
@@ -323,15 +316,15 @@ export async function POST(request: Request) {
     setCookie = visitor.setCookie;
 
     const userClient = await createServerSupabaseClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    const service = createServiceRoleSupabaseClient();
-    const userId = user?.id ?? null;
-
     let context: AiAssistantContext;
+    let user: { id: string } | null = null;
     try {
-      context = await buildAiAssistantContext();
+      const [auth, assistantContext] = await Promise.all([
+        userClient.auth.getUser(),
+        getAiAssistantContext(),
+      ]);
+      user = auth.data.user;
+      context = assistantContext;
     } catch (error) {
       fail({
         status: 503,
@@ -341,6 +334,9 @@ export async function POST(request: Request) {
         message: errorMessage(error),
       });
     }
+
+    const service = createServiceRoleSupabaseClient();
+    const userId = user?.id ?? null;
 
     if (!context.enabled) {
       logAiEvent("log", "request.disabled", {});
@@ -455,83 +451,99 @@ export async function POST(request: Request) {
       });
     }
 
-    let reply;
-    try {
-      reply = await generateAssistantReply({
-        systemPrompt: context.systemPrompt,
-        history: historyForGemini(previous).slice(-context.maxHistoryMessages),
-        userMessage: message,
-      });
-    } catch (error) {
-      if (error instanceof GeminiRequestError) {
-        throw error;
-      }
-      fail({
-        status: 502,
-        publicMessage: "The assistant could not complete that reply. Please try again.",
-        stage: "request.gemini",
-        code: "gemini",
-        message: errorMessage(error),
-        details: { sessionId: session.id },
-      });
-    }
+    const encoder = new TextEncoder();
+    const sessionId = session.id;
+    const historyTurns = historyForGemini(previous).slice(-context.maxHistoryMessages);
+    const systemPrompt = context.systemPrompt;
+    const ctaLabel = context.ctaLabel;
+    const ctaHref = context.ctaHref;
 
-    const cta: AiCta | null = buildCta({
-      showCta: reply.showCta,
-      reason: reply.ctaReason,
-      userMessage: message,
-      label: context.ctaLabel,
-      href: context.ctaHref,
+    const stream = new ReadableStream({
+      async start(controller) {
+        const write = (event: AiChatStreamEvent) => {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        };
+
+        write({ type: "meta", sessionId });
+
+        try {
+          let reply = null;
+          for await (const event of streamAssistantReply({
+            systemPrompt,
+            history: historyTurns,
+            userMessage: message,
+          })) {
+            if (event.type === "delta") {
+              write({ type: "delta", text: event.text });
+            } else {
+              reply = event.reply;
+            }
+          }
+
+          if (!reply) {
+            throw new GeminiRequestError({
+              message: "Gemini returned an empty reply.",
+              status: 502,
+              code: "empty",
+            });
+          }
+
+          const cta: AiCta | null = buildCta({
+            actionKey: reply.actionKey,
+            showCta: reply.showCta,
+            reason: reply.ctaReason,
+            userMessage: message,
+            label: ctaLabel,
+            href: ctaHref,
+          });
+
+          const assistantRow = await insertChatMessage(service, {
+            sessionId,
+            role: "assistant",
+            content: reply.message,
+            cta,
+          });
+          void touchSession(service, sessionId);
+
+          const publicMessage = toPublicMessage(assistantRow);
+          if (!publicMessage) {
+            throw new Error("Could not save the assistant reply.");
+          }
+
+          logAiEvent("log", "request.success", {
+            sessionId,
+            authenticated: Boolean(userId),
+            showCta: Boolean(cta),
+            historyTurns: previous.length,
+          });
+
+          write({
+            type: "done",
+            sessionId,
+            message: publicMessage,
+            cta,
+          });
+        } catch (error) {
+          const mapped = toClientError(error);
+          write({
+            type: "error",
+            error: mapped.publicMessage,
+            code: mapped.code,
+          });
+        } finally {
+          controller.close();
+        }
+      },
     });
 
-    let assistantRow;
-    try {
-      assistantRow = await insertChatMessage(service, {
-        sessionId: session.id,
-        role: "assistant",
-        content: reply.message,
-        cta,
-      });
-      await touchSession(service, session.id);
-    } catch (error) {
-      fail({
-        status: 500,
-        publicMessage: "Could not save the assistant reply. Please try again.",
-        stage: "request.persist-assistant",
-        code: "database",
-        message: errorMessage(error),
-        details: { sessionId: session.id },
-      });
-    }
-
-    const publicMessage = toPublicMessage(assistantRow);
-    if (!publicMessage) {
-      fail({
-        status: 500,
-        publicMessage: "Could not save the assistant reply.",
-        stage: "request.parse-assistant",
-        code: "database",
-        details: { sessionId: session.id, role: assistantRow.role },
-      });
-    }
-
-    logAiEvent("log", "request.success", {
-      sessionId: session.id,
-      authenticated: Boolean(userId),
-      showCta: Boolean(cta),
-      historyTurns: previous.length,
+    const response = new NextResponse(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Accel-Buffering": "no",
+      },
     });
-
-    return withVisitorCookie(
-      NextResponse.json({
-        ok: true,
-        sessionId: session.id,
-        message: publicMessage,
-        cta,
-      }),
-      visitorId,
-      setCookie,
-    );
+    return withVisitorCookie(response, visitorId, setCookie);
   } catch (error) {
     const mapped = toClientError(error);
     return withVisitorCookie(
