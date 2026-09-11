@@ -1,12 +1,16 @@
+import { DEFAULT_AI_UI_CONFIG } from "@/lib/ai/ui-defaults";
 import type {
   AiChatErrorResponse,
   AiChatHistoryResponse,
   AiChatMessage,
   AiChatStreamEvent,
   AiChatSuccessResponse,
+  AiUiConfig,
+  AiUiConfigResponse,
 } from "@/types/ai";
 
 export const AI_CHAT_ENDPOINT = "/api/ai/chat";
+export const AI_CONFIG_ENDPOINT = "/api/ai/config";
 export const AI_SESSION_STORAGE_KEY = "ai-project-assistant-session";
 export const AI_MESSAGE_MAX = 4_000;
 
@@ -326,4 +330,69 @@ export async function loadAiChatHistory(
     response.status,
     asCode(payload),
   );
+}
+
+function isAiUiConfigPayload(payload: unknown): payload is AiUiConfigResponse {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  const value = payload as Partial<AiUiConfigResponse>;
+  return (
+    value.ok === true &&
+    typeof value.name === "string" &&
+    typeof value.welcomeMessage === "string" &&
+    typeof value.inputPlaceholder === "string" &&
+    Array.isArray(value.suggestedQuestions)
+  );
+}
+
+export async function loadAiUiConfig(): Promise<AiUiConfig> {
+  try {
+    const response = await fetch(AI_CONFIG_ENDPOINT, {
+      method: "GET",
+      credentials: "same-origin",
+    });
+    const payload = await readJson(response);
+    if (response.ok && isAiUiConfigPayload(payload)) {
+      return {
+        name: payload.name.trim() || DEFAULT_AI_UI_CONFIG.name,
+        avatar: (() => {
+          const raw = typeof payload.avatar === "string" ? payload.avatar.trim() : "";
+          if (!raw) {
+            return null;
+          }
+          if (/^https?:\/\//i.test(raw)) {
+            try {
+              const url = new URL(raw);
+              return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+            } catch {
+              return null;
+            }
+          }
+          return raw.slice(0, 64);
+        })(),
+        avatarType:
+          payload.avatarType === "emoji" || payload.avatarType === "image"
+            ? payload.avatarType
+            : null,
+        welcomeMessage: payload.welcomeMessage.trim() || DEFAULT_AI_UI_CONFIG.welcomeMessage,
+        suggestedQuestions: (() => {
+          const questions = payload.suggestedQuestions
+            .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+            .map((item) => item.trim())
+            .slice(0, 8);
+          return questions.length > 0 ? questions : DEFAULT_AI_UI_CONFIG.suggestedQuestions;
+        })(),
+        inputPlaceholder:
+          payload.inputPlaceholder.trim() || DEFAULT_AI_UI_CONFIG.inputPlaceholder,
+        themeColor:
+          typeof payload.themeColor === "string" && payload.themeColor.trim()
+            ? payload.themeColor.trim()
+            : null,
+      };
+    }
+  } catch {
+    // Configuration is decorative; chat must still work.
+  }
+  return DEFAULT_AI_UI_CONFIG;
 }

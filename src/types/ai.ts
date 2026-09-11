@@ -66,3 +66,19 @@ export type AiChatResponse =
   | AiChatSuccessResponse
   | AiChatHistoryResponse
   | AiChatErrorResponse;
+
+export type AiUiAvatarType = "emoji" | "image";
+
+export type AiUiConfig = {
+  name: string;
+  avatar: string | null;
+  avatarType: AiUiAvatarType | null;
+  welcomeMessage: string;
+  suggestedQuestions: string[];
+  inputPlaceholder: string;
+  themeColor: string | null;
+};
+
+export type AiUiConfigResponse = AiUiConfig & {
+  ok: true;
+};

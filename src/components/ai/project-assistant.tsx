@@ -19,17 +19,13 @@ import {
   createLocalAiMessage,
   clearStoredAiSessionId,
   loadAiChatHistory,
+  loadAiUiConfig,
   readStoredAiSessionId,
   sendAiChatMessage,
   storeAiSessionId,
 } from "@/lib/ai/client";
-import type { AiChatMessage, AiCta } from "@/types/ai";
-
-const SUGGESTIONS = [
-  "What kind of websites do you build?",
-  "Can you help with a web app?",
-  "How do I start a project?",
-] as const;
+import { DEFAULT_AI_UI_CONFIG } from "@/lib/ai/ui-defaults";
+import type { AiChatMessage, AiCta, AiUiConfig } from "@/types/ai";
 
 type ProjectAssistantProps = {
   variant?: "card" | "page";
@@ -40,6 +36,26 @@ type ProjectAssistantProps = {
   backHref?: string;
   backLabel?: string;
 };
+
+function AssistantAvatar({
+  avatar,
+  avatarType,
+}: {
+  avatar: string | null;
+  avatarType: AiUiConfig["avatarType"];
+}) {
+  if (avatar && (avatarType === "image" || /^https?:\/\//i.test(avatar))) {
+    return <img src={avatar} alt="" className="h-full w-full rounded-full object-cover" />;
+  }
+  if (avatar) {
+    return (
+      <span className="text-lg leading-none" aria-hidden>
+        {avatar}
+      </span>
+    );
+  }
+  return <AssistantIcon />;
+}
 
 function ThinkingIndicator() {
   return (
@@ -118,6 +134,7 @@ export function ProjectAssistant({
   const [historyLoading, setHistoryLoading] = useState(() => Boolean(readStoredAiSessionId()));
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [liveHeight, setLiveHeight] = useState<number | null>(null);
+  const [uiConfig, setUiConfig] = useState<AiUiConfig>(DEFAULT_AI_UI_CONFIG);
   messagesRef.current = messages;
 
   const loadHistory = useCallback(async (stored: string) => {
@@ -181,6 +198,18 @@ export function ProjectAssistant({
         }
       });
 
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadAiUiConfig().then((config) => {
+      if (!cancelled) {
+        setUiConfig(config);
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -378,7 +407,7 @@ export function ProjectAssistant({
           maxLength={AI_MESSAGE_MAX}
           disabled={sending}
           enterKeyHint="send"
-          placeholder="Ask about a website or web app…"
+          placeholder={uiConfig.inputPlaceholder}
           className="min-h-12 w-full resize-none rounded-2xl border border-card-border bg-background px-4 py-3 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 sm:min-h-11 sm:text-sm"
         />
         <Button
@@ -439,18 +468,14 @@ export function ProjectAssistant({
       ) : showEmpty ? (
         <div className="flex h-full flex-col justify-end gap-5">
           <div className="max-w-[90%] rounded-2xl rounded-bl-md border border-card-border bg-background px-4 py-3 text-sm leading-6 text-foreground sm:max-w-[80%]">
-            <p>
-              Ask about websites, web apps, process, or how to start. I only
-              answer from published information — if something is not listed,
-              I will say so.
-            </p>
+            <p className="whitespace-pre-wrap">{uiConfig.welcomeMessage}</p>
           </div>
           <div>
             <p className="mb-2 text-[11px] font-medium tracking-[0.16em] text-muted uppercase">
               Try asking
             </p>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              {SUGGESTIONS.map((suggestion) => (
+              {uiConfig.suggestedQuestions.map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
@@ -521,8 +546,14 @@ export function ProjectAssistant({
             {backLabel}
           </Link>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium tracking-[0.18em] text-accent uppercase">
-              Project assistant
+            <p
+              className={cn(
+                "text-[11px] font-medium tracking-[0.18em] uppercase",
+                !uiConfig.themeColor && "text-accent",
+              )}
+              style={uiConfig.themeColor ? { color: uiConfig.themeColor } : undefined}
+            >
+              {uiConfig.name}
             </p>
             <h1
               id={`${formId}-title`}
@@ -531,8 +562,8 @@ export function ProjectAssistant({
               {title}
             </h1>
           </div>
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <AssistantIcon />
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-soft text-accent">
+            <AssistantAvatar avatar={uiConfig.avatar} avatarType={uiConfig.avatarType} />
           </span>
         </header>
         {thread}
@@ -551,12 +582,18 @@ export function ProjectAssistant({
       aria-labelledby={`${formId}-title`}
     >
       <div className="flex items-start gap-4 border-b border-card-border bg-accent-soft/70 px-5 py-5 sm:px-7 sm:py-6">
-        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-card text-accent">
-          <AssistantIcon />
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-card text-accent">
+          <AssistantAvatar avatar={uiConfig.avatar} avatarType={uiConfig.avatarType} />
         </span>
         <div className="min-w-0">
-          <p className="text-xs font-medium tracking-[0.22em] text-accent uppercase">
-            Project assistant
+          <p
+            className={cn(
+              "text-xs font-medium tracking-[0.22em] uppercase",
+              !uiConfig.themeColor && "text-accent",
+            )}
+            style={uiConfig.themeColor ? { color: uiConfig.themeColor } : undefined}
+          >
+            {uiConfig.name}
           </p>
           <h2
             id={`${formId}-title`}

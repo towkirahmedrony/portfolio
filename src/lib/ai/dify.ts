@@ -279,6 +279,98 @@ export function readStoredConversationId(rows: AiChatMessageRow[]): string | nul
   return null;
 }
 
+export async function fetchDifyJson(
+  path: string,
+  timeoutMs = DIFY_TIMEOUT_MS,
+): Promise<unknown> {
+  const apiUrl = getDifyApiUrl();
+  const apiKey = getDifyApiKey();
+
+  if (!apiUrl || !apiKey) {
+    throw new DifyRequestError({
+      message: "Dify is not configured.",
+      status: 503,
+      code: "config",
+    });
+  }
+
+  const endpoint = `${apiUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  const startedAt = Date.now();
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    if (isAbortError(error)) {
+      throw new DifyRequestError({
+        message: `Dify request timed out after ${timeoutMs}ms.`,
+        status: 504,
+        code: "timeout",
+      });
+    }
+    logAiEvent("error", "dify.error", {
+      code: "network",
+      success: false,
+      durationMs,
+      path,
+      error: errorMessage(error),
+    });
+    throw new DifyRequestError({
+      message: error instanceof Error ? error.message : "Dify network request failed.",
+      status: 502,
+      code: "network",
+    });
+  }
+
+  const durationMs = Date.now() - startedAt;
+
+  if (!response.ok) {
+    const bodyText = await response.text().catch(() => "");
+    const code = classifyHttpStatus(response.status);
+    logAiEvent("error", "dify.error", {
+      code,
+      success: false,
+      httpStatus: response.status,
+      durationMs,
+      path,
+      upstream: upstreamSummary(bodyText, response.status),
+    });
+    throw new DifyRequestError({
+      message: `Dify API error: ${upstreamSummary(bodyText, response.status)}`,
+      status: statusForCode(code),
+      code,
+      httpStatus: response.status,
+    });
+  }
+
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    logAiEvent("error", "dify.error", {
+      code: "upstream",
+      success: false,
+      httpStatus: response.status,
+      durationMs,
+      path,
+      reason: "invalid-json",
+    });
+    throw new DifyRequestError({
+      message: "Dify returned a non-JSON response.",
+      status: 502,
+      code: "upstream",
+      httpStatus: response.status,
+    });
+  }
+}
+
 /**
  * One blocking call to the Dify chatflow. `user` is a stable anonymous/session
  * identifier (the website chat session id) — no customer data, credentials, or
