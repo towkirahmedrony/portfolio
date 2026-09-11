@@ -210,6 +210,12 @@ export async function insertChatMessage(
     role: AiMessageRole;
     content: string;
     cta?: AiCta | null;
+    /**
+     * Extra bookkeeping stored in the existing `metadata` jsonb column (used
+     * for the Dify conversation id). Never exposed to the client through
+     * toPublicMessage.
+     */
+    metadata?: Record<string, Json>;
   },
 ): Promise<AiChatMessageRow> {
   const ctaJson = ctaToJson(input.cta);
@@ -221,7 +227,7 @@ export async function insertChatMessage(
     content: input.content,
     created_at: now,
     cta: ctaJson,
-    metadata: ctaJson ? { cta: ctaJson } : {},
+    metadata: { ...(input.metadata ?? {}), ...(ctaJson ? { cta: ctaJson } : {}) },
   };
 
   const withMeta = await supabase.from("ai_chat_messages").insert(row);

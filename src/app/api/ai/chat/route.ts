@@ -1,21 +1,22 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import {
-  buildSystemPrompt,
-  getAiAssistantContext,
-  type AiAssistantContext,
-} from "@/lib/ai/context";
 import { buildCta } from "@/lib/ai/cta";
-import { getGeminiModel, isGeminiConfigured } from "@/lib/ai/env";
+import {
+  DIFY_CONVERSATION_METADATA_KEY,
+  DifyRequestError,
+  getDifyApiKey,
+  getDifyApiUrl,
+  isDifyConfigured,
+  publicMessageForDify,
+  readStoredConversationId,
+  sendDifyChatMessage,
+} from "@/lib/ai/dify";
 import {
   AiRouteError,
   createAiTimer,
   errorMessage,
-  GeminiRequestError,
   logAiEvent,
-  publicMessageForGemini,
 } from "@/lib/ai/errors";
-import { streamAssistantReply } from "@/lib/ai/gemini";
 import {
   claimSessionIfNeeded,
   createChatSession,
@@ -47,18 +48,15 @@ export const maxDuration = 30;
 const VISITOR_COOKIE = "ai_visitor_id";
 const VISITOR_MAX_AGE = 60 * 60 * 24 * 365;
 const MESSAGE_MAX = 4_000;
-const HISTORY_FETCH_BUFFER = 2;
+/** Messages returned to the chat UI when it reloads a conversation. */
 const HISTORY_DISPLAY_LIMIT = 24;
-
-/** Stages sourced from the cached context build (see src/lib/ai/context.ts). */
-const CONTEXT_STAGES = [
-  "settings",
-  "rules",
-  "knowledge",
-  "faqs",
-  "services",
-  "portfolio",
-] as const;
+/**
+ * The only reason POST reads previous messages is to recover the most recent
+ * Dify conversation id, so a short window is enough. No AI table (knowledge,
+ * rules, faqs, settings, services, projects) is queried there — Dify gets that
+ * live context from POST /api/ai/context.
+ */
+const HISTORY_LOOKBACK_LIMIT = 6;
 
 function jsonError(
   status: number,
@@ -103,15 +101,6 @@ function withVisitorCookie(response: NextResponse, visitorId: string, setCookie:
   return response;
 }
 
-function historyForGemini(rows: AiChatMessageRow[]) {
-  return rows
-    .filter((row) => row.role === "user" || row.role === "assistant")
-    .map((row) => ({
-      role: row.role as "user" | "assistant",
-      content: row.content,
-    }));
-}
-
 function fail(input: {
   status: number;
   publicMessage: string;
@@ -149,18 +138,13 @@ function toClientError(error: unknown): {
     };
   }
 
-  if (error instanceof GeminiRequestError) {
-    logAiEvent("error", "gemini.failed", {
-      code: error.code,
-      status: error.status,
-      httpStatus: error.httpStatus,
-      finishReason: error.finishReason,
-      error: error.message,
-    });
+  if (error instanceof DifyRequestError) {
+    // The Dify client already logged `dify.error` with the duration, HTTP
+    // status and a capped upstream hint, so this only maps to a safe message.
     return {
       status: error.status,
-      publicMessage: publicMessageForGemini(error),
-      code: error.code === "timeout" ? "timeout" : "gemini",
+      publicMessage: publicMessageForDify(error),
+      code: error.code === "timeout" ? "timeout" : "dify",
     };
   }
 
@@ -276,11 +260,14 @@ export async function GET(request: Request) {
 
 /**
  * One message = one POST. Order of work:
- *   resolve visitor -> auth + cached context (parallel) -> session/history
- *   (parallel) -> start user-message insert -> stream Gemini -> save assistant
- *   message -> done event.
- * The only sequential database dependencies are session/history resolution and
- * the two message writes.
+ *   resolve visitor -> auth -> session/history -> save user message -> call the
+ *   Dify chatflow (blocking) -> save assistant message -> done event.
+ *
+ * Dify owns the model, Nora's instructions and the live Supabase business
+ * context (the chatflow's HTTP Request node calls /api/ai/context), so this
+ * route never queries AI tables, never calls Gemini, and calls no external API
+ * besides Dify. The response format is unchanged, so the existing chat UI needs
+ * no modification.
  */
 export async function POST(request: Request) {
   let payload: unknown;
@@ -321,10 +308,10 @@ export async function POST(request: Request) {
     return jsonError(503, "The assistant is not configured yet.", { code: "config" });
   }
 
-  if (!isGeminiConfigured()) {
-    logAiEvent("error", "request.missing-gemini-key", {
-      geminiKeyPresent: false,
-      model: getGeminiModel(),
+  if (!isDifyConfigured()) {
+    logAiEvent("error", "request.missing-dify-config", {
+      difyApiUrlPresent: Boolean(getDifyApiUrl()),
+      difyKeyPresent: Boolean(getDifyApiKey()),
     });
     return jsonError(503, "The assistant is not available right now.", { code: "config" });
   }
@@ -340,68 +327,28 @@ export async function POST(request: Request) {
 
     const userClient = await createServerSupabaseClient();
     const service = createServiceRoleSupabaseClient();
-    let context: AiAssistantContext | null = null;
+
     let user: { id: string } | null = null;
     try {
-      // Auth and the cached context build are independent: run them together,
-      // but measure them separately so each stage is attributable.
-      const [auth, assistantContext] = await Promise.all([
-        timer.measure("auth", () => userClient.auth.getUser()),
-        timer.measure("context", () => getAiAssistantContext()),
-      ]);
+      const auth = await timer.measure("auth", () => userClient.auth.getUser());
       user = auth.data.user;
-      context = assistantContext.context;
-
-      // On a cache hit no context table is queried at all, so report those
-      // stages as 0 rather than replaying the last build's durations.
-      const cacheHit = assistantContext.cache === "hit";
-      const cacheNote = cacheHit
-        ? "cache hit, 0 queries"
-        : `built now, cached ${assistantContext.revalidateSeconds}s`;
-      for (const stage of CONTEXT_STAGES) {
-        timer.set(stage, cacheHit ? 0 : context.timings[stage] ?? null, cacheNote);
-      }
-      // The order form is deliberately not part of the AI context.
-      timer.set("form-data", 0, "not loaded");
     } catch (error) {
       fail({
         status: 503,
         publicMessage: "The assistant is not available right now.",
-        stage: "request.context",
+        stage: "request.auth",
         code: "unavailable",
         message: errorMessage(error),
       });
     }
 
-    if (!context) {
-      fail({
-        status: 503,
-        publicMessage: "The assistant is not available right now.",
-        stage: "request.context",
-        code: "unavailable",
-        message: "AI context was not built.",
-      });
-    }
-
     const userId = user?.id ?? null;
-
-    if (!context.enabled) {
-      logAiEvent("log", "request.disabled", {});
-      timer.report();
-      return withVisitorCookie(
-        jsonError(503, "The assistant is currently disabled.", { code: "unavailable" }),
-        visitorId,
-        setCookie,
-      );
-    }
 
     logAiEvent("log", "request.received", {
       hasSessionId: Boolean(requestedSessionId),
       messageChars: message.length,
       authenticated: Boolean(userId),
-      geminiKeyPresent: isGeminiConfigured(),
-      model: getGeminiModel(),
-      contextSources: context.counts,
+      difyConfigured: isDifyConfigured(),
     });
 
     let session: AiChatSessionRow | null = null;
@@ -418,11 +365,7 @@ export async function POST(request: Request) {
             }),
           ),
           timer.measure("history-load", () =>
-            listSessionMessages(
-              service,
-              requestedSessionId,
-              context.maxHistoryMessages + HISTORY_FETCH_BUFFER,
-            ),
+            listSessionMessages(service, requestedSessionId, HISTORY_LOOKBACK_LIMIT),
           ),
         ]);
         session = loaded;
@@ -485,16 +428,12 @@ export async function POST(request: Request) {
 
     const encoder = new TextEncoder();
     const sessionId = session.id;
-    const historyTurns = historyForGemini(previous).slice(-context.maxHistoryMessages);
+    // Conversation continuity lives in the existing ai_chat_messages.metadata
+    // jsonb column: no new table, column, or migration.
+    const difyConversationId = readStoredConversationId(previous);
 
-    // The prompt is assembled per message from the cached snapshot, so no extra
-    // database work happens here.
-    const plan = buildSystemPrompt(context, message);
-    const systemPrompt = plan.prompt;
-    const ctaLabel = context.ctaLabel;
-    const ctaHref = context.ctaHref;
-
-    // Kick off the user-message insert before streaming so it overlaps Gemini.
+    // Kick off the user-message insert before calling Dify so it overlaps the
+    // upstream request.
     const persistUser = timer.measure("user-message-save", () =>
       insertChatMessage(service, {
         sessionId,
@@ -511,32 +450,19 @@ export async function POST(request: Request) {
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
         };
 
+        // Same event sequence as before (meta -> done), so the frontend is
+        // untouched. Dify runs in blocking mode and the reply arrives whole.
         write({ type: "meta", sessionId });
 
         try {
-          let reply = null;
-          const geminiStartedAt = Date.now();
-          for await (const event of streamAssistantReply({
-            systemPrompt,
-            history: historyTurns,
-            userMessage: message,
-          })) {
-            if (event.type === "delta") {
-              write({ type: "delta", text: event.text });
-            } else {
-              reply = event.reply;
-              timer.set("gemini-first-token", event.firstTokenMs);
-            }
-          }
-          timer.set("gemini", Date.now() - geminiStartedAt);
-
-          if (!reply) {
-            throw new GeminiRequestError({
-              message: "Gemini returned an empty reply.",
-              status: 502,
-              code: "empty",
-            });
-          }
+          const reply = await sendDifyChatMessage({
+            // Stable anonymous/session identifier only: no customer data,
+            // credentials, or secrets are sent to Dify.
+            user: sessionId,
+            query: message,
+            conversationId: difyConversationId,
+          });
+          timer.set("dify", reply.durationMs);
 
           try {
             await persistUser;
@@ -556,8 +482,6 @@ export async function POST(request: Request) {
             showCta: reply.showCta,
             reason: reply.ctaReason,
             userMessage: message,
-            label: ctaLabel,
-            href: ctaHref,
           });
 
           const assistantRow = await timer.measure("assistant-message-save", () =>
@@ -566,6 +490,9 @@ export async function POST(request: Request) {
               role: "assistant",
               content: reply.message,
               cta,
+              metadata: reply.conversationId
+                ? { [DIFY_CONVERSATION_METADATA_KEY]: reply.conversationId }
+                : undefined,
             }),
           );
 
@@ -578,10 +505,7 @@ export async function POST(request: Request) {
             sessionId,
             authenticated: Boolean(userId),
             showCta: Boolean(cta),
-            historyTurns: previous.length,
-            promptChars: plan.promptChars,
-            promptSections: plan.sections.join(","),
-            droppedSections: plan.dropped.join(",") || "none",
+            historyRows: previous.length,
             ...timer.snapshot(),
           });
 

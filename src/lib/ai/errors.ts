@@ -55,7 +55,13 @@ export class GeminiRequestError extends Error {
   }
 }
 
-const SECRET_PATTERN = /AIza[0-9A-Za-z_-]{10,}|GEMINI_API_KEY|x-goog-api-key/gi;
+/**
+ * Redacts known credential shapes from anything that reaches a log line. The
+ * `app-` form covers Dify app API keys; the rest covers Gemini keys and the two
+ * server-to-server secret names used by this project.
+ */
+const SECRET_PATTERN =
+  /app-[0-9A-Za-z_-]{16,}|AIza[0-9A-Za-z_-]{10,}|GEMINI_API_KEY|DIFY_API_KEY|DIFY_CONTEXT_SECRET|x-goog-api-key|x-dify-context-secret/gi;
 
 export function sanitizeAiLogValue(value: string): string {
   return value.replace(SECRET_PATTERN, "[redacted]");
@@ -125,6 +131,7 @@ export const AI_TIMING_ORDER = [
   "form-data",
   "gemini",
   "gemini-first-token",
+  "dify",
   "user-message-save",
   "assistant-message-save",
   // Extra stages kept for diagnosis (not part of the required list).
