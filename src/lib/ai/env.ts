@@ -12,7 +12,7 @@ export function getGeminiApiKey(): string | undefined {
 }
 
 export function getGeminiModel(): string {
-  return readServerEnv("GEMINI_MODEL") || "gemini-2.0-flash";
+  return readServerEnv("GEMINI_MODEL") || "gemini-3.6-flash";
 }
 
 export function isGeminiConfigured(): boolean {
