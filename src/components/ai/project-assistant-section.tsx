@@ -1,18 +1,10 @@
-import { ProjectAssistant } from "@/components/ai/project-assistant";
+import { DifyChatbot } from "@/components/ai/dify-chatbot";
 import { Section } from "@/components/ui/section";
 
-export function ProjectAssistantSection({
-  compact = false,
-  title,
-  description,
-}: {
-  compact?: boolean;
-  title?: string;
-  description?: string;
-}) {
+export function ProjectAssistantSection() {
   return (
     <Section id="ask" className="scroll-mt-24">
-      <ProjectAssistant compact={compact} title={title} description={description} />
+      <DifyChatbot autoOpen={false} />
     </Section>
   );
 }
