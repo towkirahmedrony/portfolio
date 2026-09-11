@@ -64,10 +64,19 @@ export function sanitizeAiLogValue(value: string): string {
 export function createAiTimer() {
   const startedAt = Date.now();
   const marks: Record<string, number> = {};
+  const notes: Record<string, string> = {};
+  let reported = false;
 
   return {
     mark(name: string) {
       marks[name] = Date.now() - startedAt;
+    },
+    /** Records an already-measured duration (or 0 when the stage did not run). */
+    set(name: string, ms: number | null, note?: string) {
+      marks[name] = typeof ms === "number" && Number.isFinite(ms) ? Math.max(0, ms) : 0;
+      if (note) {
+        notes[name] = note;
+      }
     },
     async measure<T>(name: string, task: () => Promise<T>): Promise<T> {
       const from = Date.now();
@@ -77,10 +86,64 @@ export function createAiTimer() {
         marks[name] = Date.now() - from;
       }
     },
+    elapsed(): number {
+      return Date.now() - startedAt;
+    },
     snapshot(): Record<string, number> {
       return { ...marks, total: Date.now() - startedAt };
     },
+    /**
+     * Emits the per-stage timing lines once per request. Safe to call from both
+     * the streaming completion path and the outer error path.
+     */
+    report(): void {
+      if (reported) {
+        return;
+      }
+      reported = true;
+      marks.total = Date.now() - startedAt;
+      logAiTimingReport(marks, notes);
+    },
   };
+}
+
+/**
+ * Temporary per-stage timing instrumentation. Emits exactly one line per stage:
+ *   [ai-chat] timing.<stage> = <ms>ms
+ * Only durations and stage names are logged — never message content, tokens,
+ * API keys, or customer data.
+ */
+export const AI_TIMING_ORDER = [
+  "session-load",
+  "history-load",
+  "settings",
+  "rules",
+  "knowledge",
+  "faqs",
+  "services",
+  "portfolio",
+  "form-data",
+  "gemini",
+  "gemini-first-token",
+  "user-message-save",
+  "assistant-message-save",
+  // Extra stages kept for diagnosis (not part of the required list).
+  "session-create",
+  "auth",
+  "context",
+  "total",
+] as const;
+
+export function logAiTimingReport(
+  marks: Record<string, number | null | undefined>,
+  notes: Record<string, string> = {},
+): void {
+  for (const stage of AI_TIMING_ORDER) {
+    const raw = marks[stage];
+    const value = typeof raw === "number" && Number.isFinite(raw) ? `${Math.round(raw)}ms` : "0ms";
+    const note = notes[stage];
+    console.log(`[ai-chat] timing.${stage} = ${value}${note ? ` (${note})` : ""}`);
+  }
 }
 
 export function logAiEvent(

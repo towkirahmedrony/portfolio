@@ -90,67 +90,40 @@ export type Database = {
       ai_faqs: {
         Row: {
           answer: string
+          category: string | null
           created_at: string
           id: string
           is_active: boolean
+          keywords: string[] | null
+          priority: number
           question: string
-          sort_order: number
           updated_at: string
         }
         Insert: {
           answer: string
+          category?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          keywords?: string[] | null
+          priority?: number
           question: string
-          sort_order?: number
           updated_at?: string
         }
         Update: {
           answer?: string
+          category?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          keywords?: string[] | null
+          priority?: number
           question?: string
-          sort_order?: number
           updated_at?: string
         }
         Relationships: []
       }
       ai_knowledge: {
-        Row: {
-          category: string | null
-          content: string
-          created_at: string
-          id: string
-          is_active: boolean
-          sort_order: number
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          category?: string | null
-          content: string
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          sort_order?: number
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          category?: string | null
-          content?: string
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          sort_order?: number
-          title?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      ai_rules: {
         Row: {
           category: string | null
           content: string
@@ -183,30 +156,66 @@ export type Database = {
         }
         Relationships: []
       }
-      ai_settings: {
+      ai_rules: {
         Row: {
           created_at: string
           id: string
+          instruction: string
           is_active: boolean
-          key: string
+          name: string
+          priority: number
+          rule_type: string
           updated_at: string
-          value: string
         }
         Insert: {
           created_at?: string
           id?: string
+          instruction: string
           is_active?: boolean
-          key: string
+          name: string
+          priority?: number
+          rule_type: string
           updated_at?: string
-          value: string
         }
         Update: {
           created_at?: string
           id?: string
+          instruction?: string
           is_active?: boolean
-          key?: string
+          name?: string
+          priority?: number
+          rule_type?: string
           updated_at?: string
-          value?: string
+        }
+        Relationships: []
+      }
+      ai_settings: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          setting_key: string
+          setting_value: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          setting_key: string
+          setting_value?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          setting_key?: string
+          setting_value?: string | null
+          updated_at?: string
         }
         Relationships: []
       }

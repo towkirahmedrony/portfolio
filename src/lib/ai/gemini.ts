@@ -1,9 +1,22 @@
-import { getGeminiApiKey, getGeminiModel, isGeminiConfigured } from "@/lib/ai/env";
+import {
+  getGeminiApiKey,
+  getGeminiApiOrigin,
+  getGeminiModel,
+  getGeminiThinkingLevel,
+  isGeminiConfigured,
+  type GeminiThinkingLevel,
+} from "@/lib/ai/env";
 import { getRouteByHref, isAiRouteKey } from "@/lib/ai/cta";
 import { GeminiRequestError, logAiEvent } from "@/lib/ai/errors";
 
 const GEMINI_TIMEOUT_MS = 25_000;
-const GEMINI_ORIGIN = "https://generativelanguage.googleapis.com/v1beta";
+/**
+ * Some models reject `thinkingConfig` outright. If the first attempt fails with
+ * a thinking-related 400 we retry once without it, so the latency tuning can
+ * never turn into an outage.
+ */
+const THINKING_REJECTED_PATTERN =
+  /thinking[\s_-]*(config|level|budget)|thinking_level|reasoning effort/i;
 const INCOMPLETE_ACTION =
   /\s*\[\[(?:a(?:c(?:t(?:i(?:o(?:n(?::[a-z0-9-]*)?)?)?)?)?)?)?$/i;
 
@@ -149,11 +162,14 @@ function isAbortError(error: unknown): boolean {
   return name === "TimeoutError" || name === "AbortError";
 }
 
-function buildRequestBody(input: {
-  systemPrompt: string;
-  history: GeminiChatTurn[];
-  userMessage: string;
-}) {
+function buildRequestBody(
+  input: {
+    systemPrompt: string;
+    history: GeminiChatTurn[];
+    userMessage: string;
+  },
+  thinkingLevel: GeminiThinkingLevel | null,
+) {
   return {
     systemInstruction: {
       parts: [{ text: input.systemPrompt }],
@@ -171,8 +187,40 @@ function buildRequestBody(input: {
     generationConfig: {
       temperature: 0.3,
       maxOutputTokens: 768,
+      ...(thinkingLevel ? { thinkingConfig: { thinkingLevel } } : {}),
     },
   };
+}
+
+function geminiHttpError(status: number, bodyText: string, model: string): GeminiRequestError {
+  let payload: GeminiResponse = {};
+  try {
+    payload = JSON.parse(bodyText) as GeminiResponse;
+  } catch {
+    payload = {};
+  }
+
+  const code = classifyHttpStatus(status);
+  // Upstream error text is capped: it can echo part of the prompt, which must
+  // never end up in logs or in a thrown message.
+  const upstream = String(payload.error?.message || payload.error?.status || `HTTP ${status}`).slice(
+    0,
+    200,
+  );
+  logAiEvent("error", "gemini.http-error", {
+    httpStatus: status,
+    code,
+    upstreamStatus: payload.error?.status ?? null,
+    upstreamCode: payload.error?.code ?? null,
+    model,
+  });
+
+  return new GeminiRequestError({
+    message: `Gemini API error: ${upstream}`,
+    status: code === "auth" || code === "not_found" ? 503 : code === "rate_limit" ? 429 : 502,
+    code,
+    httpStatus: status,
+  });
 }
 
 async function* readSseTextDeltas(
@@ -247,9 +295,13 @@ export async function* streamAssistantReply(input: {
   systemPrompt: string;
   history: GeminiChatTurn[];
   userMessage: string;
-}): AsyncGenerator<{ type: "delta"; text: string } | { type: "done"; reply: GeminiStructuredReply }> {
+}): AsyncGenerator<
+  { type: "delta"; text: string } | { type: "done"; reply: GeminiStructuredReply; firstTokenMs: number | null }
+> {
   const geminiApiKey = getGeminiApiKey();
   const geminiModel = getGeminiModel();
+  const thinkingLevel = getGeminiThinkingLevel();
+  const origin = getGeminiApiOrigin();
 
   if (!isGeminiConfigured() || !geminiApiKey) {
     throw new GeminiRequestError({
@@ -259,11 +311,12 @@ export async function* streamAssistantReply(input: {
     });
   }
 
-  const endpoint = `${GEMINI_ORIGIN}/models/${encodeURIComponent(geminiModel)}:streamGenerateContent?alt=sse`;
+  const endpoint = `${origin}/models/${encodeURIComponent(geminiModel)}:streamGenerateContent?alt=sse`;
 
   logAiEvent("log", "gemini.request", {
     model: geminiModel,
     stream: true,
+    thinkingLevel: thinkingLevel ?? "model-default",
     historyTurns: input.history.length,
     userMessageChars: input.userMessage.length,
     systemPromptChars: input.systemPrompt.length,
@@ -271,57 +324,54 @@ export async function* streamAssistantReply(input: {
 
   const geminiStartedAt = Date.now();
   let firstTokenAt: number | null = null;
-  let response: Response;
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-        "x-goog-api-key": geminiApiKey,
-      },
-      body: JSON.stringify(buildRequestBody(input)),
-      cache: "no-store",
-      signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
+
+  const postStream = async (body: unknown): Promise<Response> => {
+    try {
+      return await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          "x-goog-api-key": geminiApiKey,
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+        signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+      });
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw new GeminiRequestError({
+          message: `Gemini request timed out after ${GEMINI_TIMEOUT_MS}ms.`,
+          status: 504,
+          code: "timeout",
+        });
+      }
       throw new GeminiRequestError({
-        message: `Gemini request timed out after ${GEMINI_TIMEOUT_MS}ms.`,
-        status: 504,
-        code: "timeout",
+        message: error instanceof Error ? error.message : "Gemini network request failed.",
+        status: 502,
+        code: "network",
       });
     }
-    throw new GeminiRequestError({
-      message: error instanceof Error ? error.message : "Gemini network request failed.",
-      status: 502,
-      code: "network",
-    });
+  };
+
+  let response = await postStream(buildRequestBody(input, thinkingLevel));
+
+  if (!response.ok && thinkingLevel && response.status === 400) {
+    const bodyText = await response.text().catch(() => "");
+    if (THINKING_REJECTED_PATTERN.test(bodyText)) {
+      logAiEvent("log", "gemini.thinking-unsupported", {
+        model: geminiModel,
+        thinkingLevel,
+      });
+      response = await postStream(buildRequestBody(input, null));
+    } else {
+      throw geminiHttpError(response.status, bodyText, geminiModel);
+    }
   }
 
   if (!response.ok) {
-    const body = await response.text();
-    let payload: GeminiResponse = {};
-    try {
-      payload = JSON.parse(body) as GeminiResponse;
-    } catch {
-      payload = {};
-    }
-    const code = classifyHttpStatus(response.status);
-    const upstream = payload.error?.message || payload.error?.status || `HTTP ${response.status}`;
-    logAiEvent("error", "gemini.http-error", {
-      httpStatus: response.status,
-      code,
-      upstreamStatus: payload.error?.status ?? null,
-      upstreamCode: payload.error?.code ?? null,
-      model: geminiModel,
-    });
-    throw new GeminiRequestError({
-      message: `Gemini API error: ${upstream}`,
-      status: code === "auth" || code === "not_found" ? 503 : code === "rate_limit" ? 429 : 502,
-      code,
-      httpStatus: response.status,
-    });
+    const bodyText = await response.text().catch(() => "");
+    throw geminiHttpError(response.status, bodyText, geminiModel);
   }
 
   if (!response.body) {
@@ -338,7 +388,30 @@ export async function* streamAssistantReply(input: {
   let finishReason: string | null = null;
   let blockReason: string | null = null;
 
-  for await (const chunk of readSseTextDeltas(response.body)) {
+  const stream = readSseTextDeltas(response.body);
+
+  while (true) {
+    let step: IteratorResult<{ text?: string; payload: GeminiResponse }>;
+    try {
+      step = await stream.next();
+    } catch (error) {
+      // The request-level timeout also aborts an in-flight stream.
+      if (isAbortError(error)) {
+        throw new GeminiRequestError({
+          message: `Gemini stream aborted after ${GEMINI_TIMEOUT_MS}ms.`,
+          status: 504,
+          code: "timeout",
+        });
+      }
+      throw error;
+    }
+
+    if (step.done) {
+      break;
+    }
+
+    const chunk = step.value;
+
     if (chunk.payload.error?.message) {
       logAiEvent("error", "gemini.stream-error", {
         model: geminiModel,
@@ -346,7 +419,7 @@ export async function* streamAssistantReply(input: {
         upstreamCode: chunk.payload.error.code ?? null,
       });
       throw new GeminiRequestError({
-        message: `Gemini API error: ${chunk.payload.error.message}`,
+        message: `Gemini API error: ${String(chunk.payload.error.message).slice(0, 200)}`,
         status: 502,
         code: "upstream",
       });
@@ -405,18 +478,18 @@ export async function* streamAssistantReply(input: {
     });
   }
 
-  logAiEvent("log", "timing", {
+  logAiEvent("log", "gemini.timing", {
     gemini: Date.now() - geminiStartedAt,
     geminiFirstToken: firstTokenAt,
-    geminiConnect: firstTokenAt,
     model: geminiModel,
     stream: true,
+    thinkingLevel: thinkingLevel ?? "model-default",
     actionKey: reply.actionKey,
     messageChars: reply.message.length,
     finishReason,
   });
 
-  yield { type: "done", reply };
+  yield { type: "done", reply, firstTokenMs: firstTokenAt };
 }
 
 export async function generateAssistantReply(input: {

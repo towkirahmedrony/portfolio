@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getAiAssistantContext, type AiAssistantContext } from "@/lib/ai/context";
+import {
+  buildSystemPrompt,
+  getAiAssistantContext,
+  type AiAssistantContext,
+} from "@/lib/ai/context";
 import { buildCta } from "@/lib/ai/cta";
 import { getGeminiModel, isGeminiConfigured } from "@/lib/ai/env";
 import {
@@ -45,6 +49,16 @@ const VISITOR_MAX_AGE = 60 * 60 * 24 * 365;
 const MESSAGE_MAX = 4_000;
 const HISTORY_FETCH_BUFFER = 2;
 const HISTORY_DISPLAY_LIMIT = 24;
+
+/** Stages sourced from the cached context build (see src/lib/ai/context.ts). */
+const CONTEXT_STAGES = [
+  "settings",
+  "rules",
+  "knowledge",
+  "faqs",
+  "services",
+  "portfolio",
+] as const;
 
 function jsonError(
   status: number,
@@ -260,6 +274,14 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * One message = one POST. Order of work:
+ *   resolve visitor -> auth + cached context (parallel) -> session/history
+ *   (parallel) -> start user-message insert -> stream Gemini -> save assistant
+ *   message -> done event.
+ * The only sequential database dependencies are session/history resolution and
+ * the two message writes.
+ */
 export async function POST(request: Request) {
   let payload: unknown;
   try {
@@ -312,20 +334,35 @@ export async function POST(request: Request) {
   const timer = createAiTimer();
 
   try {
-    const visitor = await timer.measure("visitor", resolveVisitorId);
+    const visitor = await resolveVisitorId();
     visitorId = visitor.visitorId;
     setCookie = visitor.setCookie;
 
     const userClient = await createServerSupabaseClient();
     const service = createServiceRoleSupabaseClient();
-    let context: AiAssistantContext;
+    let context: AiAssistantContext | null = null;
     let user: { id: string } | null = null;
     try {
-      const [auth, assistantContext] = await timer.measure("auth-context", () =>
-        Promise.all([userClient.auth.getUser(), getAiAssistantContext()]),
-      );
+      // Auth and the cached context build are independent: run them together,
+      // but measure them separately so each stage is attributable.
+      const [auth, assistantContext] = await Promise.all([
+        timer.measure("auth", () => userClient.auth.getUser()),
+        timer.measure("context", () => getAiAssistantContext()),
+      ]);
       user = auth.data.user;
-      context = assistantContext;
+      context = assistantContext.context;
+
+      // On a cache hit no context table is queried at all, so report those
+      // stages as 0 rather than replaying the last build's durations.
+      const cacheHit = assistantContext.cache === "hit";
+      const cacheNote = cacheHit
+        ? "cache hit, 0 queries"
+        : `built now, cached ${assistantContext.revalidateSeconds}s`;
+      for (const stage of CONTEXT_STAGES) {
+        timer.set(stage, cacheHit ? 0 : context.timings[stage] ?? null, cacheNote);
+      }
+      // The order form is deliberately not part of the AI context.
+      timer.set("form-data", 0, "not loaded");
     } catch (error) {
       fail({
         status: 503,
@@ -336,10 +373,21 @@ export async function POST(request: Request) {
       });
     }
 
+    if (!context) {
+      fail({
+        status: 503,
+        publicMessage: "The assistant is not available right now.",
+        stage: "request.context",
+        code: "unavailable",
+        message: "AI context was not built.",
+      });
+    }
+
     const userId = user?.id ?? null;
 
     if (!context.enabled) {
       logAiEvent("log", "request.disabled", {});
+      timer.report();
       return withVisitorCookie(
         jsonError(503, "The assistant is currently disabled.", { code: "unavailable" }),
         visitorId,
@@ -353,28 +401,32 @@ export async function POST(request: Request) {
       authenticated: Boolean(userId),
       geminiKeyPresent: isGeminiConfigured(),
       model: getGeminiModel(),
+      contextSources: context.counts,
     });
 
     let session: AiChatSessionRow | null = null;
     let previous: AiChatMessageRow[] = [];
     if (requestedSessionId) {
       try {
-        const loaded = await timer.measure("session-history", () =>
-          Promise.all([
+        // Both reads are independent and keyed by the same session id.
+        const [loaded, rows] = await Promise.all([
+          timer.measure("session-load", () =>
             loadOwnedSession(service, {
               sessionId: requestedSessionId,
               userId,
               visitorId,
             }),
+          ),
+          timer.measure("history-load", () =>
             listSessionMessages(
               service,
               requestedSessionId,
               context.maxHistoryMessages + HISTORY_FETCH_BUFFER,
             ),
-          ]),
-        );
-        session = loaded[0];
-        previous = loaded[1];
+          ),
+        ]);
+        session = loaded;
+        previous = rows;
       } catch (error) {
         fail({
           status: 500,
@@ -386,6 +438,7 @@ export async function POST(request: Request) {
       }
 
       if (!session) {
+        timer.report();
         return withVisitorCookie(
           jsonError(404, "Conversation not found.", { code: "not_found" }),
           visitorId,
@@ -433,18 +486,24 @@ export async function POST(request: Request) {
     const encoder = new TextEncoder();
     const sessionId = session.id;
     const historyTurns = historyForGemini(previous).slice(-context.maxHistoryMessages);
-    const systemPrompt = context.systemPrompt;
+
+    // The prompt is assembled per message from the cached snapshot, so no extra
+    // database work happens here.
+    const plan = buildSystemPrompt(context, message);
+    const systemPrompt = plan.prompt;
     const ctaLabel = context.ctaLabel;
     const ctaHref = context.ctaHref;
-    timer.mark("pre-stream");
 
-    const persistUser = timer.measure("save-user-message", () =>
+    // Kick off the user-message insert before streaming so it overlaps Gemini.
+    const persistUser = timer.measure("user-message-save", () =>
       insertChatMessage(service, {
         sessionId,
         role: "user",
         content: message,
       }),
     );
+    // Avoid an unhandled rejection if this fails before we await it below.
+    void persistUser.catch(() => undefined);
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -466,12 +525,10 @@ export async function POST(request: Request) {
               write({ type: "delta", text: event.text });
             } else {
               reply = event.reply;
+              timer.set("gemini-first-token", event.firstTokenMs);
             }
           }
-          timer.mark("gemini");
-          logAiEvent("log", "timing", {
-            gemini: Date.now() - geminiStartedAt,
-          });
+          timer.set("gemini", Date.now() - geminiStartedAt);
 
           if (!reply) {
             throw new GeminiRequestError({
@@ -503,7 +560,7 @@ export async function POST(request: Request) {
             href: ctaHref,
           });
 
-          const assistantRow = await timer.measure("save-assistant-message", () =>
+          const assistantRow = await timer.measure("assistant-message-save", () =>
             insertChatMessage(service, {
               sessionId,
               role: "assistant",
@@ -522,6 +579,9 @@ export async function POST(request: Request) {
             authenticated: Boolean(userId),
             showCta: Boolean(cta),
             historyTurns: previous.length,
+            promptChars: plan.promptChars,
+            promptSections: plan.sections.join(","),
+            droppedSections: plan.dropped.join(",") || "none",
             ...timer.snapshot(),
           });
 
@@ -540,6 +600,7 @@ export async function POST(request: Request) {
           });
         } finally {
           controller.close();
+          timer.report();
         }
       },
     });
@@ -554,6 +615,7 @@ export async function POST(request: Request) {
     return withVisitorCookie(response, visitorId, setCookie);
   } catch (error) {
     const mapped = toClientError(error);
+    timer.report();
     return withVisitorCookie(
       jsonError(mapped.status, mapped.publicMessage, { code: mapped.code }),
       visitorId,
