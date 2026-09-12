@@ -271,3 +271,19 @@ export async function listSessionMessages(
 
   return ((data ?? []) as AiChatMessageRow[]).slice().reverse();
 }
+
+/**
+ * Deletes one website-side conversation. `ai_chat_messages.session_id` is
+ * declared `on delete cascade`, so the messages go with the session — no orphan
+ * history, no extra statement, and no schema change.
+ */
+export async function deleteChatSession(
+  supabase: SupabaseClient<Database>,
+  sessionId: string,
+): Promise<void> {
+  const { error } = await supabase.from("ai_chat_sessions").delete().eq("id", sessionId);
+
+  if (error) {
+    throw new Error(error.message || "Could not delete that conversation.");
+  }
+}

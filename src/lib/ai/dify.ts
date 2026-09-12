@@ -527,3 +527,89 @@ export async function sendDifyChatMessage(input: {
 
   return { ...reply, conversationId, durationMs };
 }
+
+/**
+ * Best-effort deletion of the Dify-side conversation.
+ *
+ * Dify's service API exposes `DELETE /conversations/{conversation_id}` with a
+ * `{ user }` body and answers `204` with no content (`404 not_found` when the
+ * conversation is already gone, `400 not_chat_app` for the wrong app mode).
+ *
+ * Deletion is deliberately best-effort: the website has to clear its own state
+ * even when Dify is unreachable, so this resolves with a result instead of
+ * throwing. The API key is only ever used here, server-side.
+ */
+export async function deleteDifyConversation(input: {
+  conversationId: string;
+  user: string;
+  timeoutMs?: number;
+}): Promise<{ deleted: boolean; reason?: string }> {
+  const conversationId = input.conversationId.trim();
+  if (!conversationId) {
+    return { deleted: false, reason: "missing-conversation-id" };
+  }
+
+  const apiUrl = getDifyApiUrl();
+  const apiKey = getDifyApiKey();
+  if (!apiUrl || !apiKey) {
+    return { deleted: false, reason: "not-configured" };
+  }
+
+  const timeoutMs = input.timeoutMs ?? DIFY_TIMEOUT_MS;
+  const endpoint = `${apiUrl}/conversations/${encodeURIComponent(conversationId)}`;
+  const startedAt = Date.now();
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ user: input.user }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    logAiEvent("error", "dify.delete-conversation", {
+      success: false,
+      durationMs,
+      reason: isAbortError(error) ? "timeout" : "network",
+      error: errorMessage(error),
+    });
+    return { deleted: false, reason: isAbortError(error) ? "timeout" : "network" };
+  }
+
+  const durationMs = Date.now() - startedAt;
+
+  if (response.ok) {
+    logAiEvent("log", "dify.delete-conversation", {
+      success: true,
+      httpStatus: response.status,
+      durationMs,
+    });
+    return { deleted: true };
+  }
+
+  // Already gone — nothing left to delete on Dify's side.
+  if (response.status === 404) {
+    logAiEvent("log", "dify.delete-conversation", {
+      success: true,
+      httpStatus: 404,
+      durationMs,
+      reason: "already-gone",
+    });
+    return { deleted: true };
+  }
+
+  const bodyText = await response.text().catch(() => "");
+  logAiEvent("error", "dify.delete-conversation", {
+    success: false,
+    httpStatus: response.status,
+    durationMs,
+    upstream: upstreamSummary(bodyText, response.status),
+  });
+  return { deleted: false, reason: `http-${response.status}` };
+}
