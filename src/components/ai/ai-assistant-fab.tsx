@@ -148,7 +148,7 @@ export function AiAssistantFab() {
         className="group relative inline-flex h-14 w-14 items-center justify-center rounded-full border border-card-border bg-card shadow-[0_10px_28px_rgba(20,20,20,0.16)] transition-transform transition-colors hover:border-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
       >
         <span className="transition-transform duration-200 ease-out group-hover:scale-[1.04] motion-reduce:transform-none motion-reduce:transition-none">
-          <AssistantAvatar config={config} size={52} />
+          <AssistantAvatar size={52} />
         </span>
         {/* Online indicator: purely visual, never colour-only (the link carries
             the accessible label and this has a screen-reader equivalent). */}

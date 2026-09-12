@@ -2,41 +2,29 @@
 
 import { useState } from "react";
 import { AssistantIcon } from "@/components/ai/assistant-icon";
-import type { AiUiConfig } from "@/types/ai";
-
-type AvatarConfig = Pick<
-  AiUiConfig,
-  "avatarUrl" | "avatarProxyUrl" | "avatarEmoji" | "avatarType"
->;
 
 /**
- * Nora's avatar, shared by the floating launcher and the chat page so both show
- * exactly the same Dify-provided picture.
+ * Nora's profile picture.
  *
- * Dify's own URL is tried first (used exactly as Dify returned it), then the
- * same-origin `/api/ai/avatar` passthrough, then Dify's emoji icon, and finally
- * the local mark — so an unreachable icon can never leave a broken image or an
- * empty circle. The fallback layer sits *under* the image, so nothing flashes
- * while the remote image is still loading.
+ * Served from our own `public/` directory: the file is part of the page, so it
+ * paints with the first render — no Dify request, no `/api/ai/config` round
+ * trip, and therefore no generic bot icon flashing before the real photo.
  *
- * A plain `<img>` is used on purpose: the avatar is an external Dify URL, which
- * would otherwise require adding remote patterns to the global Next.js image
- * configuration.
+ * A plain `<img>` is used deliberately: it needs no image-optimiser round trip,
+ * which is what keeps the first paint immediate. Everything else about Nora
+ * (name, opening message, suggested questions, placeholder) still comes from
+ * Dify through `/api/ai/config`.
  */
+export const NORA_AVATAR_SRC = "/images/nora.webp";
+
 export function AssistantAvatar({
-  config,
   size = 40,
   className,
 }: {
-  config: AvatarConfig;
   size?: number;
   className?: string;
 }) {
-  const [stage, setStage] = useState(0);
-  const sources = [config.avatarUrl, config.avatarProxyUrl].filter(
-    (source): source is string => Boolean(source),
-  );
-  const src = config.avatarType === "image" ? (sources[stage] ?? null) : null;
+  const [failed, setFailed] = useState(false);
 
   return (
     <span
@@ -48,24 +36,22 @@ export function AssistantAvatar({
         .join(" ")}
       style={{ width: size, height: size }}
     >
-      <span className="absolute inset-0 flex items-center justify-center">
-        {config.avatarEmoji ? (
-          <span className="leading-none" style={{ fontSize: Math.round(size * 0.5) }} aria-hidden>
-            {config.avatarEmoji}
-          </span>
-        ) : (
-          <AssistantIcon className="h-[55%] w-[55%]" />
-        )}
-      </span>
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element -- external Dify avatar URL
+      {failed ? (
+        // Only reachable if the asset itself cannot be read (e.g. it was
+        // replaced with a broken file): never shown while the photo loads.
+        <AssistantIcon className="h-[55%] w-[55%]" />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element -- local static asset, no optimiser round trip
         <img
-          src={src}
+          src={NORA_AVATAR_SRC}
           alt=""
-          className="relative h-full w-full object-cover"
-          onError={() => setStage((current) => current + 1)}
+          width={size}
+          height={size}
+          draggable={false}
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
         />
-      ) : null}
+      )}
     </span>
   );
 }

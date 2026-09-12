@@ -33,7 +33,7 @@ import {
   writeAiHistoryCache,
 } from "@/lib/ai/client";
 import { DEFAULT_AI_UI_CONFIG } from "@/lib/ai/ui-defaults";
-import type { AiChatMessage, AiCta, AiUiConfig } from "@/types/ai";
+import type { AiChatMessage, AiCta } from "@/types/ai";
 
 type ProjectAssistantProps = {
   variant?: "card" | "page";
@@ -46,10 +46,10 @@ type ProjectAssistantProps = {
 };
 
 /** Avatar shown next to the assistant's own messages. */
-function MessageAvatar({ config }: { config: AiUiConfig }) {
+function MessageAvatar() {
   return (
     <span className="mb-0.5 inline-flex shrink-0 items-center justify-center rounded-full border border-card-border">
-      <AssistantAvatar config={config} size={28} />
+      <AssistantAvatar size={28} />
     </span>
   );
 }
@@ -749,7 +749,7 @@ export function ProjectAssistant({
    */
   const welcome = (
     <div className="flex min-h-full flex-col items-center justify-center gap-6 px-5 py-10 text-center sm:gap-7">
-      <AssistantAvatar config={uiConfig} size={88} />
+      <AssistantAvatar size={88} />
 
       <div className="flex flex-col gap-3">
         <h2
@@ -844,7 +844,7 @@ export function ProjectAssistant({
             return (
               <div key={message.id} className="flex w-full flex-col gap-1">
                 <div className="flex max-w-[92%] items-end gap-2 sm:max-w-[80%]">
-                  <MessageAvatar config={uiConfig} />
+                  <MessageAvatar />
                   <div className="rounded-2xl rounded-bl-md border border-card-border bg-card px-4 py-3 text-sm leading-6 text-foreground">
                     {isStreamingDraft ? (
                       <ThinkingIndicator />
@@ -936,7 +936,7 @@ export function ProjectAssistant({
           >
             <span aria-hidden>&larr;</span>
           </Link>
-          <AssistantAvatar config={uiConfig} size={40} />
+          <AssistantAvatar size={40} />
           <h1
             id={`${formId}-title`}
             className={cn(
@@ -966,7 +966,7 @@ export function ProjectAssistant({
       aria-labelledby={`${formId}-title`}
     >
       <div className="flex items-start gap-4 border-b border-card-border bg-accent-soft/70 px-5 py-5 sm:px-7 sm:py-6">
-        <AssistantAvatar config={uiConfig} size={44} />
+        <AssistantAvatar size={44} />
         <div className="min-w-0 flex-1">
           <p
             className={cn(
