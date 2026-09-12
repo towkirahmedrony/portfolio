@@ -47,6 +47,80 @@ export function getDifyApiUrl(): string | null {
 }
 
 /** Never returned to the client and never written to logs. */
+/**
+ * Origin of the configured Dify API (`https://api.dify.ai` for
+ * `https://api.dify.ai/v1`), used to resolve relative asset paths that Dify
+ * returns. Returns null when Dify is not configured.
+ */
+export function getDifyAssetOrigin(): string | null {
+  const apiUrl = getDifyApiUrl();
+  if (!apiUrl) {
+    return null;
+  }
+  try {
+    return new URL(apiUrl).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads a file Dify hosts for this app (used for the app icon / avatar) through
+ * the authenticated service API: `GET /files/{file_id}/preview`.
+ *
+ * The API key never leaves the server — the response is streamed back through
+ * `/api/ai/avatar` instead. Returns null (never throws) so the caller can fall
+ * back to a local avatar.
+ */
+export async function fetchDifyFilePreview(
+  fileId: string,
+  timeoutMs = DIFY_TIMEOUT_MS,
+): Promise<{ bytes: ArrayBuffer; contentType: string } | null> {
+  const id = fileId.trim();
+  const apiUrl = getDifyApiUrl();
+  const apiKey = getDifyApiKey();
+
+  if (!id || !apiUrl || !apiKey) {
+    return null;
+  }
+
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(`${apiUrl}/files/${encodeURIComponent(id)}/preview`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (!response.ok) {
+      logAiEvent("error", "dify.file-preview", {
+        success: false,
+        httpStatus: response.status,
+        durationMs: Date.now() - startedAt,
+      });
+      return null;
+    }
+
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength === 0) {
+      return null;
+    }
+
+    return {
+      bytes,
+      contentType: response.headers.get("content-type") ?? "image/png",
+    };
+  } catch (error) {
+    logAiEvent("error", "dify.file-preview", {
+      success: false,
+      durationMs: Date.now() - startedAt,
+      reason: isAbortError(error) ? "timeout" : "network",
+      error: errorMessage(error),
+    });
+    return null;
+  }
+}
+
 export function getDifyApiKey(): string | undefined {
   return readServerEnv("DIFY_API_KEY");
 }

@@ -79,9 +79,26 @@ export type AiUiConfigSource = "dify" | "fallback";
 
 export type AiUiConfig = {
   name: string;
-  avatar: string | null;
+  /**
+   * Dify's own avatar/icon URL, used exactly as Dify returned it (absolute
+   * URLs verbatim; relative paths resolved against the Dify origin, never the
+   * website origin). Null when Dify configures an emoji icon instead.
+   */
+  avatarUrl: string | null;
+  /**
+   * Same-origin passthrough for the avatar. Dify's cloud file URL is signed and
+   * can be rejected by the browser ("File not found or signature is invalid"),
+   * so the UI falls back to this route, which re-reads the icon server-side
+   * with the API key. Null when there is no icon file behind the avatar.
+   */
+  avatarProxyUrl: string | null;
+  /** Dify's emoji icon, when `icon_type` is `emoji`. */
+  avatarEmoji: string | null;
   avatarType: AiUiAvatarType | null;
-  welcomeMessage: string;
+  /** Dify's icon file id (opaque), used by the avatar passthrough route. */
+  avatarFileId: string | null;
+  /** Dify's `opening_statement`. */
+  openingMessage: string;
   suggestedQuestions: string[];
   inputPlaceholder: string;
   themeColor: string | null;

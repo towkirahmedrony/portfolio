@@ -20,6 +20,8 @@ import {
   createLocalAiMessage,
   clearStoredAiSessionId,
   deleteAiConversation,
+  getAiConfigCacheSnapshot,
+  getServerAiConfigSnapshot,
   loadAiChatHistory,
   loadAiUiConfig,
   readAiHistoryCache,
@@ -27,6 +29,7 @@ import {
   sendAiChatMessage,
   startNewAiConversation,
   storeAiSessionId,
+  subscribeAiConfigCache,
   writeAiHistoryCache,
 } from "@/lib/ai/client";
 import { DEFAULT_AI_UI_CONFIG } from "@/lib/ai/ui-defaults";
@@ -42,42 +45,58 @@ type ProjectAssistantProps = {
   backLabel?: string;
 };
 
-function AssistantAvatar({
-  avatar,
-  avatarType,
-}: {
-  avatar: string | null;
-  avatarType: AiUiConfig["avatarType"];
-}) {
-  // A broken image must never show: an unusable value falls back to the icon.
-  if (avatar && (avatarType === "image" || /^https?:\/\//i.test(avatar))) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element -- remote assistant avatar from Dify
-      <img
-        src={avatar}
-        alt=""
-        className="h-full w-full rounded-full object-cover"
-        onError={(event) => {
-          event.currentTarget.style.display = "none";
-        }}
-      />
-    );
-  }
-  if (avatar && avatarType === "emoji") {
-    return (
-      <span className="text-lg leading-none" aria-hidden>
-        {avatar}
+/**
+ * Nora's avatar.
+ *
+ * Dify's own URL is tried first (used exactly as Dify returned it), then the
+ * same-origin `/api/ai/avatar` passthrough, then Dify's emoji icon, and finally
+ * the local mark — so an unreachable icon can never leave a broken image or an
+ * empty circle. The fallback layer sits *under* the image, so nothing flashes
+ * while the remote image is still loading.
+ *
+ * A plain `<img>` is used on purpose: the avatar is an external Dify URL, which
+ * would otherwise require adding remote patterns to the global Next.js image
+ * configuration.
+ */
+function AssistantAvatar({ config, size = 40 }: { config: AiUiConfig; size?: number }) {
+  const [stage, setStage] = useState(0);
+  const sources = [config.avatarUrl, config.avatarProxyUrl].filter(
+    (source): source is string => Boolean(source),
+  );
+  const src = config.avatarType === "image" ? (sources[stage] ?? null) : null;
+
+  return (
+    <span
+      className="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-soft text-accent"
+      style={{ width: size, height: size }}
+    >
+      <span className="absolute inset-0 flex items-center justify-center">
+        {config.avatarEmoji ? (
+          <span className="leading-none" style={{ fontSize: Math.round(size * 0.5) }} aria-hidden>
+            {config.avatarEmoji}
+          </span>
+        ) : (
+          <AssistantIcon className="h-[55%] w-[55%]" />
+        )}
       </span>
-    );
-  }
-  return <AssistantIcon />;
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element -- external Dify avatar URL
+        <img
+          src={src}
+          alt=""
+          className="relative h-full w-full object-cover"
+          onError={() => setStage((current) => current + 1)}
+        />
+      ) : null}
+    </span>
+  );
 }
 
-/** Avatar shown next to the assistant's own messages and in the welcome state. */
+/** Avatar shown next to the assistant's own messages. */
 function MessageAvatar({ config }: { config: AiUiConfig }) {
   return (
-    <span className="mb-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-card-border bg-accent-soft text-accent">
-      <AssistantAvatar avatar={config.avatar} avatarType={config.avatarType} />
+    <span className="mb-0.5 inline-flex shrink-0 items-center justify-center rounded-full border border-card-border">
+      <AssistantAvatar config={config} size={28} />
     </span>
   );
 }
@@ -179,7 +198,13 @@ function NewChatIcon() {
 
 const EMPTY_MESSAGES: AiChatMessage[] = [];
 
-type RestoreState = "loading" | "done";
+/**
+ * `loading`  — nothing usable cached: show the subtle skeleton while fetching.
+ * `refreshing` — cached (but expired) history is already on screen: refresh
+ *               silently, never replacing what the visitor is reading.
+ * `done`     — cached and fresh, or nothing to restore.
+ */
+type RestoreState = "loading" | "refreshing" | "done";
 
 function subscribeNever() {
   return () => {};
@@ -250,8 +275,11 @@ export function ProjectAssistant({
     if (typeof window === "undefined") {
       return "done";
     }
-    if (readAiHistoryCache()) {
-      return "done";
+    const cached = readAiHistoryCache({ allowStale: true });
+    if (cached) {
+      // Stale-but-valid history still renders immediately; only the refresh is
+      // deferred, so the conversation never appears to disappear.
+      return cached.stale ? "refreshing" : "done";
     }
     return readStoredAiSessionId() ? "loading" : "done";
   });
@@ -260,7 +288,7 @@ export function ProjectAssistant({
       return { cached: null, storedSessionId: null as string | null };
     }
     return {
-      cached: readAiHistoryCache(),
+      cached: readAiHistoryCache({ allowStale: true }),
       storedSessionId: readStoredAiSessionId(),
     };
   });
@@ -278,7 +306,17 @@ export function ProjectAssistant({
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [liveHeight, setLiveHeight] = useState<number | null>(null);
-  const [uiConfig, setUiConfig] = useState<AiUiConfig>(DEFAULT_AI_UI_CONFIG);
+  /**
+   * Dify's configuration comes from the cache store: a stale copy renders
+   * immediately and the refresh publishes the new one through the same store,
+   * so nothing about Nora is hardcoded and the header never flashes.
+   */
+  const cachedConfig = useSyncExternalStore(
+    subscribeAiConfigCache,
+    getAiConfigCacheSnapshot,
+    getServerAiConfigSnapshot,
+  );
+  const uiConfig = cachedConfig ?? DEFAULT_AI_UI_CONFIG;
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -306,15 +344,26 @@ export function ProjectAssistant({
    * body, so the render is not cascaded.
    */
   useEffect(() => {
-    if (restoreState !== "loading" || !restore.storedSessionId) {
+    if (restoreState === "done") {
+      return;
+    }
+
+    const targetSessionId = restore.cached?.sessionId ?? restore.storedSessionId;
+    if (!targetSessionId) {
       return;
     }
 
     let cancelled = false;
+    // A refresh must never clobber a message the user sends while it is in
+    // flight, so the list length is compared before the result is applied.
+    const messageCountAtStart = messagesRef.current.length;
 
-    void loadAiChatHistory(restore.storedSessionId)
+    void loadAiChatHistory(targetSessionId)
       .then((history) => {
         if (cancelled) {
+          return;
+        }
+        if (messagesRef.current.length !== messageCountAtStart) {
           return;
         }
         setSessionId(history.sessionId);
@@ -346,7 +395,7 @@ export function ProjectAssistant({
     return () => {
       cancelled = true;
     };
-  }, [restoreState, restore.storedSessionId]);
+  }, [restoreState, restore.cached?.sessionId, restore.storedSessionId]);
 
   /**
    * Keeps the cached conversation in step with what is on screen. Optimistic
@@ -361,16 +410,14 @@ export function ProjectAssistant({
     writeAiHistoryCache(sessionId, messages);
   }, [messages, sessionId, sending, restoreState, isClient]);
 
+  /**
+   * Refreshes Dify's configuration. A cached copy (even an expired one) is
+   * already on screen through the store, so this is a background refresh that
+   * runs at most once per mount — within the 5-minute TTL `loadAiUiConfig`
+   * returns the cached value without touching the network.
+   */
   useEffect(() => {
-    let cancelled = false;
-    void loadAiUiConfig().then((config) => {
-      if (!cancelled) {
-        setUiConfig(config);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
+    void loadAiUiConfig().catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -619,9 +666,10 @@ export function ProjectAssistant({
   }
 
   /**
-   * Silent restore: a skeleton only when there is something to restore (a
-   * stored session whose cache expired) and nothing to show yet. A cached
-   * conversation never shows it, and no "loading" copy is ever rendered.
+   * Silent restore: the skeleton appears only when there is something to
+   * restore (a stored session with no usable cache) and nothing to show yet.
+   * A cached conversation — fresh *or* expired — never shows it, and no
+   * "loading" copy is ever rendered.
    */
   const showSkeleton =
     isClient &&
@@ -737,32 +785,47 @@ export function ProjectAssistant({
     </div>
   );
 
+  /**
+   * The empty state: a centred hero, deliberately *not* a chat message. Dify's
+   * opening statement is rendered here from configuration and is never inserted
+   * into the conversation or written to the database as a fake reply.
+   *
+   * `min-h-full` + `justify-center` centre it in the chat viewport, and because
+   * the thread scrolls, a short Android screen simply scrolls instead of
+   * clipping. Vertical rhythm (gap-6/gap-10) keeps it airy without card chrome.
+   */
   const welcome = (
-    <div className="flex h-full flex-col justify-end gap-5">
-      <div className="flex items-end gap-2">
-        <MessageAvatar config={uiConfig} />
-        <div className="max-w-[85%] rounded-2xl rounded-bl-md border border-card-border bg-card px-4 py-3 text-sm leading-6 text-foreground sm:max-w-[75%]">
-          <MessageText content={uiConfig.welcomeMessage} />
+    <div className="flex min-h-full flex-col items-center justify-center gap-6 px-5 py-10 text-center sm:gap-7">
+      <AssistantAvatar config={uiConfig} size={88} />
+
+      <div className="flex flex-col gap-3">
+        <h2
+          className="font-display text-2xl tracking-tight sm:text-3xl"
+          style={uiConfig.themeColor ? { color: uiConfig.themeColor } : undefined}
+        >
+          {uiConfig.name}
+        </h2>
+        <div className="mx-auto max-w-md text-sm leading-6 text-balance text-muted">
+          <MessageText content={uiConfig.openingMessage} />
         </div>
       </div>
+
       {uiConfig.suggestedQuestions.length > 0 ? (
-        <div>
-          <p className="mb-2 text-[11px] font-medium tracking-[0.16em] text-muted uppercase">
-            Try asking
-          </p>
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            {uiConfig.suggestedQuestions.map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                disabled={sending}
-                onClick={() => void sendMessage(suggestion)}
-                className="rounded-full border border-card-border bg-card px-3.5 py-2 text-left text-xs font-medium text-foreground transition-colors hover:border-accent/40 hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
+        <div className="flex w-full max-w-md flex-col gap-2">
+          {uiConfig.suggestedQuestions.map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              disabled={sending}
+              onClick={() => void sendMessage(suggestion)}
+              className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-card-border bg-card/60 px-4 py-3 text-left text-sm font-medium text-foreground transition-colors hover:border-accent/40 hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+            >
+              <span>{suggestion}</span>
+              <span aria-hidden className="text-muted transition-colors group-hover:text-accent">
+                &rarr;
+              </span>
+            </button>
+          ))}
         </div>
       ) : null}
     </div>
@@ -920,9 +983,7 @@ export function ProjectAssistant({
           >
             <span aria-hidden>&larr;</span>
           </Link>
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-card-border bg-accent-soft text-accent">
-            <AssistantAvatar avatar={uiConfig.avatar} avatarType={uiConfig.avatarType} />
-          </span>
+          <AssistantAvatar config={uiConfig} size={40} />
           <h1
             id={`${formId}-title`}
             className={cn(
@@ -952,9 +1013,7 @@ export function ProjectAssistant({
       aria-labelledby={`${formId}-title`}
     >
       <div className="flex items-start gap-4 border-b border-card-border bg-accent-soft/70 px-5 py-5 sm:px-7 sm:py-6">
-        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-card text-accent">
-          <AssistantAvatar avatar={uiConfig.avatar} avatarType={uiConfig.avatarType} />
-        </span>
+        <AssistantAvatar config={uiConfig} size={44} />
         <div className="min-w-0 flex-1">
           <p
             className={cn(

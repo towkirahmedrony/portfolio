@@ -133,13 +133,21 @@ function isUiConfigCache(value: unknown): value is AiUiConfigCache {
     typeof entry.cachedAt === "number" &&
     Boolean(config) &&
     typeof config?.name === "string" &&
-    typeof config?.welcomeMessage === "string" &&
+    typeof config?.openingMessage === "string" &&
     typeof config?.inputPlaceholder === "string" &&
     Array.isArray(config?.suggestedQuestions)
   );
 }
 
-function readCache<T>(key: string, guard: (value: unknown) => value is T, ttlMs: number): T | null {
+/** An entry older than this is never used, stale or not. */
+const AI_CACHE_HARD_MAX_MS = 24 * 60 * 60 * 1000;
+
+function readCache<T>(
+  key: string,
+  guard: (value: unknown) => value is T,
+  ttlMs: number,
+  allowStale = false,
+): T | null {
   if (typeof window === "undefined") {
     return null;
   }
@@ -162,8 +170,13 @@ function readCache<T>(key: string, guard: (value: unknown) => value is T, ttlMs:
     }
 
     const age = Date.now() - (parsed as { cachedAt: number }).cachedAt;
-    if (age < 0 || age > ttlMs || !guard(parsed)) {
-      window.sessionStorage.removeItem(key);
+    const limit = allowStale ? AI_CACHE_HARD_MAX_MS : ttlMs;
+    if (age < 0 || age > limit || !guard(parsed)) {
+      // Past the TTL the caller simply re-fetches; past the hard limit, or
+      // structurally broken, the entry is dropped for good.
+      if (age > limit) {
+        window.sessionStorage.removeItem(key);
+      }
       return null;
     }
 
@@ -197,17 +210,36 @@ function removeCache(key: string): void {
   }
 }
 
-/** The cached conversation, or null when absent/expired (older than 5 minutes). */
-export function readAiHistoryCache(): {
+/**
+ * The cached conversation, or null when absent/expired.
+ *
+ * `allowStale` returns an expired-but-still-valid entry, which is what makes
+ * the conversation feel permanent: the UI renders it immediately and refreshes
+ * it in the background instead of showing a spinner.
+ */
+export function readAiHistoryCache(
+  options: { allowStale?: boolean } = {},
+): {
   sessionId: string;
   messages: AiChatMessage[];
   cachedAt: number;
+  stale: boolean;
 } | null {
-  const entry = readCache(AI_HISTORY_CACHE_KEY, isHistoryCache, AI_HISTORY_CACHE_TTL_MS);
+  const entry = readCache(
+    AI_HISTORY_CACHE_KEY,
+    isHistoryCache,
+    AI_HISTORY_CACHE_TTL_MS,
+    options.allowStale === true,
+  );
   if (!entry) {
     return null;
   }
-  return { sessionId: entry.sessionId, messages: entry.messages, cachedAt: entry.cachedAt };
+  return {
+    sessionId: entry.sessionId,
+    messages: entry.messages,
+    cachedAt: entry.cachedAt,
+    stale: Date.now() - entry.cachedAt > AI_HISTORY_CACHE_TTL_MS,
+  };
 }
 
 /**
@@ -232,9 +264,19 @@ export function clearAiHistoryCache(): void {
   removeCache(AI_HISTORY_CACHE_KEY);
 }
 
-/** Dify's UI configuration, or null when absent/expired (older than 5 minutes). */
-export function readAiConfigCache(): AiUiConfig | null {
-  const entry = readCache(AI_CONFIG_CACHE_KEY, isUiConfigCache, AI_CONFIG_CACHE_TTL_MS);
+/**
+ * Dify's UI configuration, or null when absent/expired. `allowStale` returns an
+ * expired-but-valid entry so the page can render instantly while it refreshes.
+ */
+export function readAiConfigCache(
+  options: { allowStale?: boolean } = {},
+): AiUiConfig | null {
+  const entry = readCache(
+    AI_CONFIG_CACHE_KEY,
+    isUiConfigCache,
+    AI_CONFIG_CACHE_TTL_MS,
+    options.allowStale === true,
+  );
   return entry ? entry.config : null;
 }
 
@@ -245,10 +287,59 @@ export function writeAiConfigCache(config: AiUiConfig): void {
     config,
     cachedAt: Date.now(),
   } satisfies AiUiConfigCache);
+  notifyAiConfigCache();
 }
 
 export function clearAiConfigCache(): void {
   removeCache(AI_CONFIG_CACHE_KEY);
+  notifyAiConfigCache();
+}
+
+/* -------------------------------------------------------------------------- */
+/* Configuration store                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Tiny external store over the config cache, consumed with
+ * `useSyncExternalStore` (the same pattern the theme toggle uses). It lets the
+ * header, hero and composer render Dify's configuration immediately —
+ * including a stale copy while a refresh is in flight — without reading
+ * `sessionStorage` during render, which would desynchronise hydration.
+ */
+const aiConfigListeners = new Set<() => void>();
+let aiConfigSnapshotRaw: string | null = null;
+let aiConfigSnapshot: AiUiConfig | null = null;
+
+function notifyAiConfigCache(): void {
+  for (const listener of aiConfigListeners) {
+    listener();
+  }
+}
+
+export function subscribeAiConfigCache(listener: () => void): () => void {
+  aiConfigListeners.add(listener);
+  return () => {
+    aiConfigListeners.delete(listener);
+  };
+}
+
+/** Stable snapshot: the parsed value only changes when the stored string does. */
+export function getAiConfigCacheSnapshot(): AiUiConfig | null {
+  const raw =
+    typeof window === "undefined" ? null : window.sessionStorage.getItem(AI_CONFIG_CACHE_KEY);
+
+  if (raw !== aiConfigSnapshotRaw) {
+    aiConfigSnapshotRaw = raw;
+    // Stale entries are still valid configuration: render it, then refresh.
+    aiConfigSnapshot = readAiConfigCache({ allowStale: true });
+  }
+
+  return aiConfigSnapshot;
+}
+
+/** Server/hydration snapshot — never storage, always deterministic. */
+export function getServerAiConfigSnapshot(): AiUiConfig | null {
+  return null;
 }
 
 export function createLocalAiMessage(
@@ -590,10 +681,39 @@ function isAiUiConfigPayload(payload: unknown): payload is AiUiConfigResponse {
   return (
     value.ok === true &&
     typeof value.name === "string" &&
-    typeof value.welcomeMessage === "string" &&
+    typeof value.openingMessage === "string" &&
     typeof value.inputPlaceholder === "string" &&
     Array.isArray(value.suggestedQuestions)
   );
+}
+
+/** Dify's own avatar URL: absolute http(s) only, never resolved against us. */
+function asAvatarUrl(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const raw = value.trim();
+  if (!/^https?:\/\//i.test(raw)) {
+    return null;
+  }
+  try {
+    const url = new URL(raw);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** An emoji icon (short, not a URL). */
+function asAvatarEmoji(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const raw = value.trim();
+  if (!raw || raw.length > 16 || /^https?:\/\//i.test(raw)) {
+    return null;
+  }
+  return raw;
 }
 
 /**
@@ -613,6 +733,16 @@ export async function loadAiUiConfig(): Promise<AiUiConfig> {
   return fresh;
 }
 
+/**
+ * Like `loadAiUiConfig`, but never blocks on the network: a stale cached
+ * configuration is returned immediately (so the page renders instantly) while
+ * the fresh copy is fetched and cached in the background. Only used by the UI,
+ * which then swaps in the new values when they arrive.
+ */
+export function readStaleAiConfigCache(): AiUiConfig | null {
+  return readAiConfigCache({ allowStale: true });
+}
+
 async function fetchAiUiConfig(): Promise<AiUiConfig> {
   try {
     const response = await fetch(AI_CONFIG_ENDPOINT, {
@@ -623,26 +753,20 @@ async function fetchAiUiConfig(): Promise<AiUiConfig> {
     if (response.ok && isAiUiConfigPayload(payload)) {
       return {
         name: payload.name.trim() || DEFAULT_AI_UI_CONFIG.name,
-        avatar: (() => {
-          const raw = typeof payload.avatar === "string" ? payload.avatar.trim() : "";
-          if (!raw) {
-            return null;
-          }
-          if (/^https?:\/\//i.test(raw)) {
-            try {
-              const url = new URL(raw);
-              return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
-            } catch {
-              return null;
-            }
-          }
-          return raw.slice(0, 64);
-        })(),
+        avatarUrl: asAvatarUrl(payload.avatarUrl),
+        // Same-origin passthrough: accept only a site-relative path.
+        avatarProxyUrl:
+          typeof payload.avatarProxyUrl === "string" &&
+          payload.avatarProxyUrl.startsWith("/api/ai/")
+            ? payload.avatarProxyUrl
+            : null,
+        avatarEmoji: asAvatarEmoji(payload.avatarEmoji),
         avatarType:
           payload.avatarType === "emoji" || payload.avatarType === "image"
             ? payload.avatarType
             : null,
-        welcomeMessage: payload.welcomeMessage.trim() || DEFAULT_AI_UI_CONFIG.welcomeMessage,
+        avatarFileId: null,
+        openingMessage: payload.openingMessage.trim() || DEFAULT_AI_UI_CONFIG.openingMessage,
         // Never invented: only what Dify returned, so an empty list hides the
         // suggested-questions section.
         suggestedQuestions: payload.suggestedQuestions

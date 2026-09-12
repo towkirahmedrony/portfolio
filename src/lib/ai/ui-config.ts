@@ -1,11 +1,19 @@
 import { unstable_cache } from "next/cache";
-import { DifyRequestError, fetchDifyJson, isDifyConfigured } from "@/lib/ai/dify";
+import {
+  DifyRequestError,
+  fetchDifyJson,
+  getDifyAssetOrigin,
+  isDifyConfigured,
+} from "@/lib/ai/dify";
 import { errorMessage, logAiEvent } from "@/lib/ai/errors";
 import { DEFAULT_AI_UI_CONFIG } from "@/lib/ai/ui-defaults";
 import type { AiUiAvatarType, AiUiConfig } from "@/types/ai";
 
 export { DEFAULT_AI_UI_CONFIG };
 export const AI_UI_CONFIG_REVALIDATE_SECONDS = 300;
+
+/** Same-origin passthrough the UI uses when Dify's own icon URL is unusable. */
+export const DIFY_AVATAR_PROXY_PATH = "/api/ai/avatar";
 
 const NAME_MAX = 80;
 const TEXT_MAX = 800;
@@ -25,20 +33,60 @@ function asTrimmedString(value: unknown, max: number): string | null {
   return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
 }
 
-function asHttpUrl(value: unknown): string | null {
+/**
+ * Resolves an asset Dify returned into the URL the browser should use.
+ *
+ * - absolute `http(s)://…` (Dify-hosted or otherwise) is returned verbatim;
+ * - protocol-relative `//host/…` becomes `https://host/…`;
+ * - a root-relative `/path` is resolved against the **Dify** origin, because
+ *   that is where the asset lives — never against the website's own origin;
+ * - anything else (data:, javascript:, …) is rejected.
+ */
+function resolveDifyAssetUrl(value: unknown): string | null {
   const raw = asTrimmedString(value, 2_000);
-  if (!raw || !/^https?:\/\//i.test(raw)) {
+  if (!raw) {
     return null;
   }
-  try {
-    const url = new URL(raw);
-    if (url.protocol === "http:" || url.protocol === "https:") {
-      return url.toString();
+
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const url = new URL(raw);
+      return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+    } catch {
+      return null;
     }
-  } catch {
+  }
+
+  if (raw.startsWith("//")) {
+    try {
+      return new URL(`https:${raw}`).toString();
+    } catch {
+      return null;
+    }
+  }
+
+  if (raw.startsWith("/")) {
+    const origin = getDifyAssetOrigin();
+    if (!origin) {
+      return null;
+    }
+    try {
+      return new URL(raw, origin).toString();
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/** Dify returns icon file ids as bare uuids; emoji icons are not file ids. */
+function asFileId(value: unknown): string | null {
+  const raw = asTrimmedString(value, 64);
+  if (!raw || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) {
     return null;
   }
-  return null;
+  return raw;
 }
 
 function asHexColor(value: unknown): string | null {
@@ -63,7 +111,12 @@ function asQuestions(value: unknown): string[] {
   const seen = new Set<string>();
   const questions: string[] = [];
   for (const item of value) {
-    const question = asTrimmedString(item, QUESTION_MAX);
+    // Dify normally returns plain strings; tolerate `{ question: "…" }` too.
+    const raw =
+      item && typeof item === "object" && !Array.isArray(item)
+        ? (item as { question?: unknown }).question
+        : item;
+    const question = asTrimmedString(raw, QUESTION_MAX);
     if (!question || seen.has(question)) {
       continue;
     }
@@ -95,19 +148,27 @@ function mergeWithFallback(
   parameters: DifyParameters | null,
 ): AiUiConfig {
   const fallback = DEFAULT_AI_UI_CONFIG;
-  const avatarType = asAvatarType(site?.icon_type);
-  const iconUrl = asHttpUrl(site?.icon_url);
+  const iconUrl = resolveDifyAssetUrl(site?.icon_url);
   const icon = asTrimmedString(site?.icon, 64);
-  const avatar =
-    avatarType === "image" ? iconUrl ?? fallback.avatar : iconUrl ?? icon ?? fallback.avatar;
+  const declaredType = asAvatarType(site?.icon_type);
+  // Dify's icon is either an image (icon_url + a file id in `icon`) or an emoji.
+  const isImage = declaredType === "image" ? true : declaredType === "emoji" ? false : Boolean(iconUrl);
+  const fileId = isImage ? asFileId(icon) : null;
+  const emoji = isImage ? null : icon;
   const questions = asQuestions(parameters?.suggested_questions);
 
   return {
     name: asTrimmedString(site?.title, NAME_MAX) ?? fallback.name,
-    avatar: avatar ?? fallback.avatar,
-    avatarType: avatarType ?? (iconUrl ? "image" : icon ? "emoji" : fallback.avatarType),
-    welcomeMessage:
-      asTrimmedString(parameters?.opening_statement, TEXT_MAX) ?? fallback.welcomeMessage,
+    // Dify's exact URL is the primary source; the same-origin passthrough is
+    // only used when a browser cannot load that URL directly (Dify's signed
+    // cloud file URLs are rejected with 404 "signature is invalid").
+    avatarUrl: isImage ? iconUrl : null,
+    avatarProxyUrl: isImage && fileId ? DIFY_AVATAR_PROXY_PATH : null,
+    avatarEmoji: emoji,
+    avatarType: isImage ? "image" : emoji ? "emoji" : fallback.avatarType,
+    avatarFileId: fileId,
+    openingMessage:
+      asTrimmedString(parameters?.opening_statement, TEXT_MAX) ?? fallback.openingMessage,
     // Dify is the only source of suggested questions: an empty list hides the
     // section rather than inventing questions Dify did not return.
     suggestedQuestions: questions,
@@ -134,7 +195,7 @@ async function loadDifyUiConfig(): Promise<AiUiConfig> {
     logAiEvent("log", "dify.ui-config", {
       success: true,
       durationMs: Date.now() - startedAt,
-      hasAvatar: Boolean(config.avatar),
+      hasAvatar: Boolean(config.avatarUrl ?? config.avatarEmoji),
       suggestedCount: config.suggestedQuestions.length,
     });
     return config;

@@ -11,9 +11,12 @@ import type { AiUiConfig } from "@/types/ai";
  */
 export const DEFAULT_AI_UI_CONFIG: AiUiConfig = {
   name: "Project assistant",
-  avatar: null,
+  avatarUrl: null,
+  avatarProxyUrl: null,
+  avatarEmoji: null,
   avatarType: null,
-  welcomeMessage:
+  avatarFileId: null,
+  openingMessage:
     "Ask about websites, web apps, process, or how to start. I only answer from published information — if something is not listed, I will say so.",
   suggestedQuestions: [],
   inputPlaceholder: "Ask about a website or web app…",
