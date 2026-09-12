@@ -321,6 +321,20 @@ function FormIcon(props: IconProps) {
   );
 }
 
+function AiIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M12 8.5v7M8.5 12h7"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </Icon>
+  );
+}
+
 function AuditIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -383,6 +397,7 @@ const navIcons: Record<
   files: FilesIcon,
   audit: AuditIcon,
   form: FormIcon,
+  ai: AiIcon,
 };
 
 export function AdminNavIcon({

@@ -39,6 +39,7 @@ export const adminNavSections: AdminNavSection[] = [
       { id: "services", label: "Services", href: "/admin/services", icon: "services", roles: ["admin"] },
       { id: "reviews", label: "Reviews", href: "/admin/reviews", icon: "reviews", roles: ["admin"] },
       { id: "contact-messages", label: "Contact Inbox", href: "/admin/contact-messages", icon: "messages", roles: ["admin"] },
+      { id: "ai", label: "AI", href: "/admin/ai", icon: "ai", roles: ["admin"] },
       { id: "files", label: "Files", href: "/admin/files", icon: "files", roles: ["admin"], enabled: false },
     ],
   },
