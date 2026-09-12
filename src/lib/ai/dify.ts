@@ -65,8 +65,65 @@ export function getDifyAssetOrigin(): string | null {
 }
 
 /**
- * Reads a file Dify hosts for this app (used for the app icon / avatar) through
- * the authenticated service API: `GET /files/{file_id}/preview`.
+ * Reads the app icon URL straight from Dify, bypassing every cache.
+ *
+ * Dify signs app-icon URLs with an expiry, so a URL that a cached configuration
+ * still holds can already be rejected ("File not found or signature is
+ * invalid"). Calling `/site` directly mints a usable URL on demand.
+ * Relative paths are resolved against the Dify origin.
+ */
+export async function fetchDifyIconUrl(): Promise<string | null> {
+  if (!isDifyConfigured()) {
+    return null;
+  }
+
+  try {
+    const site = (await fetchDifyJson("/site")) as { icon_url?: unknown } | null;
+    const raw = typeof site?.icon_url === "string" ? site.icon_url.trim() : "";
+    if (!raw) {
+      return null;
+    }
+    if (/^https?:\/\//i.test(raw)) {
+      return raw;
+    }
+    const origin = getDifyAssetOrigin();
+    if (origin && raw.startsWith("/")) {
+      return new URL(raw, origin).toString();
+    }
+    return null;
+  } catch (error) {
+    logAiEvent("error", "dify.icon-url", { error: errorMessage(error) });
+    return null;
+  }
+}
+
+/** Downloads an image, rejecting non-images and non-2xx responses. */
+export async function fetchImageBytes(
+  url: string,
+  timeoutMs = DIFY_TIMEOUT_MS,
+): Promise<{ bytes: ArrayBuffer; contentType: string } | null> {
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("image/")) {
+      return null;
+    }
+    const bytes = await response.arrayBuffer();
+    return bytes.byteLength > 0 ? { bytes, contentType } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads a file Dify hosts for this app (used as a last resort) through the
+ * authenticated service API: `GET /files/{file_id}/preview`.
  *
  * The API key never leaves the server — the response is streamed back through
  * `/api/ai/avatar` instead. Returns null (never throws) so the caller can fall
