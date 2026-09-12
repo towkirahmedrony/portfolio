@@ -209,15 +209,44 @@ async function loadDifyUiConfig(): Promise<AiUiConfig> {
   }
 }
 
+/**
+ * The cache key carries a shape version. Next's data cache can outlive a
+ * deployment, so a payload written by an older build (with the previous fields)
+ * would otherwise be served to the new code. Bump the version whenever
+ * `AiUiConfig` changes.
+ */
+const AI_UI_CONFIG_CACHE_KEY = "ai-assistant-ui-config-v2";
+
 const loadCachedAiUiConfig = unstable_cache(
   async () => loadDifyUiConfig(),
-  ["ai-assistant-ui-config"],
+  [AI_UI_CONFIG_CACHE_KEY],
   { revalidate: AI_UI_CONFIG_REVALIDATE_SECONDS },
 );
 
+/** Guards against a payload cached by an older build: the fields must match. */
+function isAiUiConfig(value: unknown): value is AiUiConfig {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const config = value as Partial<AiUiConfig>;
+  return (
+    typeof config.name === "string" &&
+    typeof config.openingMessage === "string" &&
+    typeof config.inputPlaceholder === "string" &&
+    Array.isArray(config.suggestedQuestions)
+  );
+}
+
 export async function getAiUiConfig(): Promise<AiUiConfig> {
   try {
-    return await loadCachedAiUiConfig();
+    const cached = await loadCachedAiUiConfig();
+    if (isAiUiConfig(cached)) {
+      return cached;
+    }
+    // Shape mismatch (stale entry from an earlier build): read Dify directly
+    // rather than serving a payload the UI cannot use.
+    logAiEvent("log", "dify.ui-config.cache-shape-mismatch", {});
+    return await loadDifyUiConfig();
   } catch (error) {
     logAiEvent("error", "dify.ui-config.fallback", {
       reason: "cache",
