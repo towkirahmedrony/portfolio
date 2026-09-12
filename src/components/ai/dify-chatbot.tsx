@@ -7,6 +7,7 @@ import {
   DIFY_BUBBLE_WINDOW_ID,
   DIFY_EMBED_BASE_URL,
   DIFY_EMBED_CONFIG_SCRIPT_ID,
+  DIFY_EMBED_DYNAMIC_SCRIPT,
   DIFY_EMBED_SCRIPT_ID,
   DIFY_EMBED_SCRIPT_SRC,
   DIFY_EMBED_TOKEN,
@@ -17,6 +18,7 @@ declare global {
     difyChatbotConfig?: {
       token: string;
       baseUrl: string;
+      dynamicScript: boolean;
       inputs: Record<string, string>;
       systemVariables: Record<string, string>;
       userVariables: Record<string, string>;
@@ -24,29 +26,45 @@ declare global {
   }
 }
 
+/**
+ * The official embed reads `window.difyChatbotConfig` when embed.min.js
+ * executes, so this string is rendered as an inline script *before* the embed
+ * script tag — the same order as Dify's own snippet.
+ */
+const DIFY_EMBED_CONFIG = `window.difyChatbotConfig={token:${JSON.stringify(
+  DIFY_EMBED_TOKEN,
+)},baseUrl:${JSON.stringify(
+  DIFY_EMBED_BASE_URL,
+)},dynamicScript:${JSON.stringify(
+  DIFY_EMBED_DYNAMIC_SCRIPT,
+)},inputs:{},systemVariables:{},userVariables:{}};`;
+
+/**
+ * Minimal styling only — the widget itself (button, window, composer, Send
+ * button, message history) is entirely Dify's.
+ *
+ * Dify positions the iframe *inside* the 48px bubble button, so the window's
+ * own `bottom` is measured from the button. A 3.5rem offset lifts the window
+ * clear of the button, which would otherwise sit on top of the bottom-right of
+ * the window — the composer/Send area.
+ *
+ * The button offset is set through Dify's own supported CSS variables so the
+ * safe-area inset is respected without fighting Dify's inline styles. Height
+ * and width are deliberately *not* forced: Dify already sizes the window
+ * (`width: 24rem; max-width: calc(100vw - 2rem)`), and pinning an exact height
+ * is what clips the bottom of the widget on short mobile viewports. Only a
+ * `dvh`-based cap is applied, so the window always fits the visible viewport.
+ */
 const DIFY_EMBED_STYLE = `
-#${DIFY_BUBBLE_BUTTON_ID} {
-  background-color: #1C64F2 !important;
-  right: max(1rem, env(safe-area-inset-right, 0px)) !important;
-  bottom: max(1.25rem, env(safe-area-inset-bottom, 0px)) !important;
+:root {
+  --dify-chatbot-bubble-button-right: max(1rem, env(safe-area-inset-right, 0px));
+  --dify-chatbot-bubble-button-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  --dify-chatbot-bubble-button-bg-color: #1C64F2;
 }
 #${DIFY_BUBBLE_WINDOW_ID} {
-  width: min(24rem, calc(100vw - 1.5rem)) !important;
-  height: min(40rem, calc(100dvh - 7rem)) !important;
-  max-width: calc(100vw - 1rem) !important;
-  max-height: calc(100dvh - 5.5rem - env(safe-area-inset-bottom, 0px)) !important;
-  right: max(0.5rem, env(safe-area-inset-right, 0px)) !important;
-  bottom: max(4.5rem, calc(env(safe-area-inset-bottom, 0px) + 3.5rem)) !important;
-}
-@media (max-width: 640px) {
-  #${DIFY_BUBBLE_WINDOW_ID} {
-    width: calc(100vw - 1rem) !important;
-    height: min(40rem, calc(100dvh - 5.5rem - env(safe-area-inset-bottom, 0px))) !important;
-    max-width: none !important;
-    right: 0.5rem !important;
-    left: auto !important;
-    bottom: max(4.25rem, calc(env(safe-area-inset-bottom, 0px) + 3.25rem)) !important;
-  }
+  bottom: 3.5rem !important;
+  max-height: calc(100dvh - var(--dify-chatbot-bubble-button-bottom, 1rem) - 4.5rem) !important;
+  max-width: calc(100vw - 1.5rem) !important;
 }
 `;
 
@@ -54,53 +72,38 @@ function applyDifyConfig() {
   window.difyChatbotConfig = {
     token: DIFY_EMBED_TOKEN,
     baseUrl: DIFY_EMBED_BASE_URL,
+    dynamicScript: DIFY_EMBED_DYNAMIC_SCRIPT,
     inputs: {},
     systemVariables: {},
     userVariables: {},
   };
 }
 
-function isVisible(element: HTMLElement | null): boolean {
-  if (!element) {
-    return false;
-  }
-  const style = window.getComputedStyle(element);
-  if (style.display === "none" || style.visibility === "hidden") {
-    return false;
-  }
-  return element.getClientRects().length > 0;
-}
-
-function setButtonHidden(hidden: boolean) {
-  const button = document.getElementById(DIFY_BUBBLE_BUTTON_ID);
+/** True while Dify's chat window exists and is open. */
+function isWidgetOpen(): boolean {
   const frame = document.getElementById(DIFY_BUBBLE_WINDOW_ID);
-  if (button instanceof HTMLElement) {
-    if (hidden) {
-      button.style.setProperty("display", "none", "important");
-    } else {
-      button.style.removeProperty("display");
-    }
+  if (!(frame instanceof HTMLElement)) {
+    return false;
   }
-  if (frame instanceof HTMLElement) {
-    if (hidden) {
-      frame.style.setProperty("display", "none", "important");
-    } else {
-      frame.style.removeProperty("display");
-    }
-  }
+  const style = window.getComputedStyle(frame);
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    frame.getClientRects().length > 0
+  );
 }
 
-function openDifyWindow(): boolean {
+/**
+ * Toggle the widget with Dify's own button. The button only exists once
+ * embed.min.js has run, so callers retry until it appears.
+ */
+function toggleWidget(): boolean {
   const button = document.getElementById(DIFY_BUBBLE_BUTTON_ID);
   if (!(button instanceof HTMLElement)) {
     return false;
   }
   if (window.getComputedStyle(button).display === "none") {
     return false;
-  }
-  const frame = document.getElementById(DIFY_BUBBLE_WINDOW_ID);
-  if (frame instanceof HTMLElement && isVisible(frame)) {
-    return true;
   }
   button.click();
   return true;
@@ -110,25 +113,27 @@ export function DifyChatbot({ autoOpen = true }: { autoOpen?: boolean }) {
   const openedRef = useRef(false);
 
   useEffect(() => {
+    // Also set here so the config is present whenever this component mounts,
+    // whatever order the two script tags are injected in.
     applyDifyConfig();
-    setButtonHidden(false);
-    openedRef.current = false;
 
     if (!autoOpen) {
-      return () => {
-        setButtonHidden(true);
-      };
+      return;
     }
 
+    // embed.min.js loads asynchronously, so poll briefly for the bubble button
+    // and use Dify's own toggle to open the window exactly once.
+    let attempts = 0;
     let intervalId: number | null = null;
-    let timeoutId: number | null = null;
 
     const tryOpen = () => {
-      if (openedRef.current) {
-        return;
-      }
-      if (openDifyWindow()) {
+      attempts += 1;
+      if (isWidgetOpen()) {
         openedRef.current = true;
+      } else if (!openedRef.current) {
+        toggleWidget();
+      }
+      if (openedRef.current || attempts >= 40) {
         if (intervalId !== null) {
           window.clearInterval(intervalId);
           intervalId = null;
@@ -139,29 +144,25 @@ export function DifyChatbot({ autoOpen = true }: { autoOpen?: boolean }) {
     tryOpen();
     if (!openedRef.current) {
       intervalId = window.setInterval(tryOpen, 250);
-      timeoutId = window.setTimeout(() => {
-        if (intervalId !== null) {
-          window.clearInterval(intervalId);
-          intervalId = null;
-        }
-      }, 8000);
     }
 
     return () => {
       if (intervalId !== null) {
         window.clearInterval(intervalId);
       }
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
+      // Leaving the page closes the window through Dify's own toggle, so the
+      // widget is never left hanging open on another route. It is never
+      // removed or re-created: Dify owns the single global instance.
+      if (isWidgetOpen()) {
+        toggleWidget();
       }
-      setButtonHidden(true);
     };
   }, [autoOpen]);
 
   return (
     <>
       <Script id={DIFY_EMBED_CONFIG_SCRIPT_ID} strategy="afterInteractive">
-        {`window.difyChatbotConfig={token:${JSON.stringify(DIFY_EMBED_TOKEN)},baseUrl:${JSON.stringify(DIFY_EMBED_BASE_URL)},inputs:{},systemVariables:{},userVariables:{}};`}
+        {DIFY_EMBED_CONFIG}
       </Script>
       <Script
         id={DIFY_EMBED_SCRIPT_ID}
