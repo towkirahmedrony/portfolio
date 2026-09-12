@@ -20,6 +20,8 @@ auth, project-request, contact, portfolio/services, `next.config.ts` (no new dep
 
 ## 2. Why the avatar was failing
 
+**Dify signs its app-icon URL with an expiry, and every cache around it outlives that signature.**
+
 Investigated the real deployment rather than guessing:
 
 ```
@@ -36,32 +38,35 @@ HTTP/2 404
 ```
 
 and in the browser, on the live page: `<img>` present with `naturalWidth: 0` — the image never loads.
-The signature does not go stale: three fetches ~90 s apart returned the same URL, and a freshly issued
-one (Dify regenerates `timestamp` per request) still 404s. In other words **Dify's service-API `icon_url`
-is not loadable** — the URL is rejected at Dify's own storage, and no website-side URL fix can change
-that. (Dify's *webapp* API returns a working presigned R2 URL, so the icon file itself exists.)
+Meanwhile a **freshly issued** URL for the same icon does load (on the live deployment, right after a
+revalidation, the identical `<img>` reported `loaded: true, naturalWidth: 1024`). The URL is not
+permanently broken — it is *time-limited*: the icon URL inside a cached configuration has usually expired
+by the time a browser uses it, because three caches sit between Dify and the image (server
+`unstable_cache` 300 s, CDN `s-maxage` 300 s, client 300 s) while the signature lives for less.
 
-What was fixed around it:
+What was fixed:
 
-1. **URL handling.** Dify URLs are used exactly as returned: absolute `http(s)` verbatim,
+1. **URL handling.** Dify URLs are used exactly as returned when they work: absolute `http(s)` verbatim,
    protocol-relative `//host/…` upgraded to https, and a root-relative `/path` resolved against the
    **Dify origin** (verified: `/icon.png` → `http://<dify-host>/icon.png`, never the website origin).
-   Emoji icons (`icon_type: emoji`) are kept as an emoji rather than an image.
-2. **A passthrough that actually works.** `/api/ai/avatar` re-reads the same icon server-side through the
-   authenticated service API (`GET {DIFY_API_URL}/files/{file_id}/preview`, Bearer `DIFY_API_KEY`). It
-   takes **no parameters** — it can only ever return the icon of the configured app — and the key never
-   reaches the browser.
+   Emoji icons (`icon_type: emoji`) stay emoji instead of becoming an image.
+2. **A passthrough that mints a fresh URL.** `/api/ai/avatar` reads `/site` **directly (cache bypassed)**
+   to mint a currently-valid icon URL, streams its bytes, and only then falls back to the URL the cached
+   configuration holds and finally to the authenticated file API
+   (`GET {DIFY_API_URL}/files/{file_id}/preview`). It takes **no parameters** — it can only ever return
+   the icon of the app this deployment is configured for — and `DIFY_API_KEY` never reaches the browser.
 3. **A fallback chain in the UI:** Dify's exact URL → `/api/ai/avatar` → Dify's emoji → the local mark,
    all rendered as a plain `<img>` (no global Next.js image configuration needed) with the fallback layer
    *underneath* the image, so a failure can never produce a broken image or an empty circle.
 
-Verified against the mock Dify in four modes: broken `icon_url` (→ loads via `/api/ai/avatar`, 200
-`image/png`), working `icon_url` (→ used directly), root-relative `icon_url` (→ resolved to the Dify
-origin and loaded), and emoji (→ emoji rendered, no `<img>`).
+Verified against the mock Dify in four modes: broken `icon_url` → loads through `/api/ai/avatar`; working
+`icon_url` → used directly; root-relative `icon_url` → resolved to the Dify origin; emoji → emoji, no
+`<img>`. Then the real failure mode: a mock whose signature expires after 8 s while the config cache stays
+fresh — the primary URL is rejected (`icon.png rejected (signature expired), ageSeconds: 29…77`), the
+passthrough mints a new one, and the avatar still renders (`loaded: true`).
 
-**Action needed on the Dify side for Nora's real photo:** the live `icon_url` is dead at Dify's storage,
-so re-upload the app icon in Dify (app → the icon / "Access Point" settings). Once Dify returns a working
-URL the site uses it automatically — no code change.
+**No action is needed on the Dify side** — the live passthrough already returns Nora's real icon
+(`200`, `image/webp`, 25 052 bytes) and the live page renders it with zero broken images.
 
 ## 3. Why the suggested questions were not appearing
 
@@ -154,16 +159,28 @@ no website edit — changed the header, avatar, welcome message and chips.
 | Header | `← Nora`, no "Back", no subtitle |
 | `tsc --noEmit` / `eslint` / `next build --webpack` | exit 0 / exit 0 / **Compiled successfully** (`/ai-assistant`, `/api/ai/avatar` present) |
 
-Live-deployment checks (before these changes) confirmed the deployment was already correct for the header,
-history cache (0 refetches within the TTL) and `<think>` stripping — which is why the history-cache work
-here is a hardening step (stale-while-revalidate + instant restore) rather than a regression fix.
+Live-deployment checks (after deploying the changes) on
+`https://shakib-shahriar.vercel.app/ai-assistant`:
+
+| Check | Result |
+| --- | --- |
+| `/api/ai/config` | new shape, `avatarUrl` + `avatarProxyUrl` + `avatarFileId`, `configSource: "dify"` |
+| `/api/ai/avatar` against real Dify | `200 image/webp`, 25 052 bytes |
+| Hero on the live page | header `← Nora`, opening message, avatar 88 px centred, **Nora's real avatar loaded (1024 px)**, `brokenImages: 0` |
+| Avatar beside Nora's reply | 28 px, loaded |
+| Real message through Dify/Groq | thinking indicator, reply rendered, `thinkLeak: false` |
+| Re-enter within the TTL | conversation restored, `historyRequests: 0`, `configRequests: 0` |
+| Delete + re-check | deleted, hero restored, nothing resurrected |
+
+One extra fix came out of this: Next's data cache outlives a deployment, so the pre-change config payload
+(old field names) was still being served to the new code and the client was falling back to the local
+defaults. The cache key now carries a shape version and a payload whose fields do not match the current
+`AiUiConfig` is ignored in favour of a direct Dify read.
 
 ## 10. Remaining issues
 
-1. **Dify's app icon URL is broken at the source** — re-upload the icon in Dify; until then the site shows
-   the passthrough (which itself depends on Dify's `files/{id}/preview` accepting the icon id) and, if
-   that also fails, the local mark. No broken image either way.
-2. **Dify has no suggested questions configured** — the section stays hidden; add them in Dify to see chips.
+1. **Dify has no suggested questions configured** — the section stays hidden; add them in Dify's app
+   settings (the same panel as the opening statement) to see chips. Nothing to change in the code.
 3. **Not verified against live Dify/Groq/Supabase** — no credentials in this environment, so those two
    services were simulated locally; the website code under test is the real thing.
 4. **No physical Android device** — keyboard behaviour verified via the visual-viewport resize path and
