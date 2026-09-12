@@ -11,7 +11,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { AssistantIcon } from "@/components/ai/assistant-icon";
+import { AssistantAvatar } from "@/components/ai/assistant-avatar";
 import { MessageText } from "@/components/ai/message-text";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -44,53 +44,6 @@ type ProjectAssistantProps = {
   backHref?: string;
   backLabel?: string;
 };
-
-/**
- * Nora's avatar.
- *
- * Dify's own URL is tried first (used exactly as Dify returned it), then the
- * same-origin `/api/ai/avatar` passthrough, then Dify's emoji icon, and finally
- * the local mark — so an unreachable icon can never leave a broken image or an
- * empty circle. The fallback layer sits *under* the image, so nothing flashes
- * while the remote image is still loading.
- *
- * A plain `<img>` is used on purpose: the avatar is an external Dify URL, which
- * would otherwise require adding remote patterns to the global Next.js image
- * configuration.
- */
-function AssistantAvatar({ config, size = 40 }: { config: AiUiConfig; size?: number }) {
-  const [stage, setStage] = useState(0);
-  const sources = [config.avatarUrl, config.avatarProxyUrl].filter(
-    (source): source is string => Boolean(source),
-  );
-  const src = config.avatarType === "image" ? (sources[stage] ?? null) : null;
-
-  return (
-    <span
-      className="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-soft text-accent"
-      style={{ width: size, height: size }}
-    >
-      <span className="absolute inset-0 flex items-center justify-center">
-        {config.avatarEmoji ? (
-          <span className="leading-none" style={{ fontSize: Math.round(size * 0.5) }} aria-hidden>
-            {config.avatarEmoji}
-          </span>
-        ) : (
-          <AssistantIcon className="h-[55%] w-[55%]" />
-        )}
-      </span>
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element -- external Dify avatar URL
-        <img
-          src={src}
-          alt=""
-          className="relative h-full w-full object-cover"
-          onError={() => setStage((current) => current + 1)}
-        />
-      ) : null}
-    </span>
-  );
-}
 
 /** Avatar shown next to the assistant's own messages. */
 function MessageAvatar({ config }: { config: AiUiConfig }) {
