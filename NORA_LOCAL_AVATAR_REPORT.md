@@ -8,7 +8,7 @@ still loaded from Dify through `/api/ai/config`, cache included.
 
 | File | Change |
 | --- | --- |
-| `public/images/nora.webp` | **added** (25 052 bytes, 1024×1024 WebP) — see note 1 |
+| `public/images/nora.webp` | **kept as you committed it** (23 766 bytes, 1024×1024 lossy WebP) — see note 1 |
 | `src/components/ai/assistant-avatar.tsx` | rewritten: renders `/images/nora.webp`; no Dify URL, no proxy, no emoji/URL fallback chain |
 | `src/components/ai/ai-assistant-fab.tsx` | one line: `<AssistantAvatar size={52} />` (no config prop) |
 | `src/components/ai/project-assistant.tsx` | avatar call sites no longer take config; dropped the now-unused `AiUiConfig` type import |
@@ -67,10 +67,13 @@ on Dify:
 
 ## Notes
 
-1. **`public/images/nora.webp` did not exist** — `public/images/` was absent and there was no `.webp`
-   anywhere in the repository. Rather than ship a broken image reference, I saved the picture the site was
-   already serving for Nora (the same 1024×1024 WebP, 25 052 bytes) to exactly that path. Drop in any
-   preferred file at `public/images/nora.webp` to replace it — no code change needed.
+1. **Your own `public/images/nora.webp` is the file that ships.** When the code change was written the
+   path did not exist locally, so a copy of the picture the live site was serving was placed there — but by
+   the time the branch was pushed your commit `bfbdea0` ("update") had already added `public/images/nora.webp`
+   (1024×1024 lossy WebP, 23 766 bytes). The branch was rebased onto it and the conflict resolved **in favour
+   of your file**, so the image in the repository is the one you uploaded, untouched (md5
+   `acf6b6adf000b0f543ca00852d250114`). Replace the file at any time to change the avatar — no code change
+   needed.
 2. `/api/ai/avatar` (the Dify avatar passthrough) is now unused by the UI. It was left in place because
    removing it would mean touching an endpoint you asked not to modify; it can be deleted later if you want
    the endpoint surface trimmed.
