@@ -69,6 +69,14 @@ export type AiChatResponse =
 
 export type AiUiAvatarType = "emoji" | "image";
 
+/**
+ * Where a UI configuration came from: `dify` means Dify's live app
+ * configuration answered, `fallback` means it was unreachable/unconfigured and
+ * the neutral local defaults are in use. Suggested questions are never invented
+ * either way — that list is empty unless Dify supplies it.
+ */
+export type AiUiConfigSource = "dify" | "fallback";
+
 export type AiUiConfig = {
   name: string;
   avatar: string | null;
@@ -77,6 +85,7 @@ export type AiUiConfig = {
   suggestedQuestions: string[];
   inputPlaceholder: string;
   themeColor: string | null;
+  configSource: AiUiConfigSource;
 };
 
 export type AiUiConfigResponse = AiUiConfig & {

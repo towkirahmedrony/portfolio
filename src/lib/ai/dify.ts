@@ -1,5 +1,6 @@
 import { getRouteByHref, isAiRouteKey } from "@/lib/ai/cta";
 import { errorMessage, logAiEvent } from "@/lib/ai/errors";
+import { stripInternalReasoning } from "@/lib/ai/response-text";
 import type { AiChatMessageRow, Json } from "@/types/database";
 
 /**
@@ -143,7 +144,10 @@ function stripActionTags(value: string): string {
  * has to understand Dify's (or the model's) raw format.
  */
 export function parseDifyAnswer(raw: string): DifyStructuredReply {
-  const text = typeof raw === "string" ? raw.trim() : "";
+  // Internal reasoning (`<think>…</think>` and friends) and transport wrappers
+  // are removed first, so they can never be stored or returned — this is the
+  // server-side half of the guarantee; the renderer strips them again.
+  const text = stripInternalReasoning(typeof raw === "string" ? raw : "");
   if (!text) {
     return { message: "", actionKey: null, showCta: false, ctaReason: null };
   }
@@ -175,7 +179,7 @@ export function parseDifyAnswer(raw: string): DifyStructuredReply {
             ? String(keyCandidate).toLowerCase()
             : null;
         return {
-          message: stripActionTags(parsed.message),
+          message: stripActionTags(stripInternalReasoning(parsed.message)),
           actionKey,
           showCta: parsed.showCta === true || actionKey === "start-project",
           ctaReason:

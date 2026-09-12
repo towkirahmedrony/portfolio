@@ -7,6 +7,7 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
@@ -21,10 +22,12 @@ import {
   deleteAiConversation,
   loadAiChatHistory,
   loadAiUiConfig,
+  readAiHistoryCache,
   readStoredAiSessionId,
   sendAiChatMessage,
   startNewAiConversation,
   storeAiSessionId,
+  writeAiHistoryCache,
 } from "@/lib/ai/client";
 import { DEFAULT_AI_UI_CONFIG } from "@/lib/ai/ui-defaults";
 import type { AiChatMessage, AiCta, AiUiConfig } from "@/types/ai";
@@ -174,6 +177,24 @@ function NewChatIcon() {
   );
 }
 
+const EMPTY_MESSAGES: AiChatMessage[] = [];
+
+type RestoreState = "loading" | "done";
+
+function subscribeNever() {
+  return () => {};
+}
+
+/**
+ * Same helper the project-request form uses: `false` while the server and the
+ * first hydration render own the tree, `true` once the client does. Values read
+ * from browser storage are only rendered through it, so hydration always
+ * matches and cached data still appears immediately afterwards.
+ */
+function useIsClient() {
+  return useSyncExternalStore(subscribeNever, () => true, () => false);
+}
+
 function mergeHistoryMessages(
   current: AiChatMessage[],
   historyMessages: AiChatMessage[],
@@ -218,16 +239,43 @@ export function ProjectAssistant({
    * dropped instead of being mixed into the fresh thread.
    */
   const generationRef = useRef(0);
-  const [sessionId, setSessionId] = useState<string | null>(() =>
-    readStoredAiSessionId(),
+  const isClient = useIsClient();
+
+  /**
+   * One-shot read of the caches at mount. The cached conversation (5-minute
+   * TTL) becomes the initial state, so it renders immediately with no history
+   * request; `restore.state` records whether a silent fetch is still needed.
+   */
+  const [restoreState, setRestoreState] = useState<RestoreState>(() => {
+    if (typeof window === "undefined") {
+      return "done";
+    }
+    if (readAiHistoryCache()) {
+      return "done";
+    }
+    return readStoredAiSessionId() ? "loading" : "done";
+  });
+  const [restore] = useState(() => {
+    if (typeof window === "undefined") {
+      return { cached: null, storedSessionId: null as string | null };
+    }
+    return {
+      cached: readAiHistoryCache(),
+      storedSessionId: readStoredAiSessionId(),
+    };
+  });
+
+  const [sessionId, setSessionId] = useState<string | null>(
+    restore.cached?.sessionId ?? restore.storedSessionId,
   );
-  const [messages, setMessages] = useState<AiChatMessage[]>([]);
+  const [messages, setMessages] = useState<AiChatMessage[]>(
+    restore.cached?.messages ?? [],
+  );
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(() => Boolean(readStoredAiSessionId()));
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [liveHeight, setLiveHeight] = useState<number | null>(null);
   const [uiConfig, setUiConfig] = useState<AiUiConfig>(DEFAULT_AI_UI_CONFIG);
@@ -236,44 +284,35 @@ export function ProjectAssistant({
   const [deleting, setDeleting] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Everything derived from browser storage is only rendered once the client
+  // owns the tree, so the server HTML and the first hydration render match.
+  const visibleMessages = isClient ? messages : EMPTY_MESSAGES;
+  const activeSessionId = isClient ? sessionId : null;
+
   // Kept in a ref so async callbacks can read the newest messages without
   // being re-created (and without writing to a ref during render).
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
-  const loadHistory = useCallback(async (stored: string) => {
-    setHistoryError(null);
-
-    try {
-      const history = await loadAiChatHistory(stored);
-      setSessionId(history.sessionId);
-      storeAiSessionId(history.sessionId);
-      setMessages((current) => mergeHistoryMessages(current, history.messages));
-      setHistoryError(null);
-    } catch (loadError) {
-      if (messagesRef.current.length === 0 && !sendingRef.current) {
-        clearStoredAiSessionId();
-        setSessionId(null);
-        setHistoryError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Could not load that conversation.",
-        );
-      }
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, []);
-
+  /**
+   * Restores the conversation when a silent fetch is needed.
+   *
+   * A fresh cache is already in state, so nothing is fetched at all — navigating
+   * back to /ai-assistant renders the conversation instantly with no history
+   * request. History is only fetched when the cache is missing or older than its
+   * TTL, and the fetch is silent (no "loading" copy is ever rendered). Every
+   * state update happens in an async callback, never synchronously in the effect
+   * body, so the render is not cascaded.
+   */
   useEffect(() => {
-    const stored = readStoredAiSessionId();
-    if (!stored) {
+    if (restoreState !== "loading" || !restore.storedSessionId) {
       return;
     }
 
     let cancelled = false;
-    void loadAiChatHistory(stored)
+
+    void loadAiChatHistory(restore.storedSessionId)
       .then((history) => {
         if (cancelled) {
           return;
@@ -282,6 +321,7 @@ export function ProjectAssistant({
         storeAiSessionId(history.sessionId);
         setMessages((current) => mergeHistoryMessages(current, history.messages));
         setHistoryError(null);
+        // The cache is refreshed by the effect below once the messages settle.
       })
       .catch((loadError: unknown) => {
         if (cancelled) {
@@ -299,14 +339,27 @@ export function ProjectAssistant({
       })
       .finally(() => {
         if (!cancelled) {
-          setHistoryLoading(false);
+          setRestoreState("done");
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [restoreState, restore.storedSessionId]);
+
+  /**
+   * Keeps the cached conversation in step with what is on screen. Optimistic
+   * (`local-`) messages are filtered out by `writeAiHistoryCache`, so a failed
+   * or in-flight message can never be cached, and the cache always holds exactly
+   * the server-derived list — which is what makes merging duplicates-safe.
+   */
+  useEffect(() => {
+    if (!isClient || !sessionId || sending || restoreState === "loading") {
+      return;
+    }
+    writeAiHistoryCache(sessionId, messages);
+  }, [messages, sessionId, sending, restoreState, isClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -329,7 +382,7 @@ export function ProjectAssistant({
     if (distance < 120) {
       root.scrollTo({ top: root.scrollHeight, behavior: sending ? "auto" : "smooth" });
     }
-  }, [messages, sending, streaming, historyLoading]);
+  }, [messages, sending, streaming, restoreState]);
 
   const resizeDraft = useCallback(() => {
     const field = textareaRef.current;
@@ -431,7 +484,7 @@ export function ProjectAssistant({
     setRetryMessage(null);
     setSending(false);
     setStreaming(false);
-    setHistoryLoading(false);
+    setRestoreState("done");
     setHistoryError(null);
     setMenuOpen(false);
     setConfirmingDelete(false);
@@ -440,7 +493,7 @@ export function ProjectAssistant({
 
   async function confirmDeleteConversation() {
     setDeleting(true);
-    const deletingSessionId = sessionId;
+    const deletingSessionId = activeSessionId;
     try {
       if (deletingSessionId) {
         await deleteAiConversation(deletingSessionId);
@@ -490,7 +543,7 @@ export function ProjectAssistant({
       const result = await sendAiChatMessage(
         {
           message,
-          sessionId,
+          sessionId: activeSessionId,
         },
         {
           onSession: (nextSessionId) => {
@@ -565,7 +618,17 @@ export function ProjectAssistant({
     void sendMessage(draft);
   }
 
-  const showEmpty = messages.length === 0 && !sending && !historyLoading;
+  /**
+   * Silent restore: a skeleton only when there is something to restore (a
+   * stored session whose cache expired) and nothing to show yet. A cached
+   * conversation never shows it, and no "loading" copy is ever rendered.
+   */
+  const showSkeleton =
+    isClient &&
+    restoreState === "loading" &&
+    visibleMessages.length === 0 &&
+    !historyError;
+  const showEmpty = visibleMessages.length === 0 && !sending && !showSkeleton;
 
   const headerMenu = (
     <div ref={menuRef} className="relative shrink-0">
@@ -597,7 +660,7 @@ export function ProjectAssistant({
           <button
             type="button"
             role="menuitem"
-            disabled={!sessionId && messages.length === 0}
+            disabled={!activeSessionId && visibleMessages.length === 0}
             onClick={() => {
               setMenuOpen(false);
               setConfirmingDelete(true);
@@ -721,9 +784,9 @@ export function ProjectAssistant({
       aria-relevant="additions"
       aria-label="Project assistant conversation"
     >
-      {historyLoading && messages.length === 0 ? (
+      {showSkeleton ? (
         <HistorySkeleton />
-      ) : historyError && messages.length === 0 ? (
+      ) : historyError && visibleMessages.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
           <p className="text-sm text-muted" role="alert">
             {historyError}
@@ -731,13 +794,10 @@ export function ProjectAssistant({
           <button
             type="button"
             onClick={() => {
-              const stored = readStoredAiSessionId();
-              if (!stored) {
-                setHistoryError(null);
-                return;
-              }
-              setHistoryLoading(true);
-              void loadHistory(stored);
+              // The restore effect owns the fetch: flipping back to "loading"
+              // is all that is needed to retry it.
+              setHistoryError(null);
+              setRestoreState("loading");
             }}
             className="rounded-full border border-card-border bg-card px-4 py-2 text-xs font-medium text-foreground transition-colors hover:border-accent/40"
           >
@@ -748,9 +808,9 @@ export function ProjectAssistant({
         welcome
       ) : (
         <div className={cn("flex flex-col gap-3", isPage && "mx-auto w-full max-w-3xl")}>
-          {messages.map((message, index) => {
+          {visibleMessages.map((message, index) => {
             const isUser = message.role === "user";
-            const isLatest = index === messages.length - 1;
+            const isLatest = index === visibleMessages.length - 1;
             const isStreamingDraft =
               sending && isLatest && !isUser && message.content.length === 0 && !streaming;
 
@@ -850,33 +910,29 @@ export function ProjectAssistant({
         style={liveHeight !== null ? { height: liveHeight } : { height: "100dvh" }}
         aria-labelledby={`${formId}-title`}
       >
+        {/* Minimal header: back icon, Dify's avatar and Dify's name only. */}
         <header className="flex items-center gap-3 border-b border-card-border bg-card px-3 py-2.5 sm:px-4">
           <Link
             href={backHref}
             aria-label={`${backLabel} to the site`}
-            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-card-border bg-background px-3.5 text-xs font-semibold text-foreground transition-colors hover:border-accent/40 hover:text-accent"
+            title={backLabel}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-card-border bg-background text-lg text-foreground transition-colors hover:border-accent/40 hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             <span aria-hidden>&larr;</span>
-            {backLabel}
           </Link>
           <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-card-border bg-accent-soft text-accent">
             <AssistantAvatar avatar={uiConfig.avatar} avatarType={uiConfig.avatarType} />
           </span>
-          <div className="min-w-0 flex-1">
-            <h1
-              id={`${formId}-title`}
-              className={cn(
-                "font-display truncate text-base tracking-tight sm:text-lg",
-                !uiConfig.themeColor && "text-foreground",
-              )}
-              style={uiConfig.themeColor ? { color: uiConfig.themeColor } : undefined}
-            >
-              {uiConfig.name}
-            </h1>
-            <p className="truncate text-[11px] font-medium tracking-[0.14em] text-muted uppercase">
-              {title}
-            </p>
-          </div>
+          <h1
+            id={`${formId}-title`}
+            className={cn(
+              "font-display min-w-0 flex-1 truncate text-base tracking-tight sm:text-lg",
+              !uiConfig.themeColor && "text-foreground",
+            )}
+            style={uiConfig.themeColor ? { color: uiConfig.themeColor } : undefined}
+          >
+            {uiConfig.name}
+          </h1>
           {headerMenu}
         </header>
         {thread}

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { parseMessageContent } from "@/lib/ai/links";
+import { stripInternalReasoning } from "@/lib/ai/response-text";
 
 /**
  * Existing theme tokens only, so the chat keeps the site's visual identity.
@@ -24,7 +25,10 @@ type Block =
  */
 function toBlocks(content: string): Block[] {
   const blocks: Block[] = [];
-  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  // Defensive second half of the guarantee: the server already strips internal
+  // reasoning, but rendering normalises again so older stored rows, cached
+  // payloads, or anything else that slipped through can never be displayed.
+  const lines = stripInternalReasoning(content).replace(/\r\n?/g, "\n").split("\n");
   let paragraph: string[] = [];
   let list: Block | null = null;
 

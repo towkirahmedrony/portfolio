@@ -14,12 +14,8 @@ export const metadata: Metadata = pageMetadata({
 export default function AiAssistantPage() {
   return (
     <div className="h-dvh overflow-hidden bg-background">
-      <ProjectAssistant
-        variant="page"
-        title="AI Project Assistant"
-        backHref="/"
-        backLabel="Back"
-      />
+      {/* The header shows only the back icon and Dify's own name/avatar. */}
+      <ProjectAssistant variant="page" backHref="/" backLabel="Back" />
     </div>
   );
 }

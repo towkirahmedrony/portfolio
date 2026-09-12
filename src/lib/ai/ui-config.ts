@@ -108,10 +108,13 @@ function mergeWithFallback(
     avatarType: avatarType ?? (iconUrl ? "image" : icon ? "emoji" : fallback.avatarType),
     welcomeMessage:
       asTrimmedString(parameters?.opening_statement, TEXT_MAX) ?? fallback.welcomeMessage,
-    suggestedQuestions: questions.length > 0 ? questions : fallback.suggestedQuestions,
+    // Dify is the only source of suggested questions: an empty list hides the
+    // section rather than inventing questions Dify did not return.
+    suggestedQuestions: questions,
     inputPlaceholder:
       asTrimmedString(site?.input_placeholder, PLACEHOLDER_MAX) ?? fallback.inputPlaceholder,
     themeColor: asHexColor(site?.chat_color_theme) ?? fallback.themeColor,
+    configSource: "dify",
   };
 }
 
