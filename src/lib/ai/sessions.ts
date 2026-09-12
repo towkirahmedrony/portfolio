@@ -124,6 +124,33 @@ export async function loadOwnedSession(
     return null;
   }
 
+  /**
+   * Anonymous session.
+   *
+   * The stored `visitor_id` is the anonymous identity, but it is not always
+   * persistable: when the insert that includes it fails, `createChatSession`
+   * falls back to an insert without it, leaving the row with no anonymous
+   * identity at all (in production `visitor_id` is NULL — alongside a legacy
+   * `session_token` column that is also NULL — while the messages themselves
+   * save fine).
+   *
+   * Rejecting such a row is what made every anonymous conversation die on its
+   * second message: message #1 creates a session (no lookup, so it succeeds)
+   * and every later request re-loads that same row and was refused with
+   * "Conversation not found." even though the visitor cookie was sent.
+   *
+   * So a row that carries no stored binding is accepted for an anonymous
+   * caller. The session id is a v4 UUID that is only ever handed to the browser
+   * that created it, which is already how the client identifies its own
+   * conversation. A row that *does* carry a `visitor_id` is still compared
+   * strictly, and rows owned by a user account stay unreachable from the
+   * anonymous path — this repairs an unverifiable row rather than loosening the
+   * ownership rule in general.
+   */
+  if (!session.visitor_id) {
+    return session;
+  }
+
   return session.visitor_id === input.visitorId ? session : null;
 }
 
@@ -150,6 +177,12 @@ export async function createChatSession(
     return row;
   }
 
+  /**
+   * Deployments whose `ai_chat_sessions` cannot accept `visitor_id` still need
+   * to store the conversation, so the session is created without it. The row is
+   * then anonymous-but-unbound; `loadOwnedSession` accepts that shape so the
+   * conversation stays usable instead of failing from its second message.
+   */
   const fallback = await supabase.from("ai_chat_sessions").insert({
     id: row.id,
     user_id: row.user_id,
