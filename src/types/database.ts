@@ -2188,7 +2188,22 @@ export type Database = {
         Args: { p_payload: Json; p_request_id: string }
         Returns: Database["public"]["Enums"]["request_status"]
       }
+      claim_my_referral: { Args: { p_code: string }; Returns: string }
+      create_referral_for_client: {
+        Args: { p_client_id: string; p_code: string }
+        Returns: string
+      }
+      ensure_my_referral_code: {
+        Args: never
+        Returns: {
+          id: string
+          code: string
+          is_active: boolean
+          expires_at: string | null
+        }[]
+      }
       ensure_referral_code: { Args: { profile_id: string }; Returns: undefined }
+      expire_referral_rewards: { Args: never; Returns: number }
       generate_referral_code: { Args: never; Returns: string }
       generate_request_number: { Args: never; Returns: string }
       is_active_admin: { Args: never; Returns: boolean }

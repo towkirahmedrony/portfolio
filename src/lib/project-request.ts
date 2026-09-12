@@ -1,9 +1,4 @@
 import type { Json, ProjectRequestInsert, ProjectRequestRow } from "@/types/database";
-import {
-  REFERRAL_CLIENT_DISCOUNT_PERCENT,
-  REFERRAL_REFERRER_REWARD_PERCENT,
-  type ProjectReferralPayload,
-} from "@/types/referral";
 import type {
   OrderFormConfig,
   OrderFormFieldConfig,
@@ -91,27 +86,6 @@ export function normalizeReferralCode(value: string): string {
 
 export function isReferralFieldKey(fieldKey: string): boolean {
   return /referral/i.test(fieldKey);
-}
-
-export function buildProjectReferralPayload(
-  data: ProjectRequest,
-): ProjectReferralPayload {
-  const referralCode = normalizeReferralCode(
-    firstString(data, COLUMN_ALIASES.referral_code_entered),
-  );
-
-  return {
-    referralCode: referralCode || null,
-    referredBy: null,
-    referralStatus: "unverified",
-    referredProject: "first",
-    clientDiscountPercent: REFERRAL_CLIENT_DISCOUNT_PERCENT,
-    referrerRewardPercent: REFERRAL_REFERRER_REWARD_PERCENT,
-    rewardStatus: "pending",
-    rewardUsed: false,
-    rewardExpiresAt: null,
-    discountsStackable: false,
-  };
 }
 
 export function getNormalizedProjectRequest(

@@ -1,11 +1,11 @@
 /**
- * Referral business rules — single source of truth.
+ * Referral admin rules — validation bounds for the settings form.
  *
- * Customer flows (src/types/referral.ts) and the admin UI both reference
- * these defaults so discount/reward percentages and validation limits are
- * never duplicated across components. The live values can differ when a
- * referral_settings row exists in the database — those rows win; these are
- * only the built-in defaults and validation bounds.
+ * Customer-facing referral views and all reward/discount computation are driven
+ * exclusively by the database (referral_settings plus the snapshots stored on
+ * public.referrals); they never read the defaults below. These values only seed
+ * the admin settings form when no referral_settings row exists yet, and mirror
+ * the column defaults in the database.
  */
 export const REFERRAL_DEFAULT_CLIENT_DISCOUNT_PERCENT = 5;
 export const REFERRAL_DEFAULT_REFERRER_REWARD_PERCENT = 2;

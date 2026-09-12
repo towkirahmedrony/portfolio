@@ -1,14 +1,11 @@
-import {
-  REFERRAL_CLIENT_DISCOUNT_PERCENT,
-  REFERRAL_REFERRER_REWARD_PERCENT,
-} from "@/types/referral";
-import { site } from "@/data/site";
+import { buildReferralLink } from "@/lib/referral-code";
 import type {
   ProfileRow,
   ProfileUpdate,
   ReferralCodeRow,
   ReferralRewardRow,
   ReferralRow,
+  ReferralSettingsRow,
   ReferralStatus,
 } from "@/types/database";
 import type {
@@ -131,22 +128,75 @@ export type CustomerReferralSource = {
   codes: Pick<ReferralCodeRow, "code" | "is_active">[] | null;
   referrals: Pick<
     ReferralRow,
-    "id" | "status" | "referrer_reward_percent" | "created_at"
+    | "id"
+    | "status"
+    | "referrer_reward_percent"
+    | "client_discount_percent"
+    | "created_at"
+    | "project_request_id"
+    | "first_project_id"
   >[] | null;
-  availableRewards: Pick<
+  rewards: Pick<
     ReferralRewardRow,
-    "id" | "reward_percent" | "status" | "expires_at"
+    "id" | "referral_id" | "reward_percent" | "status" | "expires_at"
   >[] | null;
+  /** Latest referral_settings row. Percentages are never hardcoded here. */
+  settings: Pick<
+    ReferralSettingsRow,
+    | "new_client_discount_percent"
+    | "referrer_reward_percent"
+    | "minimum_project_amount"
+    | "reward_validity_days"
+    | "is_active"
+  > | null;
+  /** The signed-in customer's own relationship when they were referred. */
+  referred: Pick<
+    ReferralRow,
+    | "status"
+    | "client_discount_percent"
+    | "referrer_reward_percent"
+    | "created_at"
+    | "project_request_id"
+    | "first_project_id"
+  > | null;
 };
+
+/** Trim trailing zeros so 5.00 renders as "5" and 12.50 as "12.5". */
+export function formatReferralPercent(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "0";
+  }
+  return `${Number(value.toFixed(2))}`;
+}
+
+function isRewardUsable(expiresAt: string | null, now: number): boolean {
+  if (expiresAt === null || expiresAt === undefined) {
+    return true;
+  }
+  return new Date(expiresAt).getTime() > now;
+}
 
 /**
  * Build the customer-facing referral view entirely from the authenticated
- * user's own database rows. No hardcoded counts, history, or rewards.
+ * user's own database rows and the live referral_settings row. No hardcoded
+ * counts, history, percentages, minimums, or validity windows.
  */
 export function buildCustomerReferral(
   source: CustomerReferralSource,
 ): CustomerReferral {
   const rows = source.referrals ?? [];
+  const settings = source.settings;
+
+  const programActive = Boolean(settings?.is_active);
+  const clientDiscountPercent = settings
+    ? Number(settings.new_client_discount_percent) || 0
+    : 0;
+  const referrerRewardPercent = settings
+    ? Number(settings.referrer_reward_percent) || 0
+    : 0;
+  const minimumProjectAmount = settings?.minimum_project_amount ?? null;
+  const rewardValidityDays = settings?.reward_validity_days ?? null;
+
   const activeCode =
     source.codes?.find((row) => row.is_active) ??
     source.codes?.[0] ??
@@ -161,43 +211,110 @@ export function buildCustomerReferral(
   );
 
   const now = Date.now();
-  const usableRewards = (source.availableRewards ?? []).filter(
+  const usableRewards = (source.rewards ?? []).filter(
     (row) =>
-      row.status === "available" &&
-      (row.expires_at === null ||
-        row.expires_at === undefined ||
-        new Date(row.expires_at).getTime() > now),
+      row.status === "available" && isRewardUsable(row.expires_at, now),
   );
   const availableRewardPercent =
     usableRewards.length > 0
       ? Math.max(...usableRewards.map((row) => Number(row.reward_percent) || 0))
       : 0;
+  const totalEarnedRewardPercent = usableRewards.reduce(
+    (sum, row) => sum + (Number(row.reward_percent) || 0),
+    0,
+  );
 
-  const history: ReferralHistoryItem[] = rows.map((row) => ({
-    id: row.id,
-    // The referred client's identity is protected by RLS — clients can only
-    // see the referral event itself, never another profile's details.
-    referredName: null,
-    status: row.status,
-    rewardPercent: Number(row.referrer_reward_percent) || 0,
-    date: formatReferralDate(row.created_at),
-  }));
+  const rewardsByReferral = new Map<string, ReferralRewardRow["status"]>();
+  for (const reward of usableRewards) {
+    rewardsByReferral.set(reward.referral_id, reward.status);
+  }
+
+  const history: ReferralHistoryItem[] = rows.map((row) => {
+    const rewardExpiry =
+      (source.rewards ?? []).find((reward) => reward.referral_id === row.id)
+        ?.expires_at ?? null;
+
+    return {
+      id: row.id,
+      // The referred client's identity is protected by RLS — clients can only
+      // see the referral event itself, never another profile's details.
+      referredName: null,
+      status: row.status,
+      rewardPercent: Number(row.referrer_reward_percent) || 0,
+      clientDiscountPercent: Number(row.client_discount_percent) || 0,
+      firstProjectLinked: row.first_project_id !== null,
+      rewardStatus: rewardsByReferral.get(row.id) ?? null,
+      rewardExpiresAt: rewardExpiry,
+      date: formatReferralDate(row.created_at),
+    };
+  });
+
+  const terms: string[] = [];
+  if (!settings) {
+    terms.push(
+      "Referral terms are not configured yet, so no new referral rewards can be earned.",
+    );
+  } else {
+    terms.push(
+      `A referred client receives ${formatReferralPercent(clientDiscountPercent)}% off their first project.`,
+    );
+    terms.push(
+      `You earn a ${formatReferralPercent(referrerRewardPercent)}% reward once a referred client's first project completes.`,
+    );
+    if (minimumProjectAmount !== null && Number(minimumProjectAmount) > 0) {
+      terms.push(
+        `A referral only qualifies once that first project reaches ${Number(minimumProjectAmount)}.`,
+      );
+    }
+    terms.push(
+      rewardValidityDays !== null && rewardValidityDays > 0
+        ? `Rewards stay available for ${rewardValidityDays} days from the day they are earned.`
+        : "Rewards do not expire.",
+    );
+    terms.push(
+      "The discount applies only to the referred client's first project, and referral terms are fixed at sign-up time.",
+    );
+    if (!programActive) {
+      terms.push(
+        "The referral programme is currently paused, so new referrals are not being created.",
+      );
+    }
+  }
+
+  const referred = source.referred
+    ? {
+        status: source.referred.status,
+        clientDiscountPercent:
+          Number(source.referred.client_discount_percent) || 0,
+        referrerRewardPercent:
+          Number(source.referred.referrer_reward_percent) || 0,
+        requestLinked: source.referred.project_request_id !== null,
+        firstProjectLinked: source.referred.first_project_id !== null,
+        rewardAvailable: QUALIFIED_REFERRAL_STATUSES.includes(
+          source.referred.status,
+        ),
+        date: formatReferralDate(source.referred.created_at),
+      }
+    : null;
 
   return {
     code,
     codeActive: Boolean(activeCode?.is_active && code),
-    link: code ? `${site.url}/start-project?ref=${code}` : "",
+    link: code ? buildReferralLink(code) : "",
     totalReferrals: counted.length,
     qualifiedReferrals: qualified.length,
+    programActive,
+    clientDiscountPercent,
+    referrerRewardPercent,
+    minimumProjectAmount:
+      minimumProjectAmount === null ? null : Number(minimumProjectAmount),
+    rewardValidityDays,
     availableRewardPercent,
     availableRewardStatus:
       availableRewardPercent > 0 ? "Available" : "Not available",
-    terms: [
-      `A referred client receives ${REFERRAL_CLIENT_DISCOUNT_PERCENT}% off their first project.`,
-      `You receive a ${REFERRAL_REFERRER_REWARD_PERCENT}% reward on your next project after a referral qualifies.`,
-      "Referral discounts do not stack with other offers.",
-      "Rewards are applied to your next project once a referred client's first project qualifies.",
-    ],
+    totalEarnedRewardPercent,
+    terms,
     history,
+    referredBy: referred,
   };
 }

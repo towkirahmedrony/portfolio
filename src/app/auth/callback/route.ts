@@ -10,6 +10,10 @@ import {
   readAuthReturnFromCookieHeader,
   resolveCallbackReturn,
 } from "@/lib/auth";
+import {
+  PENDING_REFERRAL_COOKIE,
+  readPendingReferralCodeFromCookieHeader,
+} from "@/lib/referral-code";
 import { supabaseAnonKey, supabaseUrl } from "@/lib/supabase/env";
 import type { Database } from "@/types/database";
 
@@ -84,6 +88,16 @@ function applyCookies(
 function clearAuthReturnCookies(response: NextResponse) {
   response.cookies.set(AUTH_RETURN_COOKIE, "", { path: "/", maxAge: 0 });
   response.cookies.set(AUTH_REASON_COOKIE, "", { path: "/", maxAge: 0 });
+  return response;
+}
+
+/**
+ * Clear the captured referral candidate once it has been handed to the
+ * database. Only called on a successful sign-in; a failed callback keeps the
+ * cookie so the code can still be applied on a later retry.
+ */
+function clearPendingReferralCookie(response: NextResponse) {
+  response.cookies.set(PENDING_REFERRAL_COOKIE, "", { path: "/", maxAge: 0 });
   return response;
 }
 
@@ -173,12 +187,28 @@ export async function GET(request: Request) {
       // Session is already established; profile sync retries on the next authenticated request.
     }
 
+    // Apply a referral captured from /signup?ref=... . The database validates
+    // the code (existence, active, expiry, self-referral, program state) and is
+    // idempotent, so repeats and unconfirmed-at-signup flows are both safe.
+    const pendingReferral = readPendingReferralCodeFromCookieHeader(
+      request.headers.get("cookie"),
+    );
+    if (pendingReferral) {
+      try {
+        await supabase.rpc("claim_my_referral", { p_code: pendingReferral });
+      } catch {
+        // Referral bookkeeping must never block sign-in.
+      }
+    }
+
     const destination = isAdminPath(next) ? "/profile" : next;
     const redirect = attachDiag(
       clearAuthReturnCookies(
-        applyCookies(
-          NextResponse.redirect(new URL(destination, requestUrl.origin)),
-          pendingCookies,
+        clearPendingReferralCookie(
+          applyCookies(
+            NextResponse.redirect(new URL(destination, requestUrl.origin)),
+            pendingCookies,
+          ),
         ),
       ),
       requestUrl,

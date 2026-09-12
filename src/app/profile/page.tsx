@@ -33,11 +33,19 @@ export default async function ProfilePage() {
 
   try { await supabase.rpc("sync_customer_session"); } catch {}
 
+  // Both are idempotent, auth.uid()-scoped database functions: the first makes
+  // sure the customer actually owns an active referral code, the second retires
+  // rewards whose validity window has already passed.
+  try { await supabase.rpc("ensure_my_referral_code"); } catch {}
+  try { await supabase.rpc("expire_referral_rewards"); } catch {}
+
   const [
     { data: profileData },
     { data: codeRows },
     { data: referralRows },
     { data: rewardRows },
+    { data: settingsRow },
+    { data: referredRow },
   ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     supabase
@@ -48,15 +56,31 @@ export default async function ProfilePage() {
       .limit(10),
     supabase
       .from("referrals")
-      .select("id, status, referrer_reward_percent, created_at")
+      .select(
+        "id, status, referrer_reward_percent, client_discount_percent, created_at, project_request_id, first_project_id",
+      )
       .eq("referrer_id", user.id)
       .order("created_at", { ascending: false })
       .limit(100),
     supabase
       .from("referral_rewards")
-      .select("id, reward_percent, status, expires_at")
-      .eq("referrer_id", user.id)
-      .eq("status", "available"),
+      .select("id, referral_id, reward_percent, status, expires_at")
+      .eq("referrer_id", user.id),
+    supabase
+      .from("referral_settings")
+      .select(
+        "new_client_discount_percent, referrer_reward_percent, minimum_project_amount, reward_validity_days, is_active",
+      )
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("referrals")
+      .select(
+        "status, client_discount_percent, referrer_reward_percent, created_at, project_request_id, first_project_id",
+      )
+      .eq("referred_client_id", user.id)
+      .maybeSingle(),
   ]);
 
   // The auth lifecycle trigger normally guarantees a profiles row. If it is
@@ -84,7 +108,9 @@ export default async function ProfilePage() {
   const referral = buildCustomerReferral({
     codes: codeRows,
     referrals: referralRows,
-    availableRewards: rewardRows,
+    rewards: rewardRows,
+    settings: settingsRow,
+    referred: referredRow,
   });
   const requestItems = await getCustomerProjectRequests(user.id);
   const quoteAlerts = findQuotesAwaitingClient(requestItems);
