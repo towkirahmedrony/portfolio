@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { supabaseUrl } from "@/lib/supabase/env";
 import type { QuoteStatus } from "@/types/database";
 
 export type ClientQuoteAction = "accept" | "reject" | "request_changes";
@@ -18,6 +19,35 @@ function asString(value: FormDataEntryValue | null): string {
 
 function isClientQuoteAction(value: string): value is ClientQuoteAction {
   return ACTION_VALUES.includes(value as ClientQuoteAction);
+}
+
+async function dispatchProjectConfirmationEmail(
+  projectId: string,
+  accessToken: string,
+): Promise<void> {
+  if (!supabaseUrl || !accessToken) return;
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-email-notification`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ type: "project_confirmed", project_id: projectId }),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      console.error("Project confirmation email was not delivered", {
+        projectId,
+        status: response.status,
+      });
+    }
+  } catch (error) {
+    console.error("Project confirmation email request failed", {
+      projectId,
+      message: error instanceof Error ? error.message : "unknown",
+    });
+  }
 }
 
 function revalidateClientQuote(quoteId: string, projectId?: string | null, requestId?: string | null) {
@@ -135,6 +165,7 @@ export async function respondToOwnQuote(
   if (!context.ok) {
     return { ok: false, error: context.error };
   }
+  const wasAlreadyAccepted = context.quote.status === "accepted";
 
   if (context.quote.status === "sent") {
     await supabase.rpc("client_mark_quote_viewed", {
@@ -163,6 +194,11 @@ export async function respondToOwnQuote(
       .eq("request_id", context.requestId)
       .maybeSingle();
     projectId = createdProject?.id ?? projectId;
+  }
+
+  if (actionRaw === "accept" && !wasAlreadyAccepted && projectId) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    await dispatchProjectConfirmationEmail(projectId, sessionData.session?.access_token ?? "");
   }
 
   revalidateClientQuote(quoteId, projectId, context.requestId);
