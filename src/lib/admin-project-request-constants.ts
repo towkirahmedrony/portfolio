@@ -1,5 +1,6 @@
 import { formatMoney } from "@/lib/quote-money";
 import type { ProjectClient, QueryResult } from "@/lib/admin-project-constants";
+import type { ClientDetails } from "@/lib/admin-client-details";
 import type {
   ProjectRequestRow,
   ProjectRow,
@@ -8,7 +9,7 @@ import type {
 } from "@/types/database";
 
 export { formatDate, formatDateTime } from "@/lib/admin-project-constants";
-export type { QueryResult, ProjectClient };
+export type { QueryResult, ProjectClient, ClientDetails };
 
 export const REQUEST_STATUSES: RequestStatus[] = [
   "draft",
@@ -115,6 +116,13 @@ export type ProjectRequestQuoteSummary = Pick<
 
 export type AdminProjectRequestDetail = ProjectRequestRow & {
   client: ProjectClient | null;
+  /**
+   * Full admin-visible client record for `project_requests.client_id`.
+   * `hasAccount` is false for anonymous submissions with no linked profile,
+   * in which case the request's own submitted contact columns are the only
+   * client data that exists.
+   */
+  clientDetails: ClientDetails;
   serviceName: string | null;
   referralCode: RequestReferralCode | null;
   linkedProject: LinkedProjectSummary | null;

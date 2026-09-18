@@ -1,10 +1,13 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  getAdminClientDetails,
+  toProjectClient,
+} from "@/lib/admin-client-details-server";
+import {
   isRequestStatus,
   type AdminProjectRequestDetail,
   type AdminProjectRequestListItem,
   type LinkedProjectSummary,
-  type ProjectClient,
   type ProjectRequestListFilters,
   type QueryResult,
   type RequestReferralCode,
@@ -121,14 +124,14 @@ export async function getAdminProjectRequest(
 
   // The client, service, referral-code and linked-project lookups are
   // independent of each other — run them concurrently instead of in series.
-  const clientPromise = request.client_id
-    ? supabase
-        .from("profiles")
-        .select("id, full_name, display_name, company_name, avatar_url")
-        .eq("id", request.client_id)
-        .maybeSingle()
-        .then(({ data: profile }) => (profile as ProjectClient | null) ?? null)
-    : Promise.resolve(null);
+  //
+  // A request reaches its client through `project_requests.client_id ->
+  // profiles.id` (FK `project_requests_client_id_fkey`), which is NOT the same
+  // path the project page uses. client_id is nullable: anonymous
+  // /start-project submissions leave it null, and `getAdminClientDetails`
+  // reports that as `hasAccount: false` instead of throwing. It also loads the
+  // trusted auth.users email through the admin-gated RPC.
+  const clientDetailsPromise = getAdminClientDetails(request.client_id);
 
   const servicePromise = request.service_id
     ? supabase
@@ -162,18 +165,20 @@ export async function getAdminProjectRequest(
         (projectRows?.[0] as LinkedProjectSummary | undefined) ?? null,
     );
 
-  const [client, serviceName, referralCode, linkedProject] = await Promise.all([
-    clientPromise,
-    servicePromise,
-    referralPromise,
-    linkedProjectPromise,
-  ]);
+  const [clientDetails, serviceName, referralCode, linkedProject] =
+    await Promise.all([
+      clientDetailsPromise,
+      servicePromise,
+      referralPromise,
+      linkedProjectPromise,
+    ]);
 
   return {
     status: "ok",
     data: {
       ...request,
-      client,
+      client: toProjectClient(clientDetails),
+      clientDetails,
       serviceName,
       referralCode,
       linkedProject,

@@ -6,6 +6,7 @@ import type {
   ProjectRow,
   ProjectStatus,
 } from "@/types/database";
+import type { ClientDetails } from "@/lib/admin-client-details";
 
 export const PROJECT_STATUSES: ProjectStatus[] = [
   "pending",
@@ -75,6 +76,18 @@ export type ProjectClient = Pick<
 
 export type AdminProjectListItem = ProjectRow & {
   client: ProjectClient | null;
+};
+
+/**
+ * Project row for the admin project detail page, hydrated with the full
+ * admin-visible client record (`profiles` + the trusted auth.users email).
+ *
+ * Kept separate from `AdminProjectListItem` so list, kanban, quote, invoice and
+ * payment call sites keep their existing lightweight shape — only the project
+ * detail page pays for the extra client lookup.
+ */
+export type AdminProjectDetail = AdminProjectListItem & {
+  clientDetails: ClientDetails;
 };
 
 export type QueryResult<T> =

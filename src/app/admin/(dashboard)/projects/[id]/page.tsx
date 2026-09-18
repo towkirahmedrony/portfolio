@@ -25,7 +25,7 @@ import {
   getPriorityStyle,
   getStatusStyle,
   isProjectDetailTab,
-  type AdminProjectListItem,
+  type AdminProjectDetail,
   type ProjectDetailTab,
   type QueryResult,
 } from "@/lib/admin-projects";
@@ -72,8 +72,8 @@ async function loadTabContent(tab: string, projectId: string): Promise<ReactNode
 }
 
 function renderProjectShell(
-  projectResult: QueryResult<AdminProjectListItem>,
-  content: (project: AdminProjectListItem) => ReactNode,
+  projectResult: QueryResult<AdminProjectDetail>,
+  content: (project: AdminProjectDetail) => ReactNode,
   activeTab: ProjectDetailTab,
 ) {
   if (projectResult.status === "empty") {

@@ -21,7 +21,7 @@ import {
   getQuoteStatusStyle,
   quoteFromRequestBlockedReason,
 } from "@/lib/admin-quote-constants";
-import { clientDisplayName } from "@/lib/admin-project-constants";
+import { ClientDetailsCard } from "@/components/admin/clients/client-details-card";
 import { formatMoney } from "@/lib/admin-dashboard";
 
 const fieldClass =
@@ -67,30 +67,33 @@ export function ProjectRequestDetail({
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <div className="space-y-6">
-        <AdminPanel title="Client information">
-          <dl className="grid gap-4 text-sm sm:grid-cols-2">
-            <DetailItem label="Name" value={request.full_name} />
-            <DetailItem label="Email" value={request.email} />
-            <DetailItem label="Phone" value={request.phone} />
-            <DetailItem label="Company" value={request.company_name} />
-            <div>
-              <dt className="text-muted">Linked profile</dt>
-              <dd className="text-foreground">
-                {request.client && request.client_id ? (
-                  <Link
-                    href={`/admin/clients/${request.client_id}`}
-                    className="hover:underline"
-                  >
-                    {clientDisplayName(request.client)}
-                  </Link>
-                ) : (
-                  "Anonymous submission"
-                )}
-              </dd>
-            </div>
-            <DetailItem label="Service" value={request.serviceName} />
-          </dl>
-        </AdminPanel>
+        {/*
+          Dedicated client section, separated from the request fields below.
+          A request reaches its client through project_requests.client_id ->
+          profiles.id (nullable: anonymous submissions have no client_id), so
+          the card is handed the request's own submitted contact values as a
+          clearly-labelled, non-authoritative fallback.
+        */}
+        <ClientDetailsCard
+          details={request.clientDetails}
+          submitted={{
+            name: request.full_name,
+            email: request.email,
+            phone: request.phone,
+            company: request.company_name,
+          }}
+          description="Client account record for the profile linked to this request: profiles (1:1 with auth.users) plus the trusted account email read server-side from auth.users."
+          actions={
+            request.linkedProject ? (
+              <Link
+                href={`/admin/projects/${request.linkedProject.id}`}
+                className="rounded-xl border border-card-border px-3 py-2 text-sm font-medium text-foreground"
+              >
+                Open project
+              </Link>
+            ) : null
+          }
+        />
 
         <AdminPanel title="Project requirements">
           <dl className="grid gap-4 text-sm sm:grid-cols-2">
@@ -319,6 +322,7 @@ export function ProjectRequestDetail({
 
         <AdminPanel title="Source and timestamps">
           <dl className="grid gap-4 text-sm">
+            <DetailItem label="Service" value={request.serviceName} />
             <DetailItem label="Source" value={request.source} />
             <DetailItem label="Submitted" value={formatDateTime(request.submitted_at)} />
             <DetailItem label="Updated" value={formatDateTime(request.updated_at)} />

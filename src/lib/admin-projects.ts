@@ -1,9 +1,14 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formatMoney } from "@/lib/admin-dashboard";
 import {
+  getAdminClientDetails,
+  toProjectClient,
+} from "@/lib/admin-client-details-server";
+import {
   isProjectPriority,
   isProjectSortField,
   isProjectStatus,
+  type AdminProjectDetail,
   type AdminProjectListItem,
   type ProjectClient,
   type ProjectListFilters,
@@ -155,7 +160,19 @@ export async function getAdminProjects(
   return toQueryResult(items, null, "projects", items.length === 0);
 }
 
-export async function getAdminProject(id: string): Promise<QueryResult<AdminProjectListItem>> {
+/**
+ * Project header row for the detail page.
+ *
+ * The client side of the relationship is `projects.client_id -> profiles.id`
+ * (FK `projects_client_id_fkey`), and profiles.id is 1:1 with auth.users.id —
+ * verified against the live production schema. `getAdminClientDetails` runs the
+ * profiles read and the admin-gated auth.users email RPC concurrently, so the
+ * added client fields cost the same round-trip count as the single profiles
+ * query this replaces.
+ */
+export async function getAdminProject(
+  id: string,
+): Promise<QueryResult<AdminProjectDetail>> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("projects")
@@ -167,7 +184,7 @@ export async function getAdminProject(id: string): Promise<QueryResult<AdminProj
 
   if (error) {
     return toQueryResult(
-      null as unknown as AdminProjectListItem,
+      null as unknown as AdminProjectDetail,
       error,
       "projects",
       true,
@@ -175,21 +192,18 @@ export async function getAdminProject(id: string): Promise<QueryResult<AdminProj
   }
 
   if (!data) {
-    return { status: "empty", data: null as unknown as AdminProjectListItem };
+    return { status: "empty", data: null as unknown as AdminProjectDetail };
   }
 
   const project = data as ProjectRow;
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, full_name, display_name, company_name, avatar_url")
-    .eq("id", project.client_id)
-    .maybeSingle();
+  const clientDetails = await getAdminClientDetails(project.client_id);
 
   return {
     status: "ok",
     data: {
       ...project,
-      client: profile ?? null,
+      client: toProjectClient(clientDetails),
+      clientDetails,
     },
   };
 }
