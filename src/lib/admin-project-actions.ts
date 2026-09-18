@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/require-admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { supabaseUrl } from "@/lib/supabase/env";
 import {
   isFileCategory,
   isMilestoneStatus,
@@ -51,26 +50,6 @@ function revalidateProject(projectId: string) {
   revalidatePath(`/admin/projects/${projectId}`);
 }
 
-async function dispatchProjectStatusEmail(
-  projectId: string,
-  previousStatus: string,
-  newStatus: string,
-  accessToken: string,
-): Promise<void> {
-  if (!supabaseUrl || !accessToken || previousStatus === newStatus) return;
-  try {
-    const response = await fetch(`${supabaseUrl}/functions/v1/send-email-notification`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "project_status_changed", project_id: projectId, previous_status: previousStatus, new_status: newStatus }),
-      cache: "no-store",
-    });
-    if (!response.ok) console.error("Project status email was not delivered", { projectId, status: response.status });
-  } catch (error) {
-    console.error("Project status email request failed", { projectId, message: error instanceof Error ? error.message : "unknown" });
-  }
-}
-
 export async function updateProjectOverview(formData: FormData): Promise<ActionResult> {
   await requireAdmin();
   const projectId = asString(formData.get("projectId"));
@@ -99,12 +78,6 @@ export async function updateProjectOverview(formData: FormData): Promise<ActionR
   const status = statusRaw as ProjectStatus;
   const priority = priorityRaw as ProjectPriority;
   const supabase = await createServerSupabaseClient();
-  const { data: previousProject } = await supabase
-    .from("projects")
-    .select("status")
-    .eq("id", projectId)
-    .maybeSingle();
-  const previousStatus = previousProject?.status ?? null;
   const completedAt = status === "completed" ? new Date().toISOString() : null;
   const cancelledAt = status === "cancelled" ? new Date().toISOString() : null;
 
@@ -126,11 +99,6 @@ export async function updateProjectOverview(formData: FormData): Promise<ActionR
 
   if (error) {
     return { ok: false, error: error.message };
-  }
-
-  if (previousStatus && previousStatus !== status) {
-    const { data: sessionData } = await supabase.auth.getSession();
-    await dispatchProjectStatusEmail(projectId, previousStatus, status, sessionData.session?.access_token ?? "");
   }
 
   revalidateProject(projectId);
