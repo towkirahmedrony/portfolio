@@ -55,6 +55,7 @@ import {
   saveProjectRequestDraft,
 } from "@/lib/project-request-draft";
 import { updateOwnProjectRequest } from "@/lib/customer-project-request-actions";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import {
   deleteOwnProjectRequestFile,
   uploadProjectRequestFile,
@@ -190,6 +191,9 @@ function ProjectRequestFormInner({
 
   const [step, setStep] = useState<ProjectRequestStep>(initial.step);
   const [data, setData] = useState<ProjectRequest>(initial.data);
+  const [showBackupEmail, setShowBackupEmail] = useState(
+    Boolean(String(initial.data.backup_email ?? "").trim()),
+  );
   const [errors, setErrors] = useState<ProjectRequestErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -217,6 +221,41 @@ function ProjectRequestFormInner({
     step: initial.step,
     serviceId: resolvedServiceId,
   });
+
+  useEffect(() => {
+    if (isEdit || initialContact) return;
+    let active = true;
+    const supabase = createBrowserSupabaseClient();
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!active || !user) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, backup_email")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (!active) return;
+      const name =
+        profile?.full_name?.trim() ||
+        String(user.user_metadata?.full_name ?? user.user_metadata?.name ?? "");
+      const email = user.email?.trim() ?? "";
+      const backupEmail = profile?.backup_email?.trim() ?? "";
+      setData((current) => {
+        const next = { ...current };
+        if ("full_name" in next) next.full_name = name;
+        else if ("fullName" in next) next.fullName = name;
+        if ("email" in next) next.email = email;
+        next.backup_email = backupEmail;
+        return next;
+      });
+      setShowBackupEmail(Boolean(backupEmail));
+    })();
+    return () => {
+      active = false;
+    };
+  }, [initialContact, isEdit]);
 
   useEffect(() => {
     persistRef.current = {
@@ -662,6 +701,7 @@ function ProjectRequestFormInner({
       values.backup_email = initialContact.backupEmail;
     }
     setData(values);
+    setShowBackupEmail(Boolean(String(values.backup_email ?? "").trim()));
     setErrors({});
     setStep(1);
     setSubmitted(false);
@@ -712,6 +752,12 @@ function ProjectRequestFormInner({
   }
 
   const current = config.steps[step - 1];
+  const nameFieldKey = config.fields.find((field) =>
+    ["full_name", "fullName"].includes(field.fieldKey),
+  )?.fieldKey;
+  const primaryEmailFieldKey = config.fields.find(
+    (field) => field.fieldKey === "email",
+  )?.fieldKey;
 
   return (
     <>
@@ -741,9 +787,33 @@ function ProjectRequestFormInner({
                   <p className="text-sm font-medium text-foreground">Contact details</p>
                   <p className="mt-1 text-xs text-muted">Your name is editable. Primary Email is your trusted account email.</p>
                 </div>
-                <Field id="backup_email" label="Backup Email" hint="Optional alternate contact email" error={errors.backup_email}>
-                  <TextInput id="backup_email" name="backup_email" type="email" autoComplete="email" value={String(data.backup_email ?? "")} onChange={(event) => updateField("backup_email", event.target.value)} placeholder="you@example.com" error={errors.backup_email} />
-                </Field>
+                {nameFieldKey ? (
+                  <Field id={nameFieldKey} label="Name" error={errors[nameFieldKey]}>
+                    <TextInput id={nameFieldKey} name={nameFieldKey} autoComplete="name" value={String(data[nameFieldKey] ?? "")} onChange={(event) => updateField(nameFieldKey, event.target.value)} error={errors[nameFieldKey]} />
+                  </Field>
+                ) : null}
+                {primaryEmailFieldKey ? (
+                  <Field id={primaryEmailFieldKey} label="Primary Email" hint="From your authenticated account">
+                    <TextInput id={primaryEmailFieldKey} name={primaryEmailFieldKey} type="email" autoComplete="email" readOnly value={String(data[primaryEmailFieldKey] ?? "")} />
+                  </Field>
+                ) : null}
+                <div className="sm:col-span-2">
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-foreground underline decoration-card-border underline-offset-4 hover:decoration-foreground"
+                    onClick={() => setShowBackupEmail((current) => !current)}
+                    aria-expanded={showBackupEmail}
+                  >
+                    {showBackupEmail ? "Remove backup email" : "+ Add backup email"}
+                  </button>
+                  <div className={cn("grid transition-[grid-template-rows,opacity] duration-300", showBackupEmail ? "mt-5 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
+                    <div className="min-h-0 overflow-hidden">
+                      <Field id="backup_email" label="Backup Email (optional)" hint="An alternate contact email" error={errors.backup_email}>
+                        <TextInput id="backup_email" name="backup_email" type="email" autoComplete="email" value={String(data.backup_email ?? "")} onChange={(event) => updateField("backup_email", event.target.value)} placeholder="you@example.com" error={errors.backup_email} />
+                      </Field>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : null}
             <StepFields
@@ -752,6 +822,7 @@ function ProjectRequestFormInner({
               data={data}
               errors={errors}
               onChange={updateField}
+              excludeFieldKeys={[nameFieldKey, primaryEmailFieldKey].filter((key): key is string => Boolean(key))}
               renderFieldControl={(field) => {
                 if (field.inputType !== "file" || !isFieldVisible(field, data)) {
                   return null;

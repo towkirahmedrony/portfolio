@@ -17,6 +17,7 @@ type Props = {
   onChange: (fieldKey: string, value: string | string[]) => void;
   extra?: ReactNode;
   renderFieldControl?: (field: OrderFormFieldConfig) => ReactNode;
+  excludeFieldKeys?: string[];
 };
 
 export function StepFields({
@@ -27,8 +28,12 @@ export function StepFields({
   onChange,
   extra,
   renderFieldControl,
+  excludeFieldKeys = [],
 }: Props) {
-  const visible = step.fields.filter((field) => isFieldVisible(field, data));
+  const excluded = new Set(excludeFieldKeys);
+  const visible = step.fields.filter(
+    (field) => !excluded.has(field.fieldKey) && isFieldVisible(field, data),
+  );
   const nestedIds = new Set<string>();
   const nestedByParent = new Map<string, OrderFormFieldConfig[]>();
 

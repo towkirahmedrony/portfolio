@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ProjectRequestForm } from "@/components/project-request/project-request-form";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   ContentStateMessage,
   OrderFormSkeleton,
@@ -34,22 +33,6 @@ async function StartProjectForm({
 }) {
   const params = await searchParams;
   const { referralCode, serviceParam } = parseStartProjectSearchParams(params);
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data: profile } = user
-    ? await supabase
-        .from("profiles")
-        .select("full_name, backup_email")
-        .eq("id", user.id)
-        .maybeSingle()
-    : { data: null };
-  const initialContact = user
-    ? {
-        name: profile?.full_name?.trim() || String(user.user_metadata?.full_name ?? user.user_metadata?.name ?? ""),
-        email: user.email?.trim() ?? "",
-        backupEmail: profile?.backup_email?.trim() ?? "",
-      }
-    : null;
   const [configResult, serviceId] = await Promise.all([
     getOrderFormConfig(),
     resolveServiceId(serviceParam),
@@ -61,7 +44,6 @@ async function StartProjectForm({
         config={configResult.data}
         serviceId={serviceId}
         initialReferralCode={referralCode}
-        initialContact={initialContact}
       />
     );
   }
