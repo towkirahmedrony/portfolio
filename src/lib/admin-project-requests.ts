@@ -17,7 +17,7 @@ import type { ProjectRequestRow, ServiceRow } from "@/types/database";
 export * from "@/lib/admin-project-request-constants";
 
 const REQUEST_COLUMNS =
-  "id, request_number, client_id, full_name, email, phone, company_name, project_type, website_status, page_count, description, required_features, has_design, figma_url, reference_urls, design_style, has_logo, has_brand_colors, brand_colors, budget_min, budget_max, budget_currency, deadline_type, deadline_date, referral_code_entered, referral_code_id, source, status, service_id, form_snapshot, submitted_at, updated_at";
+  "id, request_number, client_id, full_name, email, backup_email, phone, company_name, project_type, website_status, page_count, description, required_features, has_design, figma_url, reference_urls, design_style, has_logo, has_brand_colors, brand_colors, budget_min, budget_max, budget_currency, deadline_type, deadline_date, referral_code_entered, referral_code_id, source, status, service_id, form_snapshot, submitted_at, updated_at";
 
 function isMissingRelation(error: { message?: string; code?: string } | null): boolean {
   if (!error) {

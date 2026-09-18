@@ -149,6 +149,18 @@ export async function updateOwnProjectRequest(
     config,
     serviceId,
   );
+  if (!user.email?.trim()) {
+    return { ok: false, error: "Your account does not have a primary email address." };
+  }
+  payload.email = user.email.trim();
+  const backupEmail = typeof payload.backup_email === "string" ? payload.backup_email : null;
+  const { error: profileUpdateError } = await supabase
+    .from("profiles")
+    .update({ backup_email: backupEmail })
+    .eq("id", user.id);
+  if (profileUpdateError) {
+    return { ok: false, error: "Could not save your backup email. Please try again." };
+  }
 
   const { error } = await supabase.rpc("update_own_project_request", {
     p_request_id: trimmedId,

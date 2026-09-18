@@ -26,6 +26,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const COLUMN_ALIASES: Record<string, string[]> = {
   full_name: ["full_name", "fullName"],
   email: ["email"],
+  backup_email: ["backup_email"],
   phone: ["phone"],
   company_name: ["company_name", "company"],
   referral_code_entered: ["referral_code_entered", "referral_code", "referralCode"],
@@ -438,6 +439,17 @@ export function validateProjectRequest(
     data,
     phoneField ? [phoneField.fieldKey] : COLUMN_ALIASES.phone,
   );
+  const primaryEmail = firstString(data, COLUMN_ALIASES.email);
+  const backupEmail = firstString(data, COLUMN_ALIASES.backup_email);
+  if (backupEmail && !EMAIL_PATTERN.test(backupEmail.trim())) {
+    errors.backup_email = "Please enter a valid backup email address.";
+  } else if (
+    backupEmail &&
+    primaryEmail &&
+    backupEmail.trim().toLowerCase() === primaryEmail.trim().toLowerCase()
+  ) {
+    errors.backup_email = "Backup email must be different from primary email.";
+  }
   if (isBlank(phoneValue)) {
     errors[phoneField?.fieldKey ?? "phone"] =
       phoneField ? requiredMessage({ ...phoneField, required: true }) : "Please enter your phone number.";
@@ -475,7 +487,12 @@ export function firstInvalidStep(
     (step, stepIndex) =>
       !step.isReview && stepHasErrors(errors, stepIndex + 1, config),
   );
-  return index >= 0 ? index + 1 : null;
+  if (index >= 0) return index + 1;
+  if (errors.backup_email) {
+    const firstFormStep = config.steps.findIndex((step) => !step.isReview);
+    return firstFormStep >= 0 ? firstFormStep + 1 : null;
+  }
+  return null;
 }
 
 export function formatFeatureList(
@@ -668,6 +685,7 @@ export function toProjectRequestInsert(
     request_number: requestNumber,
     full_name: firstString(data, COLUMN_ALIASES.full_name).trim(),
     email: firstString(data, COLUMN_ALIASES.email).trim(),
+    backup_email: emptyToNull(firstString(data, COLUMN_ALIASES.backup_email)),
     phone: emptyToNull(firstString(data, COLUMN_ALIASES.phone)),
     company_name: emptyToNull(firstString(data, COLUMN_ALIASES.company_name)),
     project_type: emptyToNull(firstString(data, COLUMN_ALIASES.project_type)),
@@ -799,6 +817,7 @@ export function projectRequestToFormData(
 
   assignAliases(COLUMN_ALIASES.full_name, request.full_name ?? "");
   assignAliases(COLUMN_ALIASES.email, request.email ?? "");
+  assignAliases(COLUMN_ALIASES.backup_email, request.backup_email ?? "");
   assignAliases(COLUMN_ALIASES.phone, request.phone ?? "");
   assignAliases(COLUMN_ALIASES.company_name, request.company_name ?? "");
   assignAliases(
@@ -858,6 +877,7 @@ export function toClientProjectRequestPayload(
   return {
     full_name: insert.full_name,
     email: insert.email,
+    backup_email: insert.backup_email ?? null,
     phone: insert.phone ?? null,
     company_name: insert.company_name ?? null,
     project_type: insert.project_type ?? null,

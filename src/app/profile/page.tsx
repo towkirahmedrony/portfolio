@@ -93,6 +93,7 @@ export default async function ProfilePage() {
     full_name: String(meta.full_name ?? meta.name ?? email.split("@")[0] ?? ""),
     display_name: meta.display_name ?? null,
     avatar_url: meta.avatar_url ?? meta.picture ?? null,
+    backup_email: null,
     phone: null,
     company_name: null,
     job_title: null,

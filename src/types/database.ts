@@ -930,6 +930,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          backup_email: string | null
           company_name: string | null
           created_at: string
           display_name: string | null
@@ -945,6 +946,7 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          backup_email?: string | null
           company_name?: string | null
           created_at?: string
           display_name?: string | null
@@ -960,6 +962,7 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          backup_email?: string | null
           company_name?: string | null
           created_at?: string
           display_name?: string | null
@@ -1254,6 +1257,7 @@ export type Database = {
       project_requests: {
         Row: {
           assigned_to: string | null
+          backup_email: string | null
           brand_colors: string | null
           budget_currency: string | null
           budget_max: number | null
@@ -1293,6 +1297,7 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          backup_email?: string | null
           brand_colors?: string | null
           budget_currency?: string | null
           budget_max?: number | null
@@ -1332,6 +1337,7 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          backup_email?: string | null
           brand_colors?: string | null
           budget_currency?: string | null
           budget_max?: number | null

@@ -195,6 +195,7 @@ export function OrderFormFieldControl({
           autoCapitalize={referral ? "characters" : undefined}
           spellCheck={referral ? false : undefined}
           value={getStringValue(data, field.fieldKey)}
+          readOnly={field.fieldKey === "email"}
           onChange={(event) => onChange(field.fieldKey, event.target.value)}
           onBlur={
             referral

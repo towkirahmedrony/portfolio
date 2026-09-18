@@ -95,6 +95,13 @@ export function ProjectRequestDetail({
           }
         />
 
+        <AdminPanel title="Contact">
+          <dl className="grid gap-4 text-sm sm:grid-cols-2">
+            <DetailItem label="Primary Email" value={request.email} />
+            <DetailItem label="Backup Email" value={request.backup_email} />
+          </dl>
+        </AdminPanel>
+
         <AdminPanel title="Project requirements">
           <dl className="grid gap-4 text-sm sm:grid-cols-2">
             <DetailItem label="Project type" value={displaySlug(request.project_type)} />

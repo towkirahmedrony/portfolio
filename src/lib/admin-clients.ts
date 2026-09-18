@@ -25,7 +25,7 @@ import type {
 export * from "@/lib/admin-client-constants";
 
 export const CLIENT_LIST_COLUMNS =
-  "id, full_name, display_name, avatar_url, phone, company_name, job_title, role, status, email_verified, created_at, updated_at, last_seen_at";
+  "id, full_name, display_name, avatar_url, backup_email, phone, company_name, job_title, role, status, email_verified, created_at, updated_at, last_seen_at";
 
 export type ClientProjectSummaryRow = Pick<
   ProjectRow,

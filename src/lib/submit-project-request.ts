@@ -52,6 +52,11 @@ export async function submitProjectRequest(
     };
   }
 
+  const trustedEmail = user.email?.trim() ?? "";
+  if (!trustedEmail) {
+    return { ok: false, error: "Your account does not have a primary email address." };
+  }
+
   const errors = validateProjectRequest(data, config);
   if (Object.keys(errors).length > 0) {
     return {
@@ -66,6 +71,17 @@ export async function submitProjectRequest(
     config,
     serviceId,
   );
+  payload.client_id = user.id;
+  payload.email = trustedEmail;
+  payload.backup_email = payload.backup_email ?? null;
+
+  const { error: profileUpdateError } = await supabase
+    .from("profiles")
+    .update({ backup_email: payload.backup_email })
+    .eq("id", user.id);
+  if (profileUpdateError) {
+    return { ok: false, error: "Could not save your backup email. Please try again." };
+  }
 
   if (!payload.phone || payload.phone.trim().length === 0) {
     return {

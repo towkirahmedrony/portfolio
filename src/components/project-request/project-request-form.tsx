@@ -13,6 +13,7 @@ import {
 import { useRouter } from "next/navigation";
 import { PlaceOrderAuthModal } from "@/components/auth/place-order-auth-modal";
 import { Button } from "@/components/ui/button";
+import { Field, TextInput } from "@/components/ui/form-field";
 import {
   ProjectRequestFileUploadField,
   type PendingProjectRequestFile,
@@ -83,6 +84,11 @@ type Props = {
   resubmit?: boolean;
   initialFiles?: ProjectRequestFileSummary[];
   currentUserId?: string | null;
+  initialContact?: {
+    name: string;
+    email: string;
+    backupEmail: string;
+  } | null;
 };
 
 function subscribeNever() {
@@ -128,6 +134,7 @@ function ProjectRequestFormInner({
   resubmit = false,
   initialFiles = [],
   currentUserId = null,
+  initialContact = null,
 }: Props) {
   const router = useRouter();
   const formId = useId();
@@ -136,6 +143,15 @@ function ProjectRequestFormInner({
   const isEdit = mode === "edit" && Boolean(requestId);
   const initial = useMemo(() => {
     const values = emptyValues(config, initialReferralCode);
+    const applyContact = (input: ProjectRequest): ProjectRequest => {
+      if (!initialContact) return input;
+      const next = { ...input };
+      if ("full_name" in next) next.full_name = initialContact.name;
+      else if ("fullName" in next) next.fullName = initialContact.name;
+      if ("email" in next) next.email = initialContact.email;
+      next.backup_email = initialContact.backupEmail;
+      return next;
+    };
     if (isEdit) {
       return {
         data: initialData ? mergeProjectRequestDraft(values, initialData) : values,
@@ -153,7 +169,7 @@ function ProjectRequestFormInner({
       (draft.serviceId && serviceId && draft.serviceId !== serviceId)
     ) {
       return {
-        data: values,
+        data: applyContact(values),
         step: 1 as ProjectRequestStep,
         serviceId,
         notice: null as string | null,
@@ -162,7 +178,7 @@ function ProjectRequestFormInner({
 
     const step = Math.min(Math.max(draft.step, 1), Math.max(totalSteps, 1));
     return {
-      data: mergeProjectRequestDraft(values, draft.data),
+      data: applyContact(mergeProjectRequestDraft(values, draft.data)),
       step: step as ProjectRequestStep,
       serviceId: draft.serviceId ?? serviceId,
       notice:
@@ -170,7 +186,7 @@ function ProjectRequestFormInner({
           ? "Your previous answers were restored. Review them, then submit to place the order."
           : null,
     };
-  }, [config, hasSteps, initialData, initialReferralCode, isEdit, resubmit, serviceId, totalSteps]);
+  }, [config, hasSteps, initialContact, initialData, initialReferralCode, isEdit, resubmit, serviceId, totalSteps]);
 
   const [step, setStep] = useState<ProjectRequestStep>(initial.step);
   const [data, setData] = useState<ProjectRequest>(initial.data);
@@ -639,6 +655,12 @@ function ProjectRequestFormInner({
     skipPersistRef.current = true;
     clearProjectRequestDraft();
     const values = emptyValues(config, initialReferralCode);
+    if (initialContact) {
+      if ("full_name" in values) values.full_name = initialContact.name;
+      else if ("fullName" in values) values.fullName = initialContact.name;
+      if ("email" in values) values.email = initialContact.email;
+      values.backup_email = initialContact.backupEmail;
+    }
     setData(values);
     setErrors({});
     setStep(1);
@@ -712,6 +734,18 @@ function ProjectRequestFormInner({
               filesStep={filesStep}
             />
           ) : current ? (
+            <>
+            {step === 1 ? (
+              <div className="mb-8 grid gap-5 rounded-2xl border border-card-border bg-background/40 p-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <p className="text-sm font-medium text-foreground">Contact details</p>
+                  <p className="mt-1 text-xs text-muted">Your name is editable. Primary Email is your trusted account email.</p>
+                </div>
+                <Field id="backup_email" label="Backup Email" hint="Optional alternate contact email" error={errors.backup_email}>
+                  <TextInput id="backup_email" name="backup_email" type="email" autoComplete="email" value={String(data.backup_email ?? "")} onChange={(event) => updateField("backup_email", event.target.value)} placeholder="you@example.com" error={errors.backup_email} />
+                </Field>
+              </div>
+            ) : null}
             <StepFields
               step={current}
               config={config}
@@ -746,6 +780,7 @@ function ProjectRequestFormInner({
                 );
               }}
             />
+            </>
           ) : null}
         </div>
 
