@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import {
   buildProjectRequestsHref,
   formatRequestStatusLabel,
@@ -17,16 +17,40 @@ export function ProjectRequestsToolbar({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const activeStatus = filters.status && filters.status !== "all" ? filters.status : "all";
+  const urlQuery = filters.q ?? "";
+  const [query, setQuery] = useState(urlQuery);
+  const [syncedQuery, setSyncedQuery] = useState(urlQuery);
 
-  function update(next: Partial<ProjectRequestListFilters>) {
-    startTransition(() => {
-      router.push(buildProjectRequestsHref({ ...filters, ...next }));
-    });
+  if (urlQuery !== syncedQuery) {
+    setSyncedQuery(urlQuery);
+    setQuery(urlQuery);
   }
+
+  const update = useCallback(
+    (next: Partial<ProjectRequestListFilters>) => {
+      const merged: ProjectRequestListFilters = { ...filters, ...next };
+      delete merged.page;
+      startTransition(() => {
+        router.push(buildProjectRequestsHref(merged));
+      });
+    },
+    [filters, router],
+  );
+
+  useEffect(() => {
+    const next = query.trim();
+    if (next === urlQuery.trim()) {
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      update({ q: next });
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [query, urlQuery, update]);
 
   return (
     <form
-      className="mb-6 grid gap-3 rounded-3xl border border-card-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-6"
+      className="mb-6 grid gap-3 rounded-3xl border border-card-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_12rem_11rem_auto]"
       onSubmit={(event) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
@@ -39,13 +63,15 @@ export function ProjectRequestsToolbar({
     >
       <input
         name="q"
-        defaultValue={filters.q ?? ""}
-        placeholder="Search number, name, email, or project type"
-        className="rounded-xl border border-card-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent lg:col-span-2"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search by request ID, client, email..."
+        className="rounded-xl border border-card-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent sm:col-span-2 lg:col-span-1"
       />
       <select
         name="status"
-        defaultValue={activeStatus}
+        value={activeStatus}
+        onChange={(event) => update({ status: event.target.value })}
         className="rounded-xl border border-card-border bg-background px-3 py-2 text-sm text-foreground"
       >
         <option value="all">All statuses</option>
@@ -57,19 +83,35 @@ export function ProjectRequestsToolbar({
       </select>
       <select
         name="dir"
-        defaultValue={filters.dir ?? "desc"}
+        value={filters.dir ?? "desc"}
+        onChange={(event) => update({ dir: event.target.value })}
         className="rounded-xl border border-card-border bg-background px-3 py-2 text-sm text-foreground"
       >
         <option value="desc">Newest first</option>
         <option value="asc">Oldest first</option>
       </select>
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-xl bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60"
-      >
-        Apply
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={pending}
+          className="flex-1 rounded-xl bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60"
+        >
+          Apply
+        </button>
+        {filters.q || (filters.status && filters.status !== "all") ? (
+          <button
+            type="button"
+            onClick={() =>
+              startTransition(() => {
+                router.push(buildProjectRequestsHref({ dir: filters.dir }));
+              })
+            }
+            className="rounded-xl border border-card-border px-3 py-2 text-sm font-medium text-muted hover:text-foreground"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
     </form>
   );
 }

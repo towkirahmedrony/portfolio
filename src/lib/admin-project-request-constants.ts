@@ -8,7 +8,7 @@ import type {
   RequestStatus,
 } from "@/types/database";
 
-export { formatDate, formatDateTime } from "@/lib/admin-project-constants";
+export { formatDate, formatDateTime, listClientName } from "@/lib/admin-project-constants";
 export type { QueryResult, ProjectClient, ClientDetails };
 
 export const REQUEST_STATUSES: RequestStatus[] = [
@@ -90,10 +90,13 @@ export const REQUEST_STATUS_STYLES: Record<RequestStatus, string> = {
 
 export const CONVERTIBLE_REQUEST_STATUS: RequestStatus = "quoted";
 
+export const PROJECT_REQUEST_LIST_PAGE_SIZE = 25;
+
 export type ProjectRequestListFilters = {
   q?: string;
   status?: string;
   dir?: string;
+  page?: string;
 };
 
 export type LinkedProjectSummary = Pick<
@@ -107,7 +110,18 @@ export type RequestReferralCode = {
   is_active: boolean;
 };
 
-export type AdminProjectRequestListItem = ProjectRequestRow;
+export type AdminProjectRequestListItem = ProjectRequestRow & {
+  client: ProjectClient | null;
+  linkedProject: LinkedProjectSummary | null;
+};
+
+export type AdminProjectRequestListData = {
+  items: AdminProjectRequestListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
 
 export type ProjectRequestQuoteSummary = Pick<
   QuoteRow,
@@ -232,6 +246,7 @@ export function buildProjectRequestsHref(
   if (filters.q) params.set("q", filters.q);
   if (filters.status && filters.status !== "all") params.set("status", filters.status);
   if (filters.dir && filters.dir !== "desc") params.set("dir", filters.dir);
+  if (filters.page && filters.page !== "1") params.set("page", filters.page);
   const query = params.toString();
   return query ? `/admin/project-requests?${query}` : "/admin/project-requests";
 }

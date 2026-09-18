@@ -1,12 +1,12 @@
 import Link from "next/link";
 import {
-  clientDisplayName,
   formatDate,
   formatPriorityLabel,
   formatProjectBudget,
   formatStatusLabel,
   getPriorityStyle,
   getStatusStyle,
+  listClientName,
   PROJECT_STATUSES,
   type AdminProjectListItem,
 } from "@/lib/admin-projects";
@@ -40,11 +40,13 @@ export function ProjectsKanban({ projects }: { projects: AdminProjectListItem[] 
                     href={`/admin/projects/${project.id}`}
                     className="rounded-2xl border border-card-border bg-background p-3 transition-colors hover:border-foreground/20"
                   >
-                    <p className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+                    <p className="text-sm font-medium text-foreground">{project.title}</p>
+                    <p className="mt-1 font-mono text-[11px] tracking-wider text-muted uppercase">
                       {project.project_number}
                     </p>
-                    <p className="mt-1 text-sm font-medium text-foreground">{project.title}</p>
-                    <p className="mt-1 text-xs text-muted">{clientDisplayName(project.client)}</p>
+                    <p className="mt-1 text-xs text-muted">
+                      Client: {listClientName(project.client)}
+                    </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <StatusPill
                         label={formatPriorityLabel(project.priority)}

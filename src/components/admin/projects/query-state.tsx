@@ -1,17 +1,28 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type { QueryResult } from "@/lib/admin-project-constants";
 
 export function QueryStateNotice({
   result,
   emptyMessage,
+  clearHref,
 }: {
   result: Extract<QueryResult<unknown>, { status: "error" | "unavailable" | "empty" }>;
   emptyMessage?: string;
+  clearHref?: string;
 }) {
   if (result.status === "empty") {
     return (
       <div className="rounded-3xl border border-dashed border-card-border bg-card p-6 text-sm text-muted">
-        {emptyMessage ?? "Nothing to show yet."}
+        <p>{emptyMessage ?? "Nothing to show yet."}</p>
+        {clearHref ? (
+          <Link
+            href={clearHref}
+            className="mt-3 inline-block rounded-xl border border-card-border px-3 py-2 text-sm font-medium text-foreground hover:border-foreground"
+          >
+            Clear search/filters
+          </Link>
+        ) : null}
       </div>
     );
   }

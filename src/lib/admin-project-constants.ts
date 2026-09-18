@@ -60,6 +60,8 @@ export const PROJECT_SORT_FIELDS = [
 export type ProjectSortField = (typeof PROJECT_SORT_FIELDS)[number];
 export type ProjectListView = "list" | "kanban";
 
+export const PROJECT_LIST_PAGE_SIZE = 25;
+
 export type ProjectListFilters = {
   q?: string;
   status?: string;
@@ -67,6 +69,7 @@ export type ProjectListFilters = {
   sort?: string;
   dir?: string;
   view?: string;
+  page?: string;
 };
 
 export type ProjectClient = Pick<
@@ -76,6 +79,14 @@ export type ProjectClient = Pick<
 
 export type AdminProjectListItem = ProjectRow & {
   client: ProjectClient | null;
+};
+
+export type AdminProjectListData = {
+  items: AdminProjectListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };
 
 /**
@@ -270,6 +281,16 @@ export function clientDisplayName(client: ProjectClient | null): string {
   return client.display_name?.trim() || client.full_name.trim() || "Unknown client";
 }
 
+export function listClientName(
+  client: ProjectClient | null,
+  fallback?: string | null,
+): string {
+  const fromClient =
+    client?.display_name?.trim() || client?.full_name?.trim() || "";
+  const fromFallback = fallback?.trim() || "";
+  return fromClient || fromFallback || "—";
+}
+
 export function asStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
@@ -304,6 +325,7 @@ export function buildProjectsHref(filters: ProjectListFilters): string {
   if (filters.sort && filters.sort !== "created_at") params.set("sort", filters.sort);
   if (filters.dir && filters.dir !== "desc") params.set("dir", filters.dir);
   if (filters.view && filters.view !== "list") params.set("view", filters.view);
+  if (filters.page && filters.page !== "1") params.set("page", filters.page);
   const query = params.toString();
   return query ? `/admin/projects?${query}` : "/admin/projects";
 }

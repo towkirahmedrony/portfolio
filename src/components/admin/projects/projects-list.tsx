@@ -1,12 +1,12 @@
 import Link from "next/link";
 import {
-  clientDisplayName,
   formatDate,
   formatPriorityLabel,
   formatProjectBudget,
   formatStatusLabel,
   getPriorityStyle,
   getStatusStyle,
+  listClientName,
   type AdminProjectListItem,
 } from "@/lib/admin-projects";
 import { StatusPill } from "@/components/admin/projects/query-state";
@@ -18,7 +18,6 @@ export function ProjectsListTable({ projects }: { projects: AdminProjectListItem
         <thead className="border-b border-card-border text-xs uppercase tracking-wide text-muted">
           <tr>
             <th className="px-4 py-3">Project</th>
-            <th className="px-4 py-3">Title</th>
             <th className="px-4 py-3">Client</th>
             <th className="px-4 py-3">Status</th>
             <th className="px-4 py-3">Priority</th>
@@ -38,12 +37,16 @@ export function ProjectsListTable({ projects }: { projects: AdminProjectListItem
                   href={`/admin/projects/${project.id}`}
                   className="font-medium text-foreground hover:underline"
                 >
-                  {project.project_number}
+                  {project.title}
                 </Link>
+                <div className="mt-0.5 font-mono text-xs text-muted">
+                  {project.project_number}
+                </div>
               </td>
-              <td className="px-4 py-3 text-foreground">{project.title}</td>
               <td className="px-4 py-3">
-                <div className="text-foreground">{clientDisplayName(project.client)}</div>
+                <div className="text-foreground">
+                  Client: {listClientName(project.client)}
+                </div>
                 {project.client?.company_name ? (
                   <div className="text-xs text-muted">{project.client.company_name}</div>
                 ) : null}

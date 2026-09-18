@@ -4,15 +4,18 @@ import {
   toProjectClient,
 } from "@/lib/admin-client-details-server";
 import {
+  PROJECT_REQUEST_LIST_PAGE_SIZE,
   isRequestStatus,
   type AdminProjectRequestDetail,
+  type AdminProjectRequestListData,
   type AdminProjectRequestListItem,
   type LinkedProjectSummary,
+  type ProjectClient,
   type ProjectRequestListFilters,
   type QueryResult,
   type RequestReferralCode,
 } from "@/lib/admin-project-request-constants";
-import type { ProjectRequestRow, ServiceRow } from "@/types/database";
+import type { ProjectRequestRow, ProjectRow, ServiceRow } from "@/types/database";
 
 export * from "@/lib/admin-project-request-constants";
 
@@ -61,37 +64,193 @@ function escapeSearch(value: string): string {
   return value.replace(/[%_,()]/g, " ").trim();
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+const EMPTY_REQUEST_LIST: AdminProjectRequestListData = {
+  items: [],
+  total: 0,
+  page: 1,
+  pageSize: PROJECT_REQUEST_LIST_PAGE_SIZE,
+  totalPages: 1,
+};
+
 export async function getAdminProjectRequests(
   filters: ProjectRequestListFilters,
-): Promise<QueryResult<AdminProjectRequestListItem[]>> {
+): Promise<QueryResult<AdminProjectRequestListData>> {
   const supabase = await createServerSupabaseClient();
   const search = escapeSearch(filters.q ?? "");
   const status = filters.status && isRequestStatus(filters.status) ? filters.status : null;
   const ascending = filters.dir === "asc";
+  const requestedPage = Math.max(1, Number.parseInt(filters.page ?? "1", 10) || 1);
+
+  let searchOr: string | null = null;
+
+  if (search) {
+    const [matchedClients, matchedProjects] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id")
+        .or(
+          [
+            `full_name.ilike.%${search}%`,
+            `display_name.ilike.%${search}%`,
+            `company_name.ilike.%${search}%`,
+            `phone.ilike.%${search}%`,
+            `backup_email.ilike.%${search}%`,
+          ].join(","),
+        ),
+      supabase
+        .from("projects")
+        .select("id, request_id")
+        .or(
+          [
+            `project_number.ilike.%${search}%`,
+            `title.ilike.%${search}%`,
+            ...(isUuid(search) ? [`id.eq.${search}`] : []),
+          ].join(","),
+        ),
+    ]);
+
+    const clientIds = (matchedClients.data ?? []).map((row) => row.id);
+    const linkedRequestIds = (matchedProjects.data ?? [])
+      .map((row) => row.request_id)
+      .filter((id): id is string => Boolean(id));
+
+    const searchFilter = [
+      `request_number.ilike.%${search}%`,
+      `full_name.ilike.%${search}%`,
+      `email.ilike.%${search}%`,
+      `backup_email.ilike.%${search}%`,
+      `phone.ilike.%${search}%`,
+      `company_name.ilike.%${search}%`,
+      `project_type.ilike.%${search}%`,
+      `description.ilike.%${search}%`,
+    ];
+
+    if (isUuid(search)) {
+      searchFilter.push(`id.eq.${search}`);
+    }
+    if (clientIds.length > 0) {
+      searchFilter.push(`client_id.in.(${clientIds.join(",")})`);
+    }
+    if (linkedRequestIds.length > 0) {
+      searchFilter.push(`id.in.(${linkedRequestIds.join(",")})`);
+    }
+
+    searchOr = searchFilter.join(",");
+  }
 
   let query = supabase
     .from("project_requests")
-    .select(REQUEST_COLUMNS)
+    .select(REQUEST_COLUMNS, { count: "exact" })
     .order("submitted_at", { ascending, nullsFirst: false });
 
   if (status) {
     query = query.eq("status", status);
   }
-
-  if (search) {
-    query = query.or(
-      [
-        `request_number.ilike.%${search}%`,
-        `full_name.ilike.%${search}%`,
-        `email.ilike.%${search}%`,
-        `project_type.ilike.%${search}%`,
-      ].join(","),
-    );
+  if (searchOr) {
+    query = query.or(searchOr);
   }
 
-  const { data, error } = await query;
-  const rows = (data ?? []) as ProjectRequestRow[];
-  return toQueryResult(rows, error, "project_requests", rows.length === 0);
+  const from = (requestedPage - 1) * PROJECT_REQUEST_LIST_PAGE_SIZE;
+  const to = from + PROJECT_REQUEST_LIST_PAGE_SIZE - 1;
+  const { data, error, count } = await query.range(from, to);
+
+  if (error) {
+    return toQueryResult(EMPTY_REQUEST_LIST, error, "project_requests", true);
+  }
+
+  const total = count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PROJECT_REQUEST_LIST_PAGE_SIZE));
+  let page = Math.min(requestedPage, totalPages);
+  let rows = (data ?? []) as ProjectRequestRow[];
+
+  if (requestedPage > totalPages && total > 0) {
+    const clampedFrom = (totalPages - 1) * PROJECT_REQUEST_LIST_PAGE_SIZE;
+    const clampedTo = clampedFrom + PROJECT_REQUEST_LIST_PAGE_SIZE - 1;
+    let clampedQuery = supabase
+      .from("project_requests")
+      .select(REQUEST_COLUMNS)
+      .order("submitted_at", { ascending, nullsFirst: false });
+    if (status) {
+      clampedQuery = clampedQuery.eq("status", status);
+    }
+    if (searchOr) {
+      clampedQuery = clampedQuery.or(searchOr);
+    }
+    const { data: clampedData, error: clampedError } = await clampedQuery.range(
+      clampedFrom,
+      clampedTo,
+    );
+    if (clampedError) {
+      return toQueryResult(EMPTY_REQUEST_LIST, clampedError, "project_requests", true);
+    }
+    rows = (clampedData ?? []) as ProjectRequestRow[];
+    page = totalPages;
+  }
+
+  const uniqueClientIds = [
+    ...new Set(rows.map((row) => row.client_id).filter((id): id is string => Boolean(id))),
+  ];
+  const requestIds = rows.map((row) => row.id);
+  const clients = new Map<string, ProjectClient>();
+  const linkedProjects = new Map<string, LinkedProjectSummary>();
+
+  const [profilesResult, projectsResult] = await Promise.all([
+    uniqueClientIds.length > 0
+      ? supabase
+          .from("profiles")
+          .select("id, full_name, display_name, company_name, avatar_url")
+          .in("id", uniqueClientIds)
+      : Promise.resolve({ data: [] as ProjectClient[] }),
+    requestIds.length > 0
+      ? supabase
+          .from("projects")
+          .select("id, project_number, title, status, request_id, created_at")
+          .in("request_id", requestIds)
+      : Promise.resolve({ data: [] as (Pick<ProjectRow, "id" | "project_number" | "title" | "status" | "request_id" | "created_at">)[] }),
+  ]);
+
+  for (const profile of profilesResult.data ?? []) {
+    clients.set(profile.id, profile);
+  }
+
+  const projectRows = (projectsResult.data ?? []) as (LinkedProjectSummary & {
+    request_id: string | null;
+    created_at: string;
+  })[];
+  projectRows.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  for (const project of projectRows) {
+    if (project.request_id && !linkedProjects.has(project.request_id)) {
+      linkedProjects.set(project.request_id, {
+        id: project.id,
+        project_number: project.project_number,
+        title: project.title,
+        status: project.status,
+      });
+    }
+  }
+
+  const items: AdminProjectRequestListItem[] = rows.map((row) => ({
+    ...row,
+    client: row.client_id ? clients.get(row.client_id) ?? null : null,
+    linkedProject: linkedProjects.get(row.id) ?? null,
+  }));
+
+  return {
+    status: items.length === 0 && total === 0 ? "empty" : "ok",
+    data: {
+      items,
+      total,
+      page,
+      pageSize: PROJECT_REQUEST_LIST_PAGE_SIZE,
+      totalPages,
+    },
+  };
 }
 
 export async function getAdminProjectRequest(
