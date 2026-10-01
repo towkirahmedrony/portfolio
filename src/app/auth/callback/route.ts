@@ -115,6 +115,23 @@ export async function GET(request: Request) {
     requestUrl.searchParams.get("error_description") ??
     requestUrl.searchParams.get("error");
 
+  function redirectToVerify(email: string) {
+    const verifyUrl = new URL("/verify-email", requestUrl.origin);
+    if (email) {
+      verifyUrl.searchParams.set("email", email);
+    }
+    verifyUrl.searchParams.set("next", next);
+    if (placeOrder) {
+      verifyUrl.searchParams.set("reason", PLACE_ORDER_AUTH_REASON);
+    }
+    return attachDiag(
+      clearAuthReturnCookies(NextResponse.redirect(verifyUrl)),
+      requestUrl,
+      request.headers.get("cookie"),
+      { oauthError, code, tokenHash, type, next, placeOrder },
+    );
+  }
+
   function redirectToLogin(error: "oauth" | "verification") {
     const loginUrl = new URL("/login", requestUrl.origin);
     loginUrl.searchParams.set("error", error);
@@ -164,21 +181,41 @@ export async function GET(request: Request) {
       },
     });
 
+    let authUserEmail: string | null = null;
+    let authUserConfirmed = true;
+
     if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) {
         return redirectToLogin("verification");
       }
+      authUserEmail = data.user?.email ?? null;
+      authUserConfirmed = Boolean(
+        data.user?.email_confirmed_at ?? data.user?.confirmed_at,
+      );
     } else if (tokenHash && isEmailOtpType(type)) {
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         type,
         token_hash: tokenHash,
       });
       if (error) {
         return redirectToLogin("verification");
       }
+      authUserEmail = data.user?.email ?? null;
+      authUserConfirmed = Boolean(
+        data.user?.email_confirmed_at ?? data.user?.confirmed_at,
+      );
     } else {
       return redirectToLogin("verification");
+    }
+
+    // A confirmation link only mints a session for a confirmed address, and
+    // OAuth sign-ins are provider-confirmed. Assert it explicitly anyway so an
+    // unverified account can never continue as authenticated; if it is somehow
+    // unconfirmed, the visitor lands on /verify-email (which itself forwards an
+    // already-confirmed session to the intended destination).
+    if (!authUserConfirmed) {
+      return redirectToVerify(authUserEmail ?? "");
     }
 
     try {

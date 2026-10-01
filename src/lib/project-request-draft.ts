@@ -2,6 +2,14 @@ import type { ProjectRequest, ProjectRequestValue } from "@/types/project-reques
 
 export const PROJECT_REQUEST_DRAFT_KEY = "start-project-draft";
 export const PROJECT_REQUEST_FOCUS_SUBMIT_KEY = "start-project-focus-submit";
+/**
+ * Cross-tab copy of the draft. sessionStorage is per-tab, so an email
+ * verification link that opens in a new tab would otherwise restore an empty
+ * order. This mirror (localStorage) lets the same order survive the auth round
+ * trip; it is cleared on submit/reset and expires on its own.
+ */
+const PROJECT_REQUEST_DRAFT_MIRROR_KEY = "start-project-draft-mirror";
+const DRAFT_MIRROR_MAX_AGE_MS = 1000 * 60 * 60 * 24;
 const DRAFT_VERSION = 1;
 const MAX_DRAFT_BYTES = 180_000;
 
@@ -80,10 +88,30 @@ export function loadProjectRequestDraft(): ProjectRequestDraft | null {
 
   try {
     const raw = window.sessionStorage.getItem(PROJECT_REQUEST_DRAFT_KEY);
-    if (!raw) {
+    if (raw) {
+      const parsed = parseDraft(raw);
+      if (parsed) {
+        return parsed;
+      }
+    }
+  } catch {
+    // Fall through to the cross-tab mirror.
+  }
+
+  try {
+    const mirrored = window.localStorage.getItem(PROJECT_REQUEST_DRAFT_MIRROR_KEY);
+    if (!mirrored) {
       return null;
     }
-    return parseDraft(raw);
+    const parsed = parseDraft(mirrored);
+    if (!parsed) {
+      return null;
+    }
+    if (Date.now() - parsed.savedAt > DRAFT_MIRROR_MAX_AGE_MS) {
+      window.localStorage.removeItem(PROJECT_REQUEST_DRAFT_MIRROR_KEY);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -112,6 +140,13 @@ export function saveProjectRequestDraft(input: {
       return false;
     }
     window.sessionStorage.setItem(PROJECT_REQUEST_DRAFT_KEY, serialized);
+    // Best-effort mirror so the order survives the email-verification / OAuth
+    // round trip even when it completes in a different tab.
+    try {
+      window.localStorage.setItem(PROJECT_REQUEST_DRAFT_MIRROR_KEY, serialized);
+    } catch {
+      // Private browsing or a full quota: sessionStorage already succeeded.
+    }
     return true;
   } catch {
     return false;
@@ -125,6 +160,12 @@ export function clearProjectRequestDraft(): void {
 
   try {
     window.sessionStorage.removeItem(PROJECT_REQUEST_DRAFT_KEY);
+  } catch {
+    // Ignore storage access errors; the order has already been created.
+  }
+
+  try {
+    window.localStorage.removeItem(PROJECT_REQUEST_DRAFT_MIRROR_KEY);
   } catch {
     // Ignore storage access errors; the order has already been created.
   }

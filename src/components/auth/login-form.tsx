@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ import { Field, TextInput } from "@/components/ui/form-field";
 import {
   getAuthPageHref,
   getPathnameFromNext,
+  getVerifyEmailHref,
+  isEmailNotConfirmedError,
   isPlaceOrderAuthReason,
   isValidEmail,
   persistAuthReturnTo,
@@ -45,6 +47,7 @@ export function LoginPanel({
   onSwitchToSignup,
   onBeforeOAuth,
 }: LoginPanelProps) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<LoginErrors>({});
@@ -98,6 +101,25 @@ export function LoginPanel({
       });
 
       if (error) {
+        // A correct password on an unverified account is not a failed login —
+        // it needs the email confirmed. Route to the verification state where
+        // the link can be resent, keeping the intended destination.
+        if (isEmailNotConfirmedError(error)) {
+          persistAuthReturnTo(
+            destination,
+            placeOrder ? PLACE_ORDER_AUTH_REASON : null,
+          );
+          setSubmitting(false);
+          router.push(
+            getVerifyEmailHref(
+              email.trim(),
+              destination,
+              placeOrder ? PLACE_ORDER_AUTH_REASON : null,
+            ),
+          );
+          return;
+        }
+
         setFormError("Could not log in. Check your email and password.");
         setSubmitting(false);
         return;

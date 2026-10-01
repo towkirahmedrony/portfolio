@@ -10,6 +10,7 @@ import {
   getAuthPageHref,
   getEmailRedirectTo,
   getPathnameFromNext,
+  getVerifyEmailHref,
   isPlaceOrderAuthReason,
   isValidEmail,
   persistAuthReturnTo,
@@ -173,30 +174,41 @@ export function SignupPanel({
         return;
       }
 
-      // Email confirmation is disabled for this project, so a successful
-      // signUp returns an active session immediately. The session — not the
-      // user's email_confirmed_at flag — is the success signal, which is what
-      // lets a new email/password account continue straight into the app with
-      // no verification step.
+      // When email confirmation is required, Supabase creates the user and
+      // emails a verification link but returns NO session here. That is the
+      // correct, secure outcome: we must never sign in with the password to
+      // fabricate a verified session — that attempt fails with "Email not
+      // confirmed" and is exactly what made email/password sign-up dead-end
+      // before. Send the visitor to the check-your-email state instead, with
+      // the intended destination carried along.
       if (!data.session) {
-        // Safety net for a project where signUp completes without returning the
-        // session inline (for example when email confirmation is still on):
-        // establish one with the credentials just registered. This is a real
-        // password sign-in, not a verification bypass, so it fails honestly
-        // when the account genuinely cannot sign in yet.
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+        // With confirmation on, Supabase returns an obfuscated user (empty
+        // `identities`) when the address is already registered and sends no
+        // email, so we must not claim an email was sent.
+        const alreadyRegistered =
+          Array.isArray(data.user?.identities) &&
+          data.user.identities.length === 0;
 
-        if (signInError) {
-          console.error("Supabase post-signup sign-in error:", signInError);
+        if (alreadyRegistered) {
           setFormError(
-            "Could not complete sign-up. Please try logging in instead.",
+            "An account with this email already exists. Log in instead, or reset your password.",
           );
           setSubmitting(false);
           return;
         }
+
+        persistAuthReturnTo(
+          destination,
+          placeOrder ? PLACE_ORDER_AUTH_REASON : null,
+        );
+        router.push(
+          getVerifyEmailHref(
+            email.trim(),
+            destination,
+            placeOrder ? PLACE_ORDER_AUTH_REASON : null,
+          ),
+        );
+        return;
       }
 
       try {

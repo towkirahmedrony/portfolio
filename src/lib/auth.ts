@@ -203,6 +203,47 @@ export function getEmailRedirectTo(
   return getAuthCallbackUrl(origin, nextPath, reason);
 }
 
+/**
+ * Build the in-app "check your email" page href. The destination is always run
+ * through `resolvePostAuthRedirect` first (which calls `getSafeNextPath`), so a
+ * tampered `next` cannot survive as an external or unknown route.
+ */
+export function getVerifyEmailHref(
+  email: string,
+  nextPath: string,
+  reason?: string | null,
+): string {
+  const destination = resolvePostAuthRedirect({ next: nextPath, reason });
+  const params = new URLSearchParams();
+  const safeEmail = email.trim();
+  if (safeEmail) {
+    params.set("email", safeEmail);
+  }
+  params.set("next", destination);
+  if (isPlaceOrderAuthReason(reason) || isPlaceOrderNextPath(destination)) {
+    params.set("reason", PLACE_ORDER_AUTH_REASON);
+  }
+  return `/verify-email?${params.toString()}`;
+}
+
+/**
+ * True when Supabase rejected an email/password sign-in because the address has
+ * not been confirmed yet. Matches the stable error code first, then falls back
+ * to the human-readable message for provider/version differences.
+ */
+export function isEmailNotConfirmedError(
+  error: { code?: string | null; message?: string | null } | null | undefined,
+): boolean {
+  if (!error) {
+    return false;
+  }
+  if (error.code === "email_not_confirmed") {
+    return true;
+  }
+  const message = (error.message ?? "").toLowerCase();
+  return message.includes("email not confirmed");
+}
+
 function cookieAttributeString(): string {
   const secure =
     typeof window !== "undefined" && window.location.protocol === "https:";
