@@ -181,21 +181,6 @@ export function getAdminLoginRedirectPath(nextPath: string): string {
   return `/admin/login?next=${encodeURIComponent(getSafeAdminNextPath(nextPath))}`;
 }
 
-export function isEmailNotConfirmedError(error: {
-  code?: string;
-  message?: string;
-} | null): boolean {
-  if (!error) {
-    return false;
-  }
-
-  if (error.code === "email_not_confirmed") {
-    return true;
-  }
-
-  return (error.message ?? "").toLowerCase().includes("email not confirmed");
-}
-
 export function getAuthCallbackUrl(
   origin: string,
   nextPath: string,

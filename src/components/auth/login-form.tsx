@@ -9,7 +9,6 @@ import { Field, TextInput } from "@/components/ui/form-field";
 import {
   getAuthPageHref,
   getPathnameFromNext,
-  isEmailNotConfirmedError,
   isPlaceOrderAuthReason,
   isValidEmail,
   persistAuthReturnTo,
@@ -31,7 +30,6 @@ export type LoginPanelProps = {
   embedded?: boolean;
   idPrefix?: string;
   initialError?: string | null;
-  initialNotice?: string | null;
   onSuccess?: () => void;
   onSwitchToSignup?: () => void;
   onBeforeOAuth?: () => void;
@@ -43,7 +41,6 @@ export function LoginPanel({
   embedded = false,
   idPrefix = "",
   initialError = null,
-  initialNotice = null,
   onSuccess,
   onSwitchToSignup,
   onBeforeOAuth,
@@ -52,7 +49,6 @@ export function LoginPanel({
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<LoginErrors>({});
   const [formError, setFormError] = useState<string | null>(initialError);
-  const [notice, setNotice] = useState<string | null>(initialNotice);
   const [submitting, setSubmitting] = useState(false);
   const destination = resolvePostAuthRedirect({
     next: nextPath,
@@ -80,7 +76,6 @@ export function LoginPanel({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
-    setNotice(null);
 
     const nextErrors = validate();
     if (Object.keys(nextErrors).length > 0) {
@@ -103,11 +98,7 @@ export function LoginPanel({
       });
 
       if (error) {
-        setFormError(
-          isEmailNotConfirmedError(error)
-            ? "Please verify your email before logging in. Check your inbox for the verification link."
-            : "Could not log in. Check your email and password.",
-        );
+        setFormError("Could not log in. Check your email and password.");
         setSubmitting(false);
         return;
       }
@@ -191,11 +182,6 @@ export function LoginPanel({
           {formError}
         </p>
       ) : null}
-      {notice ? (
-        <p className="mt-6 text-sm text-muted" role="status">
-          {notice}
-        </p>
-      ) : null}
 
       <Button type="submit" className="mt-8 w-full" disabled={submitting}>
         {submitting ? "Logging in…" : "Log in"}
@@ -249,17 +235,14 @@ function LoginFormFields() {
     error === "oauth"
       ? "Could not complete Google or GitHub sign-in. Please try again."
       : error === "verification"
-        ? "Could not verify your email. Request a new verification link by signing up again, or contact support."
+        ? "Could not complete sign-in. Please try again."
         : null;
-  const initialNotice =
-    searchParams.get("verified") === "1" ? "Email verified. You can log in." : null;
 
   return (
     <LoginPanel
       nextPath={destination}
       placeOrder={placeOrder}
       initialError={initialError}
-      initialNotice={initialNotice}
     />
   );
 }

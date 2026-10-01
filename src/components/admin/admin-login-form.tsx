@@ -6,11 +6,7 @@ import { Suspense, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, TextInput } from "@/components/ui/form-field";
 import { decideAdminAccess } from "@/lib/admin-access";
-import {
-  getSafeAdminNextPath,
-  isEmailNotConfirmedError,
-  isValidEmail,
-} from "@/lib/auth";
+import { getSafeAdminNextPath, isValidEmail } from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
@@ -70,11 +66,7 @@ function AdminLoginFormFields() {
       });
 
       if (error || !authData.user) {
-        setFormError(
-          isEmailNotConfirmedError(error)
-            ? "Please verify your email before logging in."
-            : "Could not log in. Check your email and password.",
-        );
+        setFormError("Could not log in. Check your email and password.");
         setSubmitting(false);
         return;
       }

@@ -22,7 +22,6 @@ import {
   normalizeReferralCode,
   readPendingReferralCode,
   readReferralCodeParam,
-  withReferralParam,
   writePendingReferralCode,
 } from "@/lib/referral-code";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
@@ -50,7 +49,6 @@ export type SignupPanelProps = {
   onSuccess?: () => void;
   onSwitchToLogin?: () => void;
   onBeforeOAuth?: () => void;
-  onVerificationPending?: () => void;
 };
 
 export function SignupPanel({
@@ -62,7 +60,6 @@ export function SignupPanel({
   onSuccess,
   onSwitchToLogin,
   onBeforeOAuth,
-  onVerificationPending,
 }: SignupPanelProps) {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
@@ -71,7 +68,6 @@ export function SignupPanel({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errors, setErrors] = useState<SignupErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const destination = resolvePostAuthRedirect({
     next: nextPath,
@@ -126,7 +122,6 @@ export function SignupPanel({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
-    setNotice(null);
 
     const nextErrors = validate();
     if (Object.keys(nextErrors).length > 0) {
@@ -178,55 +173,66 @@ export function SignupPanel({
         return;
       }
 
-      const emailConfirmed = Boolean(data.user?.email_confirmed_at);
+      // Email confirmation is disabled for this project, so a successful
+      // signUp returns an active session immediately. The session — not the
+      // user's email_confirmed_at flag — is the success signal, which is what
+      // lets a new email/password account continue straight into the app with
+      // no verification step.
+      if (!data.session) {
+        // Safety net for a project where signUp completes without returning the
+        // session inline (for example when email confirmation is still on):
+        // establish one with the credentials just registered. This is a real
+        // password sign-in, not a verification bypass, so it fails honestly
+        // when the account genuinely cannot sign in yet.
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
 
-      if (data.session && emailConfirmed) {
-        try {
-          await supabase.rpc("sync_customer_session");
-        } catch (rpcErr) {
-          console.error("RPC error during signup:", rpcErr);
-        }
-
-        // The signup trigger already applies the referral from the auth
-        // metadata. This call is an idempotent safety net for the case where
-        // that metadata never reached the trigger; the database decides whether
-        // the code is usable, so the result is never trusted here.
-        if (hasReferralCode) {
-          try {
-            const { error: claimError } = await supabase.rpc(
-              "claim_my_referral",
-              { p_code: pendingReferralCode },
-            );
-            if (!claimError) {
-              clearPendingReferralCode();
-            }
-          } catch (rpcErr) {
-            console.error("Referral claim error during signup:", rpcErr);
-          }
-        }
-
-        if (onSuccess) {
-          onSuccess();
+        if (signInError) {
+          console.error("Supabase post-signup sign-in error:", signInError);
+          setFormError(
+            "Could not complete sign-up. Please try logging in instead.",
+          );
+          setSubmitting(false);
           return;
         }
-        persistAuthReturnTo(
-          destination,
-          placeOrder ? PLACE_ORDER_AUTH_REASON : null,
-        );
-        router.push(destination);
-        router.refresh();
+      }
+
+      try {
+        await supabase.rpc("sync_customer_session");
+      } catch (rpcErr) {
+        console.error("RPC error during signup:", rpcErr);
+      }
+
+      // The signup trigger already applies the referral from the auth
+      // metadata. This call is an idempotent safety net for the case where
+      // that metadata never reached the trigger; the database decides whether
+      // the code is usable, so the result is never trusted here.
+      if (hasReferralCode) {
+        try {
+          const { error: claimError } = await supabase.rpc(
+            "claim_my_referral",
+            { p_code: pendingReferralCode },
+          );
+          if (!claimError) {
+            clearPendingReferralCode();
+          }
+        } catch (rpcErr) {
+          console.error("Referral claim error during signup:", rpcErr);
+        }
+      }
+
+      if (onSuccess) {
+        onSuccess();
         return;
       }
-
-      if (data.session && !emailConfirmed) {
-        await supabase.auth.signOut();
-      }
-
-      onVerificationPending?.();
-      setNotice(
-        "Check your email to verify your account. You can log in after verification.",
+      persistAuthReturnTo(
+        destination,
+        placeOrder ? PLACE_ORDER_AUTH_REASON : null,
       );
-      setSubmitting(false);
+      router.push(destination);
+      router.refresh();
     } catch (err: unknown) {
       console.error("Unexpected signup error:", err);
       const message =
@@ -335,39 +341,6 @@ export function SignupPanel({
           {formError}
         </p>
       ) : null}
-      {notice ? (
-        <p className="mt-6 text-sm text-muted" role="status">
-          {notice}{" "}
-          {onSwitchToLogin ? (
-            <button
-              type="button"
-              className="font-medium text-accent hover:text-accent-hover"
-              onClick={onSwitchToLogin}
-            >
-              Go to login
-            </button>
-          ) : (
-            <Link
-              href={withReferralParam(
-                getAuthPageHref(
-                  "/login",
-                  destination,
-                  placeOrder ? "place-order" : null,
-                ),
-                normalizedReferralCode,
-              )}
-              className="font-medium text-accent hover:text-accent-hover"
-            >
-              Go to login
-            </Link>
-          )}
-        </p>
-      ) : (
-        <p className="mt-6 text-sm text-muted">
-          Email and password accounts require email verification before you can
-          log in.
-        </p>
-      )}
 
       <Button type="submit" className="mt-8 w-full" disabled={submitting}>
         {submitting ? "Creating account…" : "Sign up"}
