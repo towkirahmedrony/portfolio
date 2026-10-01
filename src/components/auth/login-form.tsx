@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Button } from "@/components/ui/button";
-import { Field, TextInput } from "@/components/ui/form-field";
+import { Field, PasswordInput, TextInput } from "@/components/ui/form-field";
 import {
   getAuthPageHref,
   getPathnameFromNext,
@@ -177,10 +177,9 @@ export function LoginPanel({
           />
         </Field>
         <Field id={passwordId} label="Password" required error={errors.password}>
-          <TextInput
+          <PasswordInput
             id={passwordId}
             name="password"
-            type="password"
             autoComplete="current-password"
             value={password}
             onChange={(event) => {

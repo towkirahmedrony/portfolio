@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { Field, TextInput } from "@/components/ui/form-field";
+import { Field, PasswordInput, TextInput } from "@/components/ui/form-field";
 import { decideAdminAccess } from "@/lib/admin-access";
 import { getSafeAdminNextPath, isValidEmail } from "@/lib/auth";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
@@ -136,10 +136,9 @@ function AdminLoginFormFields() {
           />
         </Field>
         <Field id="admin-password" label="Password" required error={errors.password}>
-          <TextInput
+          <PasswordInput
             id="admin-password"
             name="password"
-            type="password"
             autoComplete="current-password"
             value={password}
             onChange={(event) => {
