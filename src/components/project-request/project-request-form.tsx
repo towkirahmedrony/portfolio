@@ -66,6 +66,10 @@ import {
   type ProjectRequestFileSummary,
 } from "@/lib/project-request-files";
 import { submitProjectRequest } from "@/lib/submit-project-request";
+import {
+  MAX_PROJECT_NOTIFICATION_RECIPIENTS,
+  normalizeProjectNotificationEmails,
+} from "@/lib/project-notification-recipients";
 import { cn } from "@/lib/utils";
 import type {
   OrderFormConfig,
@@ -150,7 +154,9 @@ function ProjectRequestFormInner({
       if ("full_name" in next) next.full_name = initialContact.name;
       else if ("fullName" in next) next.fullName = initialContact.name;
       if ("email" in next) next.email = initialContact.email;
-      next.backup_email = initialContact.backupEmail;
+      next.backup_emails = initialContact.backupEmail
+        ? [initialContact.backupEmail]
+        : [];
       return next;
     };
     if (isEdit) {
@@ -192,7 +198,7 @@ function ProjectRequestFormInner({
   const [step, setStep] = useState<ProjectRequestStep>(initial.step);
   const [data, setData] = useState<ProjectRequest>(initial.data);
   const [showBackupEmail, setShowBackupEmail] = useState(
-    Boolean(String(initial.data.backup_email ?? "").trim()),
+    normalizeProjectNotificationEmails(initial.data.backup_emails ?? initial.data.backup_email).length > 0,
   );
   const [errors, setErrors] = useState<ProjectRequestErrors>({});
   const [submitting, setSubmitting] = useState(false);
@@ -247,7 +253,7 @@ function ProjectRequestFormInner({
         if ("full_name" in next) next.full_name = name;
         else if ("fullName" in next) next.fullName = name;
         if ("email" in next) next.email = email;
-        next.backup_email = backupEmail;
+        next.backup_emails = backupEmail ? [backupEmail] : [];
         return next;
       });
       setShowBackupEmail(Boolean(backupEmail));
@@ -510,6 +516,28 @@ function ProjectRequestFormInner({
     setAuthNotice(null);
   }
 
+  function backupEmails(): string[] {
+    const value = data.backup_emails ?? data.backup_email ?? [];
+    return Array.isArray(value) ? value : [String(value)];
+  }
+
+  function updateBackupEmail(index: number, value: string) {
+    const next = [...backupEmails()];
+    next[index] = value;
+    updateField("backup_emails", next);
+  }
+
+  function addBackupEmail() {
+    const current = backupEmails();
+    if (current.length >= MAX_PROJECT_NOTIFICATION_RECIPIENTS) return;
+    updateField("backup_emails", [...current, ""]);
+    setShowBackupEmail(true);
+  }
+
+  function removeBackupEmail(index: number) {
+    updateField("backup_emails", backupEmails().filter((_, itemIndex) => itemIndex !== index));
+  }
+
   function goToStep(next: ProjectRequestStep) {
     if (!hasSteps) {
       return;
@@ -698,10 +726,12 @@ function ProjectRequestFormInner({
       if ("full_name" in values) values.full_name = initialContact.name;
       else if ("fullName" in values) values.fullName = initialContact.name;
       if ("email" in values) values.email = initialContact.email;
-      values.backup_email = initialContact.backupEmail;
+      values.backup_emails = initialContact.backupEmail
+        ? [initialContact.backupEmail]
+        : [];
     }
     setData(values);
-    setShowBackupEmail(Boolean(String(values.backup_email ?? "").trim()));
+    setShowBackupEmail(normalizeProjectNotificationEmails(values.backup_emails).length > 0);
     setErrors({});
     setStep(1);
     setSubmitted(false);
@@ -801,16 +831,64 @@ function ProjectRequestFormInner({
                   <button
                     type="button"
                     className="text-sm font-medium text-foreground underline decoration-card-border underline-offset-4 hover:decoration-foreground"
-                    onClick={() => setShowBackupEmail((current) => !current)}
+                    onClick={() => {
+                      if (showBackupEmail) {
+                        updateField("backup_emails", []);
+                      } else {
+                        addBackupEmail();
+                      }
+                      setShowBackupEmail((current) => !current);
+                    }}
                     aria-expanded={showBackupEmail}
                   >
-                    {showBackupEmail ? "Remove backup email" : "+ Add backup email"}
+                    {showBackupEmail ? "Remove team emails" : "+ Add team emails"}
                   </button>
                   <div className={cn("grid transition-[grid-template-rows,opacity] duration-300", showBackupEmail ? "mt-5 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
                     <div className="min-h-0 overflow-hidden">
-                      <Field id="backup_email" label="Backup Email (optional)" hint="An alternate contact email" error={errors.backup_email}>
-                        <TextInput id="backup_email" name="backup_email" type="email" autoComplete="email" value={String(data.backup_email ?? "")} onChange={(event) => updateField("backup_email", event.target.value)} placeholder="you@example.com" error={errors.backup_email} />
-                      </Field>
+                      <div className="rounded-2xl border border-card-border bg-card/60 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Team notification emails</p>
+                            <p className="mt-1 text-xs text-muted">Receive project status updates at these addresses.</p>
+                          </div>
+                          <span className="shrink-0 text-xs text-muted">
+                            {normalizeProjectNotificationEmails(data.backup_emails).length} / {MAX_PROJECT_NOTIFICATION_RECIPIENTS}
+                          </span>
+                        </div>
+                        <div className="mt-4 grid gap-3">
+                          {(backupEmails().length > 0 ? backupEmails() : [""]).map((email, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <TextInput
+                                id={`backup_email_${index}`}
+                                name="backup_emails"
+                                type="email"
+                                autoComplete="email"
+                                value={email}
+                                onChange={(event) => updateBackupEmail(index, event.target.value)}
+                                placeholder="team@example.com"
+                                error={errors.backup_emails}
+                              />
+                              <button
+                                type="button"
+                                className="shrink-0 rounded-lg border border-card-border px-2.5 py-2 text-xs text-muted hover:border-foreground/30 hover:text-foreground"
+                                onClick={() => removeBackupEmail(index)}
+                                aria-label={`Remove team email ${index + 1}`}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        {errors.backup_emails ? <p className="mt-2 text-xs text-red-600">{errors.backup_emails}</p> : null}
+                        <button
+                          type="button"
+                          className="mt-3 text-sm font-medium text-foreground underline decoration-card-border underline-offset-4 hover:decoration-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={addBackupEmail}
+                          disabled={backupEmails().length >= MAX_PROJECT_NOTIFICATION_RECIPIENTS}
+                        >
+                          + Add email
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

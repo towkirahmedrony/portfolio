@@ -12,6 +12,7 @@ import {
 } from "@/lib/project-request";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { normalizeProjectNotificationEmails } from "@/lib/project-notification-recipients";
 import type { Json, RequestStatus } from "@/types/database";
 import type { OrderFormConfig, ProjectRequest } from "@/types/project-request";
 
@@ -153,7 +154,10 @@ export async function updateOwnProjectRequest(
     return { ok: false, error: "Your account does not have a primary email address." };
   }
   payload.email = user.email.trim();
-  const backupEmail = typeof payload.backup_email === "string" ? payload.backup_email : null;
+  const teamEmails = normalizeProjectNotificationEmails(
+    data.backup_emails ?? payload.backup_email ?? [],
+  );
+  const backupEmail = teamEmails[0] ?? null;
   const { error: profileUpdateError } = await supabase
     .from("profiles")
     .update({ backup_email: backupEmail })
@@ -171,6 +175,17 @@ export async function updateOwnProjectRequest(
     return {
       ok: false,
       error: error.message || "Could not update this request.",
+    };
+  }
+
+  const { error: recipientError } = await supabase.rpc(
+    "replace_own_project_notification_recipients",
+    { p_request_id: trimmedId, p_emails: teamEmails },
+  );
+  if (recipientError) {
+    return {
+      ok: false,
+      error: recipientError.message || "Could not save team notification emails.",
     };
   }
 

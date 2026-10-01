@@ -1254,6 +1254,45 @@ export type Database = {
           },
         ]
       }
+      project_notification_recipients: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          project_id: string | null
+          project_request_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          project_id?: string | null
+          project_request_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          project_id?: string | null
+          project_request_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_notification_recipients_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_notification_recipients_project_request_id_fkey"
+            columns: ["project_request_id"]
+            isOneToOne: false
+            referencedRelation: "project_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_requests: {
         Row: {
           assigned_to: string | null
@@ -2194,6 +2233,10 @@ export type Database = {
         Args: { p_payload: Json; p_request_id: string }
         Returns: Database["public"]["Enums"]["request_status"]
       }
+      replace_own_project_notification_recipients: {
+        Args: { p_emails?: string[]; p_request_id: string }
+        Returns: undefined
+      }
       claim_my_referral: { Args: { p_code: string }; Returns: string }
       create_referral_for_client: {
         Args: { p_client_id: string; p_code: string }
@@ -2585,6 +2628,7 @@ export type ProjectFileRow = Tables<"project_files">
 export type ProjectMessageRow = Tables<"project_messages">
 export type ProjectMilestoneRow = Tables<"project_milestones">
 export type ProjectNoteRow = Tables<"project_notes">
+export type ProjectNotificationRecipientRow = Tables<"project_notification_recipients">
 export type ProjectRequestRow = Tables<"project_requests">
 export type ProjectRequirementRow = Tables<"project_requirements">
 export type ProjectStatusHistoryRow = Tables<"project_status_history">
@@ -2627,6 +2671,7 @@ export type ProjectFileInsert = TablesInsert<"project_files">
 export type ProjectMessageInsert = TablesInsert<"project_messages">
 export type ProjectMilestoneInsert = TablesInsert<"project_milestones">
 export type ProjectNoteInsert = TablesInsert<"project_notes">
+export type ProjectNotificationRecipientInsert = TablesInsert<"project_notification_recipients">
 export type ProjectRequestInsert = TablesInsert<"project_requests">
 export type ProjectRequirementInsert = TablesInsert<"project_requirements">
 export type ProjectStatusHistoryInsert = TablesInsert<"project_status_history">

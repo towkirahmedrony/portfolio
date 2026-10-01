@@ -41,6 +41,15 @@ export default async function EditProjectRequestPage({
     redirect(`/profile/project-requests/${id}`);
   }
 
+  const { data: recipientRows } = await supabase
+    .from("project_notification_recipients")
+    .select("email")
+    .eq("project_request_id", detail.request.id)
+    .order("created_at", { ascending: true });
+  const notificationEmails = (recipientRows ?? [])
+    .map((row) => row.email)
+    .filter((email): email is string => Boolean(email?.trim()));
+
   const configResult = await getOrderFormConfig();
 
   return (
@@ -72,7 +81,7 @@ export default async function EditProjectRequestPage({
             requestId={detail.request.id}
             requestNumber={detail.request.request_number}
             resubmit={detail.canResubmit}
-            initialData={projectRequestToFormData(detail.request, configResult.data)}
+            initialData={projectRequestToFormData(detail.request, configResult.data, notificationEmails)}
             initialFiles={detail.files}
             currentUserId={user.id}
           />

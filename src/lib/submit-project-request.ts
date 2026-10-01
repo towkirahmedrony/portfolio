@@ -9,6 +9,7 @@ import {
   validateProjectRequest,
 } from "@/lib/project-request";
 import { notifyNewProjectRequestSafe } from "@/lib/telegram";
+import { normalizeProjectNotificationEmails } from "@/lib/project-notification-recipients";
 import type { OrderFormConfig, ProjectRequest } from "@/types/project-request";
 
 const UNIQUE_VIOLATION = "23505";
@@ -74,6 +75,9 @@ export async function submitProjectRequest(
   payload.client_id = user.id;
   payload.email = trustedEmail;
   payload.backup_email = payload.backup_email ?? null;
+  const teamEmails = normalizeProjectNotificationEmails(
+    data.backup_emails ?? payload.backup_email ?? [],
+  );
 
   const { error: profileUpdateError } = await supabase
     .from("profiles")
@@ -107,6 +111,17 @@ export async function submitProjectRequest(
         inserted.request_number ??
         insertPayload.request_number ??
         generateRequestNumber();
+
+      const { error: recipientError } = await supabase.rpc(
+        "replace_own_project_notification_recipients",
+        { p_request_id: inserted.id, p_emails: teamEmails },
+      );
+      if (recipientError) {
+        return {
+          ok: false,
+          error: recipientError.message || "Could not save team notification emails.",
+        };
+      }
 
       revalidatePath("/profile");
       revalidatePath(`/profile/project-requests/${inserted.id}`);

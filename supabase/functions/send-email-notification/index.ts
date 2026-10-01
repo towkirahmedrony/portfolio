@@ -18,6 +18,7 @@ type Payload = {
 
 type Project = {
   id: string;
+  request_id: string | null;
   project_number: string;
   title: string;
   status: string;
@@ -31,6 +32,7 @@ type ProjectRequest = {
   request_number: string;
   full_name: string;
   email: string | null;
+  backup_email: string | null;
   status: string;
   client_id: string | null;
 };
@@ -268,6 +270,7 @@ Deno.serve(async (req: Request) => {
 
   // ------------------------------------------------------ resolve context
   let recipientEmail: string | null = null;
+  let teamRecipientEmails: string[] = [];
   let preferenceUserId: string | null = null;
   let subject: string;
   let html: string;
@@ -295,7 +298,7 @@ Deno.serve(async (req: Request) => {
 
     const result = await db
       .from("project_requests")
-      .select("id, request_number, full_name, email, status, client_id")
+      .select("id, request_number, full_name, email, backup_email, status, client_id")
       .eq("id", p.request_id)
       .maybeSingle<ProjectRequest>();
 
@@ -378,6 +381,17 @@ Deno.serve(async (req: Request) => {
     recipientEmail = email;
     preferenceUserId = request.client_id;
 
+    const requestRecipients = await db
+      .from("project_notification_recipients")
+      .select("email")
+      .eq("project_request_id", request.id);
+    teamRecipientEmails = (requestRecipients.data ?? [])
+      .map((row) => String(row.email ?? "").trim())
+      .filter(Boolean);
+    if (teamRecipientEmails.length === 0 && request.backup_email?.trim()) {
+      teamRecipientEmails = [request.backup_email.trim()];
+    }
+
     const rows =
       `<tr><td>Previous status</td><td>${esc(label(p.previous_status!))}</td></tr>` +
       `<tr><td>New status</td><td>${esc(label(p.new_status!))}</td></tr>`;
@@ -398,7 +412,7 @@ Deno.serve(async (req: Request) => {
 
     const result = await db
       .from("projects")
-      .select("id, project_number, title, status, currency, agreed_price, client_id")
+      .select("id, request_id, project_number, title, status, currency, agreed_price, client_id")
       .eq("id", p.project_id)
       .maybeSingle<Project>();
 
@@ -470,6 +484,38 @@ Deno.serve(async (req: Request) => {
     recipientEmail = email;
     preferenceUserId = project.client_id;
 
+    if (STATUS_TRANSITION_TYPES.includes(type)) {
+      const projectRecipients = await db
+        .from("project_notification_recipients")
+        .select("email")
+        .eq("project_id", project.id);
+      teamRecipientEmails = (projectRecipients.data ?? [])
+        .map((row) => String(row.email ?? "").trim())
+        .filter(Boolean);
+
+      if (project.request_id) {
+        const requestRecipients = await db
+          .from("project_notification_recipients")
+          .select("email")
+          .eq("project_request_id", project.request_id);
+        teamRecipientEmails.push(
+          ...(requestRecipients.data ?? [])
+            .map((row) => String(row.email ?? "").trim())
+            .filter(Boolean),
+        );
+        if (teamRecipientEmails.length === 0) {
+          const legacyRequest = await db
+            .from("project_requests")
+            .select("backup_email")
+            .eq("id", project.request_id)
+            .maybeSingle();
+          if (legacyRequest.data?.backup_email?.trim()) {
+            teamRecipientEmails = [legacyRequest.data.backup_email.trim()];
+          }
+        }
+      }
+    }
+
     const amount =
       project.agreed_price == null
         ? null
@@ -528,6 +574,24 @@ Deno.serve(async (req: Request) => {
   }
 
   // ------------------------------------------------------ delivery
+  // Send one message per address so team members do not see each other's
+  // addresses. The primary account email remains the recipient for every
+  // notification; team recipients are used for status transitions only.
+  const recipients = [
+    ...new Map(
+      [recipientEmail, ...(STATUS_TRANSITION_TYPES.includes(type) ? teamRecipientEmails : [])]
+        .map((email) => email?.trim())
+        .filter((email): email is string => Boolean(email))
+        .map((email) => [email.toLowerCase(), email] as const),
+    ).values(),
+  ];
+  if (recipients.length === 0) {
+    finish("email_notification_failed", {
+      stage: "recipient_resolution",
+      error_category: "recipient_email_unavailable",
+    });
+    return out({ success: false, error: "Recipient email unavailable" }, 422);
+  }
   // Primary transport: Gmail SMTP, reusing the same Gmail account as the
   // project's Supabase Auth Custom SMTP. Credentials live only in Edge
   // Function secrets and are never logged, returned or echoed.
@@ -562,61 +626,75 @@ Deno.serve(async (req: Request) => {
   if (smtpConfigured) {
     const smtpT = performance.now();
     const maxSmtpAttempts = 2;
-    for (let attempt = 1; attempt <= maxSmtpAttempts; attempt++) {
-      log("smtp_send_started", id, {
-        attempt,
-        max_attempts: maxSmtpAttempts,
-        port: smtpPort,
-        implicit_tls: smtpPort === 465,
-      });
-
-      const result = await sendMail(
-        {
-          host: smtpHost,
+    let lastFailure: { stage: string; message: string } | null = null;
+    for (let recipientIndex = 0; recipientIndex < recipients.length; recipientIndex += 1) {
+      const recipient = recipients[recipientIndex];
+      let delivered = false;
+      let recipientFailure: { stage: string; message: string } | null = null;
+      for (let attempt = 1; attempt <= maxSmtpAttempts; attempt++) {
+        log("smtp_send_started", id, {
+          attempt,
+          max_attempts: maxSmtpAttempts,
+          recipient_index: recipientIndex + 1,
+          recipient_count: recipients.length,
           port: smtpPort,
-          user: smtpUser,
-          pass: smtpPass,
-          fromName: smtpFromName,
-        },
-        {
-          from: smtpFrom,
-          to: recipientEmail!,
-          replyTo: smtpFrom,
-          subject,
-          html,
-          text: htmlToText(html),
-        },
-      );
-
-      if (result.ok) {
-        log("smtp_send_success", id, { attempt, elapsed_ms: ms(smtpT) });
-        finish("email_notification_success", {
-          notification_type: type,
-          transport: "gmail_smtp",
-          attempts: attempt,
+          implicit_tls: smtpPort === 465,
         });
-        return out({ success: true, transport: "gmail_smtp" });
-      }
 
-      log("smtp_send_failed", id, {
-        attempt,
-        stage: result.stage,
-        status: result.status ?? null,
-        retryable: result.retryable,
-        server_message: result.message,
-        elapsed_ms: ms(smtpT),
-      });
+        const result = await sendMail(
+          {
+            host: smtpHost,
+            port: smtpPort,
+            user: smtpUser,
+            pass: smtpPass,
+            fromName: smtpFromName,
+          },
+          {
+            from: smtpFrom,
+            to: recipient,
+            replyTo: smtpFrom,
+            subject,
+            html,
+            text: htmlToText(html),
+          },
+        );
 
-      if (!result.retryable || attempt === maxSmtpAttempts) {
-        finish("email_notification_failed", {
-          stage: `smtp_${result.stage}`,
-          error_category: "delivery_failed",
-          transport: "gmail_smtp",
+        if (result.ok) {
+          delivered = true;
+          log("smtp_send_success", id, { attempt, elapsed_ms: ms(smtpT) });
+          break;
+        }
+
+        recipientFailure = { stage: result.stage, message: result.message };
+        log("smtp_send_failed", id, {
+          attempt,
+          stage: result.stage,
+          status: result.status ?? null,
+          retryable: result.retryable,
+          server_message: result.message,
+          elapsed_ms: ms(smtpT),
         });
-        return out({ success: false, error: "Email delivery failed" }, 502);
+
+        if (!result.retryable || attempt === maxSmtpAttempts) break;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (!delivered) lastFailure = recipientFailure;
     }
+    if (lastFailure) {
+      finish("email_notification_failed", {
+        stage: `smtp_${lastFailure.stage}`,
+        error_category: "delivery_failed",
+        transport: "gmail_smtp",
+        recipient_count: recipients.length,
+      });
+      return out({ success: false, error: "Email delivery failed" }, 502);
+    }
+    finish("email_notification_success", {
+      notification_type: type,
+      transport: "gmail_smtp",
+      recipient_count: recipients.length,
+    });
+    return out({ success: true, transport: "gmail_smtp", recipient_count: recipients.length });
   }
 
   // SMTP-only transport: every path above returns, so this is unreachable.
