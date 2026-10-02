@@ -5,7 +5,31 @@ import { sendMail } from "./smtp.ts";
 type NotificationType =
   | "project_confirmed"
   | "project_status_changed"
-  | "project_request_status_changed";
+  | "project_request_status_changed"
+  | "project_request_received"
+  | "quote_sent"
+  | "quote_accepted"
+  | "quote_rejected"
+  | "quote_change_requested"
+  | "invoice_issued"
+  | "payment_received"
+  | "payment_failed"
+  | "payment_refunded"
+  | "milestone_completed"
+  | "deliverable_uploaded"
+  | "project_message_received"
+  | "request_message_received";
+
+/** Who an event is addressed to. */
+type Audience = "client" | "admin" | "both";
+
+/** Per-user opt-out column on public.notification_preferences. */
+type PreferenceKey =
+  | "email_project_updates"
+  | "email_messages"
+  | "email_quotes"
+  | "email_payments"
+  | "email_referrals";
 
 type Payload = {
   project_id?: string;
@@ -14,6 +38,25 @@ type Payload = {
   previous_status?: string;
   new_status?: string;
   notification_id?: string;
+  audience?: Audience;
+  quote_id?: string;
+  invoice_id?: string;
+  payment_id?: string;
+  milestone_id?: string;
+  file_id?: string;
+  message_id?: string;
+  amount?: number | string | null;
+  currency?: string | null;
+  version?: number | null;
+  valid_until?: string | null;
+  due_date?: string | null;
+  amount_due?: number | string | null;
+  payment_type?: string | null;
+  payment_method?: string | null;
+  transaction_reference?: string | null;
+  failure_reason?: string | null;
+  milestone_title?: string | null;
+  file_name?: string | null;
 };
 
 type Project = {
@@ -42,12 +85,42 @@ type NotificationRecipientRow = { email: string | null };
 
 const prefix = "[email-notification]";
 
-const SUPPORTED_TYPES: NotificationType[] = [
-  "project_confirmed",
-  "project_status_changed",
-  "project_request_status_changed",
-];
+/**
+ * The single catalogue of every notification the studio sends.
+ *
+ * - `preference` maps the event onto the per-user opt-out column it respects.
+ * - `audience` is the default routing. An explicit `audience` in the payload —
+ *   set by the database trigger — wins, which is how thread messages pick
+ *   between notifying the client and notifying the studio.
+ *
+ * Titles, intro copy and detail rows for each type live in buildContent(), so
+ * no email markup is scattered across the function.
+ */
+const EVENTS: Record<
+  NotificationType,
+  { preference: PreferenceKey; audience: Audience }
+> = {
+  project_confirmed: { preference: "email_project_updates", audience: "client" },
+  project_status_changed: { preference: "email_project_updates", audience: "client" },
+  project_request_status_changed: { preference: "email_project_updates", audience: "client" },
+  project_request_received: { preference: "email_project_updates", audience: "admin" },
+  quote_sent: { preference: "email_quotes", audience: "client" },
+  quote_accepted: { preference: "email_quotes", audience: "admin" },
+  quote_rejected: { preference: "email_quotes", audience: "admin" },
+  quote_change_requested: { preference: "email_quotes", audience: "admin" },
+  invoice_issued: { preference: "email_payments", audience: "client" },
+  payment_received: { preference: "email_payments", audience: "both" },
+  payment_failed: { preference: "email_payments", audience: "both" },
+  payment_refunded: { preference: "email_payments", audience: "client" },
+  milestone_completed: { preference: "email_project_updates", audience: "client" },
+  deliverable_uploaded: { preference: "email_project_updates", audience: "client" },
+  project_message_received: { preference: "email_messages", audience: "client" },
+  request_message_received: { preference: "email_messages", audience: "client" },
+};
 
+const SUPPORTED_TYPES = Object.keys(EVENTS) as NotificationType[];
+
+/** Types that are meaningless without a previous/new status pair. */
 const STATUS_TRANSITION_TYPES: NotificationType[] = [
   "project_status_changed",
   "project_request_status_changed",
@@ -244,6 +317,40 @@ const loadTeamRecipients = async (
   return dedupeEmails(collected).slice(0, MAX_TEAM_RECIPIENTS);
 };
 
+/**
+ * Studio-side recipients for admin-facing events: every active admin's auth
+ * address plus that admin's optional profile backup address, deduplicated.
+ * Uses the Auth admin API because admin_auth_emails() requires an end-user
+ * admin session, which a service-to-service dispatch does not have.
+ */
+const loadAdminRecipients = async (
+  db: ReturnType<typeof createClient>,
+): Promise<{ emails: string[]; preferenceUserId: string | null }> => {
+  try {
+    const { data: admins } = await db
+      .from("profiles")
+      .select("id, backup_email")
+      .eq("role", "admin")
+      .eq("status", "active")
+      .order("created_at");
+
+    const rows = (admins ?? []) as { id: string; backup_email: string | null }[];
+    if (rows.length === 0) return { emails: [], preferenceUserId: null };
+
+    const collected: (string | null)[] = rows.map((r) => r.backup_email);
+    for (const row of rows) {
+      const { data } = await db.auth.admin.getUserById(row.id);
+      collected.push(data.user?.email ?? null);
+    }
+    return {
+      emails: dedupeEmails(collected),
+      preferenceUserId: rows[0]?.id ?? null,
+    };
+  } catch {
+    return { emails: [], preferenceUserId: null };
+  }
+};
+
 const layout = (
   title: string,
   intro: string,
@@ -388,9 +495,13 @@ Deno.serve(async (req: Request) => {
     return out({ success: false, error: "Request id is required" }, 400);
   }
 
-  if (!isRequestType && !p.project_id) {
+  // Every event is scoped to a project, a request, or both: quote/invoice/
+  // payment/milestone/deliverable events carry a project, while request-scoped
+  // events (a submitted request, a request-thread message, a quote raised
+  // before conversion) carry only the request.
+  if (!isRequestType && !p.project_id && !p.request_id) {
     log("payload_validation_failed", id, {
-      reason: "missing_project_id",
+      reason: "missing_scope",
       notification_type: type,
       elapsed_ms: ms(payloadT),
     });
@@ -398,7 +509,7 @@ Deno.serve(async (req: Request) => {
       stage: "payload_validation",
       error_category: "invalid_payload",
     });
-    return out({ success: false, error: "Project id is required" }, 400);
+    return out({ success: false, error: "Project or request id is required" }, 400);
   }
 
   if (STATUS_TRANSITION_TYPES.includes(type) && (!p.previous_status || !p.new_status)) {
@@ -430,6 +541,10 @@ Deno.serve(async (req: Request) => {
   let teamRecipientEmails: string[] = [];
   let teamRecipientScope = "not_applicable";
   let preferenceUserId: string | null = null;
+  // Studio-side recipients, populated only for admin-facing events.
+  let adminRecipientEmails: string[] = [];
+  // Resolved from the payload/registry before recipient lookup.
+  let audience: Audience = "client";
   let subject: string;
   let html: string;
 
@@ -543,7 +658,7 @@ Deno.serve(async (req: Request) => {
     // Team/backup recipients are attached to status transitions only, which is
     // the existing product behaviour. The request-scoped row set is the source
     // of truth; the legacy backup_email snapshot is a fallback.
-    if (STATUS_TRANSITION_TYPES.includes(type)) {
+    if (audience !== "admin") {
       const teamT = performance.now();
       teamRecipientEmails = await loadTeamRecipients(
         db,
@@ -573,7 +688,7 @@ Deno.serve(async (req: Request) => {
       `${baseSite}/profile/project-requests/${encodeURIComponent(request.id)}`,
       "Open request",
     );
-  } else {
+  } else if (type === "project_status_changed" || type === "project_confirmed") {
     // --------------------------------------------------- project branch
     log("project_lookup_started", id, { project_id: p.project_id });
 
@@ -654,7 +769,7 @@ Deno.serve(async (req: Request) => {
 
     // A project inherits the recipients of the request it was created from, and
     // can additionally own its own rows, so both scopes are read here.
-    if (STATUS_TRANSITION_TYPES.includes(type)) {
+    if (audience !== "admin") {
       const teamT = performance.now();
       const legacyRequestBackup = await loadRequestBackupEmail(
         db,
@@ -701,6 +816,267 @@ Deno.serve(async (req: Request) => {
       details,
       `${baseSite}/profile/projects/${encodeURIComponent(project.id)}`,
     );
+  } else {
+    // ------------------------------------- generic workflow event branch
+    // Single code path for quote / invoice / payment / milestone / deliverable
+    // / message / request-received events. Titles, copy and CTAs live in the
+    // switch below so email markup is not scattered across the codebase.
+    const evt = EVENTS[type];
+    audience = p.audience ?? evt.audience;
+
+    let clientId: string | null = null;
+    let projectId: string | null = p.project_id ?? null;
+    let requestId: string | null = p.request_id ?? null;
+    let projectNumber: string | null = null;
+    let projectTitle: string | null = null;
+    let requestNumber: string | null = null;
+    let requestName: string | null = null;
+    let requestEmail: string | null = null;
+    let requestBackup: string | null = null;
+
+    if (requestId) {
+      const { data } = await db
+        .from("project_requests")
+        .select("id, request_number, full_name, email, backup_email, client_id")
+        .eq("id", requestId)
+        .maybeSingle<ProjectRequest>();
+      if (data) {
+        clientId = data.client_id;
+        requestNumber = data.request_number;
+        requestName = data.full_name;
+        requestEmail = data.email;
+        requestBackup = data.backup_email;
+      }
+    }
+
+    if (projectId) {
+      const { data } = await db
+        .from("projects")
+        .select(
+          "id, request_id, project_number, title, status, currency, agreed_price, client_id",
+        )
+        .eq("id", projectId)
+        .maybeSingle<Project>();
+      if (data) {
+        clientId = clientId ?? data.client_id;
+        projectNumber = data.project_number;
+        projectTitle = data.title;
+        requestId = requestId ?? data.request_id;
+      }
+    }
+
+    log("event_context_resolved", id, {
+      audience,
+      client_linked: Boolean(clientId),
+      project_scope: Boolean(projectId),
+      request_scope: Boolean(requestId),
+    });
+
+    // ---------------------------------------------------- client recipients
+    if (audience !== "admin") {
+      if (clientId) preferenceUserId = clientId;
+
+      const fromRequest = normalizeEmail(requestEmail);
+      if (isUsableEmail(fromRequest)) {
+        recipientEmail = fromRequest;
+      } else if (clientId) {
+        const r = await db.auth.admin.getUserById(clientId);
+        recipientEmail = r.data.user?.email?.trim() ?? null;
+      }
+
+      if (clientId) {
+        backupEmail = await loadBackupEmail(db, clientId);
+      }
+
+      const teamT = performance.now();
+      teamRecipientEmails = await loadTeamRecipients(
+        db,
+        { projectId, requestId },
+        [requestBackup],
+      );
+      teamRecipientScope = projectId && requestId
+        ? "project_id+project_request_id"
+        : projectId
+          ? "project_id"
+          : requestId
+            ? "project_request_id"
+            : "not_applicable";
+      log("team_recipients_lookup_success", id, {
+        scope: teamRecipientScope,
+        team_recipient_count: teamRecipientEmails.length,
+        team_recipients_masked: teamRecipientEmails.map(maskEmail),
+        elapsed_ms: ms(teamT),
+      });
+    }
+
+    // ----------------------------------------------------- admin recipients
+    if (audience !== "client") {
+      const adminT = performance.now();
+      const admins = await loadAdminRecipients(db);
+      adminRecipientEmails = admins.emails;
+      if (audience === "admin" && preferenceUserId === null) {
+        preferenceUserId = admins.preferenceUserId;
+      }
+      log("admin_recipients_lookup_success", id, {
+        admin_recipient_count: adminRecipientEmails.length,
+        admin_recipients_masked: adminRecipientEmails.map(maskEmail),
+        elapsed_ms: ms(adminT),
+      });
+      if (audience === "admin" && adminRecipientEmails.length === 0) {
+        log("email_skipped_no_admin_recipients", id);
+        finish("email_notification_skipped", { reason: "no_admin_recipients" });
+        return out({ success: true, skipped: true, reason: "no_admin_recipients" });
+      }
+    }
+
+    // ------------------------------------------------------------- content
+    const clientUrl = projectId
+      ? `${baseSite}/profile/projects/${encodeURIComponent(projectId)}`
+      : `${baseSite}/profile/project-requests/${encodeURIComponent(requestId ?? "")}`;
+    const adminUrl = requestId
+      ? `${baseSite}/admin/project-requests/${encodeURIComponent(requestId)}`
+      : `${baseSite}/admin/projects/${encodeURIComponent(projectId ?? "")}`;
+
+    // Plain-text money for intro copy; escaped at the point of HTML insertion.
+    const money = (v: unknown, c: unknown) =>
+      v == null || v === "" ? "—" : `${c ?? "BDT"} ${v}`;
+    const scopeName = projectTitle ?? requestName ?? "your project";
+    const scopeNumber = projectNumber ?? requestNumber ?? "";
+    const rows: string[] = [];
+
+    let heading = "Notification";
+    let intro = "There is an update on your account.";
+    let url = audience === "admin" ? adminUrl : clientUrl;
+    let linkLabel = audience === "admin" ? "Open in admin" : "Open dashboard";
+
+    switch (type) {
+      case "project_request_received":
+        heading = "New project request";
+        intro = `A new project request ${scopeNumber} was submitted.`;
+        rows.push(`<tr><td>Request</td><td>${esc(scopeNumber || "—")}</td></tr>`);
+        rows.push(`<tr><td>From</td><td>${esc(requestName ?? "—")}</td></tr>`);
+        url = `${baseSite}/admin/project-requests/${encodeURIComponent(requestId ?? "")}`;
+        linkLabel = "Open request";
+        break;
+
+      case "quote_sent":
+        heading = "Your quote is ready";
+        intro = `A quote for ${scopeName} is ready for your review.`;
+        rows.push(`<tr><td>Project</td><td>${esc(scopeName)}</td></tr>`);
+        rows.push(`<tr><td>Quote version</td><td>${esc(p.version ?? 1)}</td></tr>`);
+        rows.push(`<tr><td>Total</td><td>${esc(money(p.amount, p.currency))}</td></tr>`);
+        if (p.valid_until) {
+          rows.push(
+            `<tr><td>Valid until</td><td>${esc(String(p.valid_until).slice(0, 10))}</td></tr>`,
+          );
+        }
+        break;
+
+      case "quote_accepted":
+      case "quote_rejected":
+      case "quote_change_requested":
+        heading = type === "quote_accepted"
+          ? "Quote accepted"
+          : type === "quote_rejected"
+            ? "Quote rejected"
+            : "Quote change requested";
+        intro = type === "quote_accepted"
+          ? `The client accepted the quote for ${scopeName}.`
+          : type === "quote_rejected"
+            ? `The client rejected the quote for ${scopeName}.`
+            : `The client requested changes to the quote for ${scopeName}.`;
+        rows.push(`<tr><td>Project</td><td>${esc(scopeName)}</td></tr>`);
+        rows.push(`<tr><td>Quote version</td><td>${esc(p.version ?? 1)}</td></tr>`);
+        rows.push(`<tr><td>Total</td><td>${esc(money(p.amount, p.currency))}</td></tr>`);
+        url = `${baseSite}/admin/quotes/${encodeURIComponent(p.quote_id ?? "")}`;
+        linkLabel = "Open quote";
+        break;
+
+      case "invoice_issued":
+        heading = "Invoice issued";
+        intro = `An invoice has been issued for ${scopeName}.`;
+        rows.push(`<tr><td>Project</td><td>${esc(scopeName)}</td></tr>`);
+        rows.push(`<tr><td>Amount due</td><td>${esc(money(p.amount_due, p.currency))}</td></tr>`);
+        if (p.due_date) {
+          rows.push(
+            `<tr><td>Due date</td><td>${esc(String(p.due_date).slice(0, 10))}</td></tr>`,
+          );
+        }
+        break;
+
+      case "payment_received":
+      case "payment_failed":
+      case "payment_refunded":
+        heading = type === "payment_received"
+          ? "Payment received"
+          : type === "payment_failed"
+            ? "Payment failed"
+            : "Payment refunded";
+        intro = type === "payment_received"
+          ? `A payment of ${money(p.amount, p.currency)} was received.`
+          : type === "payment_failed"
+            ? `A payment of ${money(p.amount, p.currency)} did not go through.`
+            : `A refund of ${money(p.amount, p.currency)} was issued.`;
+        rows.push(`<tr><td>Project</td><td>${esc(scopeName)}</td></tr>`);
+        rows.push(`<tr><td>Amount</td><td>${esc(money(p.amount, p.currency))}</td></tr>`);
+        if (p.payment_type) {
+          rows.push(`<tr><td>Type</td><td>${esc(p.payment_type)}</td></tr>`);
+        }
+        if (p.payment_method) {
+          rows.push(`<tr><td>Method</td><td>${esc(p.payment_method)}</td></tr>`);
+        }
+        if (p.transaction_reference) {
+          rows.push(`<tr><td>Reference</td><td>${esc(p.transaction_reference)}</td></tr>`);
+        }
+        if (p.failure_reason) {
+          rows.push(`<tr><td>Reason</td><td>${esc(p.failure_reason)}</td></tr>`);
+        }
+        if (audience !== "client") {
+          url = `${baseSite}/admin/payments`;
+          linkLabel = "Open payments";
+        }
+        break;
+
+      case "milestone_completed":
+        heading = "Milestone completed";
+        intro = `The milestone "${p.milestone_title ?? "milestone"}" is complete.`;
+        rows.push(`<tr><td>Project</td><td>${esc(scopeName)}</td></tr>`);
+        rows.push(`<tr><td>Milestone</td><td>${esc(p.milestone_title ?? "—")}</td></tr>`);
+        break;
+
+      case "deliverable_uploaded":
+        heading = "New deliverable available";
+        intro = `A new deliverable is available for ${scopeName}.`;
+        rows.push(`<tr><td>Project</td><td>${esc(scopeName)}</td></tr>`);
+        rows.push(`<tr><td>File</td><td>${esc(p.file_name ?? "—")}</td></tr>`);
+        break;
+
+      case "project_message_received":
+      case "request_message_received":
+        heading = "New message";
+        intro = audience === "admin"
+          ? "A client posted a new message."
+          : "You have a new message from the studio.";
+        rows.push(`<tr><td>Thread</td><td>${esc(scopeName)}</td></tr>`);
+        if (audience === "admin") {
+          url = requestId
+            ? `${baseSite}/admin/project-requests/${encodeURIComponent(requestId)}/messages`
+            : `${baseSite}/admin/projects/${encodeURIComponent(projectId ?? "")}/messages`;
+          linkLabel = "Open thread";
+        } else {
+          url = requestId
+            ? `${baseSite}/profile/project-requests/${encodeURIComponent(requestId)}/messages`
+            : `${baseSite}/profile/projects/${encodeURIComponent(projectId ?? "")}/messages`;
+          linkLabel = "Open thread";
+        }
+        break;
+    }
+
+    subject = scopeNumber ? `${heading} — ${scopeNumber}` : heading;
+    const details =
+      `<table><tr><td>Reference</td><td>${esc(scopeNumber || "—")}</td></tr>` +
+      `${rows.join("")}</table>`;
+    html = layout(heading, intro, details, url, linkLabel);
   }
 
   const genT = performance.now();
@@ -711,23 +1087,29 @@ Deno.serve(async (req: Request) => {
   });
 
   // ----------------------------------------------------- preference gate
+  // Each event honours its own opt-out column on notification_preferences
+  // instead of every event sharing email_project_updates.
+  const preferenceKey: PreferenceKey = EVENTS[type].preference;
   const prefT = performance.now();
-  log("preference_lookup_started", id);
+  log("preference_lookup_started", id, { preference_key: preferenceKey });
   const pref = preferenceUserId
     ? await db
         .from("notification_preferences")
-        .select("email_project_updates")
+        .select(preferenceKey)
         .eq("user_id", preferenceUserId)
         .maybeSingle()
     : { data: null };
   const enabled =
-    (pref.data as { email_project_updates?: boolean } | null)?.email_project_updates !== false;
+    (pref.data as Record<string, boolean> | null)?.[preferenceKey] !== false;
   log("preference_lookup_result", id, {
-    email_project_updates: enabled,
+    preference_key: preferenceKey,
+    enabled,
     elapsed_ms: ms(prefT),
   });
   if (!enabled) {
-    log("email_skipped_preference_disabled", id);
+    log("email_skipped_preference_disabled", id, {
+      preference_key: preferenceKey,
+    });
     finish("email_notification_skipped", { reason: "preference_disabled" });
     return out({ success: true, skipped: true, reason: "preference_disabled" });
   }
@@ -768,9 +1150,19 @@ Deno.serve(async (req: Request) => {
   // The primary customer address plus every additional team/backup recipient
   // configured for the project or project request. Whitespace is trimmed,
   // comparison is case-insensitive, and each unique address is delivered once.
+  // Every candidate address from every source, before deduplication. Used only
+  // to report how many duplicates were collapsed.
+  const candidates = [
+    recipientEmail,
+    ...teamRecipientEmails,
+    backupEmail,
+    ...adminRecipientEmails,
+  ].filter((value) => isUsableEmail(normalizeEmail(value)));
+
   const recipients = buildRecipients(recipientEmail, [
     ...teamRecipientEmails,
     backupEmail,
+    ...adminRecipientEmails,
   ]);
   const primaryNormalized = normalizeEmail(recipientEmail);
   const backupNormalized = normalizeEmail(backupEmail);
@@ -795,11 +1187,10 @@ Deno.serve(async (req: Request) => {
       primaryNormalized.toLowerCase() === backupNormalized.toLowerCase(),
     // Addresses dropped because they duplicate the primary or another
     // additional recipient — proves no address is delivered twice.
-    deduplicated_addresses:
-      teamRecipientEmails.length +
-      (isUsableEmail(backupNormalized) ? 1 : 0) +
-      1 -
-      recipients.length,
+    audience,
+    admin_recipient_count: adminRecipientEmails.length,
+    admin_recipients_masked: adminRecipientEmails.map(maskEmail),
+    deduplicated_addresses: candidates.length - recipients.length,
     unique_recipients: recipients.length,
     recipients_masked: recipients.map(maskEmail),
   });
