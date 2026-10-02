@@ -69,6 +69,7 @@ import { submitProjectRequest } from "@/lib/submit-project-request";
 import {
   MAX_PROJECT_NOTIFICATION_RECIPIENTS,
   normalizeProjectNotificationEmails,
+  PROJECT_NOTIFICATION_EMAIL_PATTERN,
 } from "@/lib/project-notification-recipients";
 import { cn } from "@/lib/utils";
 import type {
@@ -197,9 +198,11 @@ function ProjectRequestFormInner({
 
   const [step, setStep] = useState<ProjectRequestStep>(initial.step);
   const [data, setData] = useState<ProjectRequest>(initial.data);
-  const [showBackupEmail, setShowBackupEmail] = useState(
-    normalizeProjectNotificationEmails(initial.data.backup_emails ?? initial.data.backup_email).length > 0,
-  );
+  // The team-notification editor opens exactly one input at a time. `null` means
+  // no input is open; saved addresses render as compact rows, never as a grid of
+  // inputs.
+  const [backupEmailDraft, setBackupEmailDraft] = useState<string | null>(null);
+  const [backupEmailError, setBackupEmailError] = useState<string | null>(null);
   const [errors, setErrors] = useState<ProjectRequestErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -256,7 +259,6 @@ function ProjectRequestFormInner({
         next.backup_emails = backupEmail ? [backupEmail] : [];
         return next;
       });
-      setShowBackupEmail(Boolean(backupEmail));
     })();
     return () => {
       active = false;
@@ -516,26 +518,81 @@ function ProjectRequestFormInner({
     setAuthNotice(null);
   }
 
-  function backupEmails(): string[] {
-    const value = data.backup_emails ?? data.backup_email ?? [];
-    return Array.isArray(value) ? value : [String(value)];
+  /**
+   * The committed team-notification list. Always normalised (trimmed, blanks and
+   * exact duplicates removed) so the rendered rows and the array indices used by
+   * remove stay in lockstep.
+   */
+  function savedBackupEmails(): string[] {
+    return normalizeProjectNotificationEmails(
+      data.backup_emails ?? data.backup_email ?? [],
+    );
   }
 
-  function updateBackupEmail(index: number, value: string) {
-    const next = [...backupEmails()];
-    next[index] = value;
-    updateField("backup_emails", next);
+  function atBackupEmailLimit(): boolean {
+    return savedBackupEmails().length >= MAX_PROJECT_NOTIFICATION_RECIPIENTS;
   }
 
-  function addBackupEmail() {
-    const current = backupEmails();
-    if (current.length >= MAX_PROJECT_NOTIFICATION_RECIPIENTS) return;
-    updateField("backup_emails", [...current, ""]);
-    setShowBackupEmail(true);
+  function primaryNotificationEmail(): string {
+    const key = primaryEmailFieldKey;
+    return key ? String(data[key] ?? "").trim() : "";
+  }
+
+  function openBackupEmailDraft() {
+    if (atBackupEmailLimit()) return;
+    setBackupEmailError(null);
+    setBackupEmailDraft("");
+  }
+
+  function cancelBackupEmailDraft() {
+    setBackupEmailDraft(null);
+    setBackupEmailError(null);
+  }
+
+  /** Validates and adds the single open draft, then closes/reset the input. */
+  function commitBackupEmailDraft() {
+    if (backupEmailDraft === null) return;
+
+    const candidate = backupEmailDraft.trim();
+    if (!candidate) {
+      cancelBackupEmailDraft();
+      return;
+    }
+
+    const current = savedBackupEmails();
+
+    if (current.length >= MAX_PROJECT_NOTIFICATION_RECIPIENTS) {
+      setBackupEmailError(
+        `You can add up to ${MAX_PROJECT_NOTIFICATION_RECIPIENTS} backup emails.`,
+      );
+      return;
+    }
+    if (!PROJECT_NOTIFICATION_EMAIL_PATTERN.test(candidate)) {
+      setBackupEmailError("Please enter a valid email address.");
+      return;
+    }
+    const primary = primaryNotificationEmail();
+    if (primary && candidate.toLowerCase() === primary.toLowerCase()) {
+      setBackupEmailError(
+        "Team notification emails must be different from your primary email.",
+      );
+      return;
+    }
+    if (current.some((email) => email.toLowerCase() === candidate.toLowerCase())) {
+      setBackupEmailError("That email has already been added.");
+      return;
+    }
+
+    updateField("backup_emails", [...current, candidate]);
+    setBackupEmailDraft(null);
+    setBackupEmailError(null);
   }
 
   function removeBackupEmail(index: number) {
-    updateField("backup_emails", backupEmails().filter((_, itemIndex) => itemIndex !== index));
+    updateField(
+      "backup_emails",
+      savedBackupEmails().filter((_, itemIndex) => itemIndex !== index),
+    );
   }
 
   function goToStep(next: ProjectRequestStep) {
@@ -731,7 +788,8 @@ function ProjectRequestFormInner({
         : [];
     }
     setData(values);
-    setShowBackupEmail(normalizeProjectNotificationEmails(values.backup_emails).length > 0);
+    setBackupEmailDraft(null);
+    setBackupEmailError(null);
     setErrors({});
     setStep(1);
     setSubmitted(false);
@@ -828,68 +886,100 @@ function ProjectRequestFormInner({
                   </Field>
                 ) : null}
                 <div className="sm:col-span-2">
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-foreground underline decoration-card-border underline-offset-4 hover:decoration-foreground"
-                    onClick={() => {
-                      if (showBackupEmail) {
-                        updateField("backup_emails", []);
-                      } else {
-                        addBackupEmail();
-                      }
-                      setShowBackupEmail((current) => !current);
-                    }}
-                    aria-expanded={showBackupEmail}
-                  >
-                    {showBackupEmail ? "Remove team emails" : "+ Add team emails"}
-                  </button>
-                  <div className={cn("grid transition-[grid-template-rows,opacity] duration-300", showBackupEmail ? "mt-5 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
-                    <div className="min-h-0 overflow-hidden">
-                      <div className="rounded-2xl border border-card-border bg-card/60 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-foreground">Team notification emails</p>
-                            <p className="mt-1 text-xs text-muted">Receive project status updates at these addresses.</p>
-                          </div>
-                          <span className="shrink-0 text-xs text-muted">
-                            {normalizeProjectNotificationEmails(data.backup_emails).length} / {MAX_PROJECT_NOTIFICATION_RECIPIENTS}
-                          </span>
-                        </div>
-                        <div className="mt-4 grid gap-3">
-                          {(backupEmails().length > 0 ? backupEmails() : [""]).map((email, index) => (
-                            <div key={index} className="flex items-center gap-2">
-                              <TextInput
-                                id={`backup_email_${index}`}
-                                name="backup_emails"
-                                type="email"
-                                autoComplete="email"
-                                value={email}
-                                onChange={(event) => updateBackupEmail(index, event.target.value)}
-                                placeholder="team@example.com"
-                                error={errors.backup_emails}
-                              />
-                              <button
-                                type="button"
-                                className="shrink-0 rounded-lg border border-card-border px-2.5 py-2 text-xs text-muted hover:border-foreground/30 hover:text-foreground"
-                                onClick={() => removeBackupEmail(index)}
-                                aria-label={`Remove team email ${index + 1}`}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        {errors.backup_emails ? <p className="mt-2 text-xs text-red-600">{errors.backup_emails}</p> : null}
-                        <button
-                          type="button"
-                          className="mt-3 text-sm font-medium text-foreground underline decoration-card-border underline-offset-4 hover:decoration-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                          onClick={addBackupEmail}
-                          disabled={backupEmails().length >= MAX_PROJECT_NOTIFICATION_RECIPIENTS}
-                        >
-                          + Add email
-                        </button>
+                  <div className="rounded-2xl border border-card-border bg-card/60 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Team notification emails</p>
+                        <p className="mt-1 text-xs text-muted">Receive project status updates at these addresses.</p>
                       </div>
                     </div>
+
+                    {savedBackupEmails().length > 0 ? (
+                      <ul className="mt-4 grid gap-2">
+                        {savedBackupEmails().map((email, index) => (
+                          <li
+                            key={email.toLowerCase()}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-card-border bg-background/60 px-3 py-2"
+                          >
+                            <span className="min-w-0 truncate text-sm text-foreground">{email}</span>
+                            <button
+                              type="button"
+                              className="shrink-0 rounded-lg border border-card-border px-2 py-1 text-xs text-muted transition hover:border-foreground/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => removeBackupEmail(index)}
+                              aria-label={`Remove team notification email ${email}`}
+                              disabled={submitting}
+                            >
+                              ×
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-4 text-xs text-muted">No backup emails added yet.</p>
+                    )}
+
+                    {backupEmailDraft === null ? (
+                      <button
+                        type="button"
+                        className="mt-3 text-sm font-medium text-foreground underline decoration-card-border underline-offset-4 hover:decoration-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={openBackupEmailDraft}
+                        disabled={submitting || atBackupEmailLimit()}
+                      >
+                        + Add backup email
+                      </button>
+                    ) : (
+                      <div className="mt-3">
+                        <div className="flex items-center gap-2">
+                          <TextInput
+                            id="backup_email_draft"
+                            name="backup_email_draft"
+                            type="email"
+                            autoComplete="email"
+                            value={backupEmailDraft}
+                            onChange={(event) => {
+                              setBackupEmailDraft(event.target.value);
+                              setBackupEmailError(null);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                commitBackupEmailDraft();
+                              } else if (event.key === "Escape") {
+                                event.preventDefault();
+                                cancelBackupEmailDraft();
+                              }
+                            }}
+                            placeholder="email@example.com"
+                            error={backupEmailError ?? undefined}
+                            autoFocus
+                            disabled={submitting}
+                          />
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-lg border border-card-border px-3 py-2 text-xs font-medium text-foreground transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={commitBackupEmailDraft}
+                            disabled={submitting || !backupEmailDraft.trim()}
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-lg px-2 py-2 text-xs text-muted transition hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={cancelBackupEmailDraft}
+                            disabled={submitting}
+                            aria-label="Cancel adding a backup email"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                        {backupEmailError ? <p className="mt-2 text-xs text-red-600">{backupEmailError}</p> : null}
+                      </div>
+                    )}
+
+                    <p className="mt-3 text-xs text-muted">
+                      {savedBackupEmails().length} / {MAX_PROJECT_NOTIFICATION_RECIPIENTS} backup emails
+                    </p>
+                    {errors.backup_emails ? <p className="mt-2 text-xs text-red-600">{errors.backup_emails}</p> : null}
                   </div>
                 </div>
               </div>

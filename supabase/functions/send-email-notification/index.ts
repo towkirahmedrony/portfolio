@@ -37,6 +37,9 @@ type ProjectRequest = {
   client_id: string | null;
 };
 
+/** A row of public.project_notification_recipients. */
+type NotificationRecipientRow = { email: string | null };
+
 const prefix = "[email-notification]";
 
 const SUPPORTED_TYPES: NotificationType[] = [
@@ -49,6 +52,13 @@ const STATUS_TRANSITION_TYPES: NotificationType[] = [
   "project_status_changed",
   "project_request_status_changed",
 ];
+
+/**
+ * Maximum additional team/backup recipients per project or project request.
+ * Mirrors public.replace_own_project_notification_recipients(), which is the
+ * write path (and the enforcing gate) for customers editing this list.
+ */
+const MAX_TEAM_RECIPIENTS = 5;
 
 const out = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -88,6 +98,151 @@ const htmlToText = (html: string): string =>
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+
+/** Trim an optional email value; "" means absent. */
+const normalizeEmail = (value: string | null | undefined): string =>
+  (value ?? "").trim();
+
+/** Deliberately permissive: only reject values that cannot be a usable address,
+ *  so a real customer address is never dropped. */
+const isUsableEmail = (value: string): boolean =>
+  value.length > 0 &&
+  value.length <= 254 &&
+  /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(value);
+
+/** Mask an address for logs — logs must never carry a full customer address. */
+const maskEmail = (value: string): string => {
+  const trimmed = normalizeEmail(value);
+  const at = trimmed.lastIndexOf("@");
+  if (at <= 0) return "***";
+  const local = trimmed.slice(0, at);
+  const domain = trimmed.slice(at + 1);
+  const dot = domain.lastIndexOf(".");
+  const tld = dot > 0 ? domain.slice(dot) : "";
+  return `${local.slice(0, 1)}***@***${tld}`;
+};
+
+/**
+ * Trim, drop blank / whitespace-only / unusable values, and remove duplicates
+ * case-insensitively. Order is preserved, so the primary address always wins.
+ */
+const dedupeEmails = (
+  candidates: (string | null | undefined)[],
+): string[] => {
+  const list: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const value = normalizeEmail(candidate);
+    if (!isUsableEmail(value)) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    list.push(value);
+  }
+  return list;
+};
+
+/**
+ * Primary first, then every additional team/backup address. Blank /
+ * whitespace-only / unusable values are dropped, and duplicates are removed
+ * case-insensitively so the same address never results in two sends.
+ */
+const buildRecipients = (
+  primary: string | null | undefined,
+  additional: (string | null | undefined)[] = [],
+): string[] => dedupeEmails([primary, ...additional]);
+
+/**
+ * The customer's optional backup address lives on the account profile
+ * (public.profiles.backup_email). The copy on project_requests is only a
+ * request-time snapshot, so the profile is the authoritative source for both
+ * the project and project_request event paths.
+ */
+const loadBackupEmail = async (
+  db: ReturnType<typeof createClient>,
+  clientId: string | null | undefined,
+): Promise<string | null> => {
+  if (!clientId) return null;
+  try {
+    const { data } = await db
+      .from("profiles")
+      .select("backup_email")
+      .eq("id", clientId)
+      .maybeSingle<{ backup_email: string | null }>();
+    return data?.backup_email ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/** Legacy snapshot kept on the request row for older clients and admin search. */
+const loadRequestBackupEmail = async (
+  db: ReturnType<typeof createClient>,
+  requestId: string | null | undefined,
+): Promise<string | null> => {
+  if (!requestId) return null;
+  try {
+    const { data } = await db
+      .from("project_requests")
+      .select("backup_email")
+      .eq("id", requestId)
+      .maybeSingle<{ backup_email: string | null }>();
+    return data?.backup_email ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * public.project_notification_recipients is the authoritative source for every
+ * additional team/backup address on a project or a project request. A project
+ * inherits the recipients of the request it was created from, so both scopes are
+ * read for the project path.
+ *
+ * The legacy backup_email columns are still honoured as a fallback for records
+ * that predate the table (and for older application versions). They are appended
+ * last so a backup address that was already migrated into the table collapses
+ * into a single delivery instead of being sent twice.
+ */
+const loadTeamRecipients = async (
+  db: ReturnType<typeof createClient>,
+  scope: { projectId?: string | null; requestId?: string | null },
+  legacyFallbacks: (string | null | undefined)[] = [],
+): Promise<string[]> => {
+  const collected: string[] = [];
+
+  const collect = (rows: NotificationRecipientRow[] | null) => {
+    for (const row of rows ?? []) {
+      const value = normalizeEmail(row?.email);
+      if (value) collected.push(value);
+    }
+  };
+
+  try {
+    if (scope.projectId) {
+      const { data } = await db
+        .from("project_notification_recipients")
+        .select("email")
+        .eq("project_id", scope.projectId);
+      collect(data as NotificationRecipientRow[] | null);
+    }
+
+    if (scope.requestId) {
+      const { data } = await db
+        .from("project_notification_recipients")
+        .select("email")
+        .eq("project_request_id", scope.requestId);
+      collect(data as NotificationRecipientRow[] | null);
+    }
+  } catch {
+    // A table-read failure must not silently drop every team recipient; fall
+    // through to the legacy fallbacks below instead of throwing.
+  }
+
+  collected.push(...legacyFallbacks.map((value) => normalizeEmail(value)).filter(Boolean));
+
+  return dedupeEmails(collected).slice(0, MAX_TEAM_RECIPIENTS);
+};
 
 const layout = (
   title: string,
@@ -270,7 +425,10 @@ Deno.serve(async (req: Request) => {
 
   // ------------------------------------------------------ resolve context
   let recipientEmail: string | null = null;
+  let backupEmail: string | null = null;
+  // Additional team/backup recipients from project_notification_recipients.
   let teamRecipientEmails: string[] = [];
+  let teamRecipientScope = "not_applicable";
   let preferenceUserId: string | null = null;
   let subject: string;
   let html: string;
@@ -379,17 +537,26 @@ Deno.serve(async (req: Request) => {
     });
 
     recipientEmail = email;
+    backupEmail = await loadBackupEmail(db, request.client_id);
     preferenceUserId = request.client_id;
 
-    const requestRecipients = await db
-      .from("project_notification_recipients")
-      .select("email")
-      .eq("project_request_id", request.id);
-    teamRecipientEmails = (requestRecipients.data ?? [])
-      .map((row) => String(row.email ?? "").trim())
-      .filter(Boolean);
-    if (teamRecipientEmails.length === 0 && request.backup_email?.trim()) {
-      teamRecipientEmails = [request.backup_email.trim()];
+    // Team/backup recipients are attached to status transitions only, which is
+    // the existing product behaviour. The request-scoped row set is the source
+    // of truth; the legacy backup_email snapshot is a fallback.
+    if (STATUS_TRANSITION_TYPES.includes(type)) {
+      const teamT = performance.now();
+      teamRecipientEmails = await loadTeamRecipients(
+        db,
+        { requestId: request.id },
+        [request.backup_email],
+      );
+      teamRecipientScope = "project_request_id";
+      log("team_recipients_lookup_success", id, {
+        scope: teamRecipientScope,
+        team_recipient_count: teamRecipientEmails.length,
+        team_recipients_masked: teamRecipientEmails.map(maskEmail),
+        elapsed_ms: ms(teamT),
+      });
     }
 
     const rows =
@@ -482,38 +649,30 @@ Deno.serve(async (req: Request) => {
     });
 
     recipientEmail = email;
+    backupEmail = await loadBackupEmail(db, project.client_id);
     preferenceUserId = project.client_id;
 
+    // A project inherits the recipients of the request it was created from, and
+    // can additionally own its own rows, so both scopes are read here.
     if (STATUS_TRANSITION_TYPES.includes(type)) {
-      const projectRecipients = await db
-        .from("project_notification_recipients")
-        .select("email")
-        .eq("project_id", project.id);
-      teamRecipientEmails = (projectRecipients.data ?? [])
-        .map((row) => String(row.email ?? "").trim())
-        .filter(Boolean);
-
-      if (project.request_id) {
-        const requestRecipients = await db
-          .from("project_notification_recipients")
-          .select("email")
-          .eq("project_request_id", project.request_id);
-        teamRecipientEmails.push(
-          ...(requestRecipients.data ?? [])
-            .map((row) => String(row.email ?? "").trim())
-            .filter(Boolean),
-        );
-        if (teamRecipientEmails.length === 0) {
-          const legacyRequest = await db
-            .from("project_requests")
-            .select("backup_email")
-            .eq("id", project.request_id)
-            .maybeSingle();
-          if (legacyRequest.data?.backup_email?.trim()) {
-            teamRecipientEmails = [legacyRequest.data.backup_email.trim()];
-          }
-        }
-      }
+      const teamT = performance.now();
+      const legacyRequestBackup = await loadRequestBackupEmail(
+        db,
+        project.request_id,
+      );
+      teamRecipientEmails = await loadTeamRecipients(
+        db,
+        { projectId: project.id, requestId: project.request_id },
+        [legacyRequestBackup],
+      );
+      teamRecipientScope = "project_id+project_request_id";
+      log("team_recipients_lookup_success", id, {
+        scope: teamRecipientScope,
+        has_linked_request: Boolean(project.request_id),
+        team_recipient_count: teamRecipientEmails.length,
+        team_recipients_masked: teamRecipientEmails.map(maskEmail),
+        elapsed_ms: ms(teamT),
+      });
     }
 
     const amount =
@@ -574,24 +733,6 @@ Deno.serve(async (req: Request) => {
   }
 
   // ------------------------------------------------------ delivery
-  // Send one message per address so team members do not see each other's
-  // addresses. The primary account email remains the recipient for every
-  // notification; team recipients are used for status transitions only.
-  const recipients = [
-    ...new Map(
-      [recipientEmail, ...(STATUS_TRANSITION_TYPES.includes(type) ? teamRecipientEmails : [])]
-        .map((email) => email?.trim())
-        .filter((email): email is string => Boolean(email))
-        .map((email) => [email.toLowerCase(), email] as const),
-    ).values(),
-  ];
-  if (recipients.length === 0) {
-    finish("email_notification_failed", {
-      stage: "recipient_resolution",
-      error_category: "recipient_email_unavailable",
-    });
-    return out({ success: false, error: "Recipient email unavailable" }, 422);
-  }
   // Primary transport: Gmail SMTP, reusing the same Gmail account as the
   // project's Supabase Auth Custom SMTP. Credentials live only in Edge
   // Function secrets and are never logged, returned or echoed.
@@ -623,84 +764,192 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  if (smtpConfigured) {
-    const smtpT = performance.now();
-    const maxSmtpAttempts = 2;
-    let lastFailure: { stage: string; message: string } | null = null;
-    for (let recipientIndex = 0; recipientIndex < recipients.length; recipientIndex += 1) {
-      const recipient = recipients[recipientIndex];
-      let delivered = false;
-      let recipientFailure: { stage: string; message: string } | null = null;
-      for (let attempt = 1; attempt <= maxSmtpAttempts; attempt++) {
-        log("smtp_send_started", id, {
-          attempt,
-          max_attempts: maxSmtpAttempts,
-          recipient_index: recipientIndex + 1,
-          recipient_count: recipients.length,
+  // -------------------------------------- recipients (normalised, deduplicated)
+  // The primary customer address plus every additional team/backup recipient
+  // configured for the project or project request. Whitespace is trimmed,
+  // comparison is case-insensitive, and each unique address is delivered once.
+  const recipients = buildRecipients(recipientEmail, [
+    ...teamRecipientEmails,
+    backupEmail,
+  ]);
+  const primaryNormalized = normalizeEmail(recipientEmail);
+  const backupNormalized = normalizeEmail(backupEmail);
+  const primaryKey = primaryNormalized.toLowerCase();
+  log("recipient_resolution", id, {
+    primary_present: isUsableEmail(primaryNormalized),
+    primary_masked: isUsableEmail(primaryNormalized)
+      ? maskEmail(primaryNormalized)
+      : null,
+    team_recipient_scope: teamRecipientScope,
+    team_recipients_configured: teamRecipientEmails.length,
+    team_recipients_masked: teamRecipientEmails.map(maskEmail),
+    backup_source: "profiles.backup_email",
+    backup_present: Boolean(backupNormalized),
+    backup_usable: isUsableEmail(backupNormalized),
+    backup_masked: isUsableEmail(backupNormalized)
+      ? maskEmail(backupNormalized)
+      : null,
+    backup_same_as_primary:
+      isUsableEmail(backupNormalized) &&
+      isUsableEmail(primaryNormalized) &&
+      primaryNormalized.toLowerCase() === backupNormalized.toLowerCase(),
+    // Addresses dropped because they duplicate the primary or another
+    // additional recipient — proves no address is delivered twice.
+    deduplicated_addresses:
+      teamRecipientEmails.length +
+      (isUsableEmail(backupNormalized) ? 1 : 0) +
+      1 -
+      recipients.length,
+    unique_recipients: recipients.length,
+    recipients_masked: recipients.map(maskEmail),
+  });
+
+  log("recipient_list_finalised", id, {
+    recipients_total: recipients.length,
+    // Only the primary keeps the customer address; everything else is a team
+    // recipient. Reported masked so logs never carry a full address.
+    primary_masked: isUsableEmail(primaryNormalized)
+      ? maskEmail(primaryNormalized)
+      : null,
+    additional_masked: recipients
+      .filter((value) => value.toLowerCase() !== primaryKey)
+      .map(maskEmail),
+  });
+
+  if (recipients.length === 0) {
+    finish("email_notification_failed", {
+      stage: "recipient_resolution",
+      error_category: "recipient_email_unavailable",
+    });
+    return out({ success: false, error: "Recipient email unavailable" }, 422);
+  }
+
+  // ------------------------------------------------------ delivery
+  // Each recipient is sent to independently and tracked individually, so a
+  // recipient that already succeeded is never re-sent on retry.
+  const smtpT = performance.now();
+  const maxSmtpAttempts = 2;
+  const delivered: string[] = [];
+  const failures: { recipient: string; stage: string; status: number | null }[] =
+    [];
+
+  for (const recipient of recipients) {
+    let sent = false;
+
+    for (let attempt = 1; attempt <= maxSmtpAttempts; attempt++) {
+      log("smtp_send_started", id, {
+        attempt,
+        max_attempts: maxSmtpAttempts,
+        port: smtpPort,
+        implicit_tls: smtpPort === 465,
+        recipient: maskEmail(recipient),
+      });
+
+      const result = await sendMail(
+        {
+          host: smtpHost,
           port: smtpPort,
-          implicit_tls: smtpPort === 465,
-        });
+          user: smtpUser,
+          pass: smtpPass,
+          fromName: smtpFromName,
+        },
+        {
+          from: smtpFrom,
+          to: recipient,
+          replyTo: smtpFrom,
+          subject,
+          html,
+          text: htmlToText(html),
+        },
+      );
 
-        const result = await sendMail(
-          {
-            host: smtpHost,
-            port: smtpPort,
-            user: smtpUser,
-            pass: smtpPass,
-            fromName: smtpFromName,
-          },
-          {
-            from: smtpFrom,
-            to: recipient,
-            replyTo: smtpFrom,
-            subject,
-            html,
-            text: htmlToText(html),
-          },
-        );
-
-        if (result.ok) {
-          delivered = true;
-          log("smtp_send_success", id, { attempt, elapsed_ms: ms(smtpT) });
-          break;
-        }
-
-        recipientFailure = { stage: result.stage, message: result.message };
-        log("smtp_send_failed", id, {
+      if (result.ok) {
+        sent = true;
+        log("smtp_send_success", id, {
           attempt,
-          stage: result.stage,
-          status: result.status ?? null,
-          retryable: result.retryable,
-          server_message: result.message,
+          recipient: maskEmail(recipient),
           elapsed_ms: ms(smtpT),
         });
-
-        if (!result.retryable || attempt === maxSmtpAttempts) break;
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        break;
       }
-      if (!delivered) lastFailure = recipientFailure;
-    }
-    if (lastFailure) {
-      finish("email_notification_failed", {
-        stage: `smtp_${lastFailure.stage}`,
-        error_category: "delivery_failed",
-        transport: "gmail_smtp",
-        recipient_count: recipients.length,
+
+      log("smtp_send_failed", id, {
+        attempt,
+        recipient: maskEmail(recipient),
+        stage: result.stage,
+        status: result.status ?? null,
+        retryable: result.retryable,
+        server_message: result.message,
+        elapsed_ms: ms(smtpT),
       });
-      return out({ success: false, error: "Email delivery failed" }, 502);
+
+      if (!result.retryable || attempt === maxSmtpAttempts) {
+        failures.push({
+          recipient,
+          stage: result.stage,
+          status: result.status ?? null,
+        });
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
+
+    if (sent) delivered.push(recipient);
+  }
+
+  if (failures.length === 0) {
+    log("email_delivery_summary", id, {
+      outcome: "all_delivered",
+      recipients_total: recipients.length,
+      recipients_delivered: delivered.length,
+      elapsed_ms: ms(smtpT),
+    });
     finish("email_notification_success", {
       notification_type: type,
       transport: "gmail_smtp",
-      recipient_count: recipients.length,
+      recipients_total: recipients.length,
+      recipients_delivered: delivered.length,
     });
-    return out({ success: true, transport: "gmail_smtp", recipient_count: recipients.length });
+    return out({
+      success: true,
+      transport: "gmail_smtp",
+      recipients: recipients.length,
+      delivered: delivered.length,
+    });
   }
 
-  // SMTP-only transport: every path above returns, so this is unreachable.
-  finish("email_notification_failed", {
-    stage: "delivery_configuration",
-    error_category: "delivery_failed",
+  // A required recipient failed: never report complete success, and make the
+  // partial outcome observable without exposing addresses.
+  log("email_delivery_summary", id, {
+    outcome: delivered.length > 0 ? "partial_failure" : "total_failure",
+    recipients_total: recipients.length,
+    recipients_delivered: delivered.length,
+    recipients_failed: failures.length,
+    failed_masked: failures.map((failure) => maskEmail(failure.recipient)),
+    failed_stages: failures.map((failure) => failure.stage),
+    failed_statuses: failures.map((failure) => failure.status),
+    elapsed_ms: ms(smtpT),
   });
-  return out({ success: false, error: "Email delivery failed" }, 502);
+  finish("email_notification_failed", {
+    stage: "smtp_delivery",
+    error_category:
+      delivered.length > 0 ? "partial_delivery_failure" : "delivery_failed",
+    transport: "gmail_smtp",
+    recipients_total: recipients.length,
+    recipients_delivered: delivered.length,
+  });
+  return out(
+    {
+      success: false,
+      transport: "gmail_smtp",
+      recipients: recipients.length,
+      delivered: delivered.length,
+      failed: failures.length,
+      error:
+        delivered.length > 0
+          ? "Partial email delivery failure"
+          : "Email delivery failed",
+    },
+    502,
+  );
 });
